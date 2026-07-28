@@ -48,3 +48,55 @@ arquitectura · `openrouter.ts` → tool calling.
 | 8 | `npm run lint` | **exit 0** | — |
 | 9 | Escrito `MAPA.md` de la ronda 4 | — | — |
 | 10 | Lanzados 3 auditores en paralelo, contexto fresco | agéntico · arquitectura · tool calling | — |
+| 11 | Vuelve **arquitectura**: 4/10 (antes 5). 0 críticos, 2 altos, 1 medio, 1 bajo | verificado abajo | — |
+
+### Verificación adversarial — arquitectura
+
+Abrí cada hallazgo contra el código antes de anotarlo. Tres sobreviven, uno se cae.
+
+- **A [ALTO] `pdf.ts` reconstruye la clasificación del motor — CONFIRMADO.**
+  `pdf.ts:16-19` (`NO_DEDUCIBLES_PDF`) es copia literal de `engine.ts:496`
+  (`NO_DEDUCIBLE_ISR`), sin test de sincronía. `pdf.ts:315` arma `idsPorConfirmar`
+  con **un** criterio (`sin_cfdi || combustible_efectivo`) mientras el motor usa
+  **dos** (`POR_CONFIRMAR` en `engine.ts:497` *más* `if (!g.cfdiUuid)` en
+  `engine.ts:512`). Y `DEMO_CONFIG.politica` (`config.ts:66-73`) solo pone
+  `requiereCfdi: true` en `factura` — verificado leyendo el literal. Así que con la
+  config del demo, un hospedaje sin timbrar cae en `porConfirmar` para el motor y
+  en ningún lado para el PDF. La sección "LO QUE SE LE REEMBOLSA AL OPERADOR" no se
+  activa. Es exactamente la contradicción que `engine.ts:486-495` documenta haber
+  eliminado del lado fiscal, resucitada en el PDF.
+
+- **B [ALTO] El dato que sustituyó al IEPS llegó a 2 de 4 consumidores — CONFIRMADO,
+  y es MÁS fuerte de lo que reportó el auditor.** `engine.ts:408` fija
+  `const iepsAcreditable = 0`. Verifiqué el único camino que podría revivirlo:
+  `desde_db.ts:5,21` **recalcula con `cuadrarViaje`**, no lee la columna — así que
+  no existe ninguna ruta en la que `liq.iepsAcreditable > 0`. La rama de
+  `resumen.ts:73` es código muerto sin excepción, no solo "para liquidaciones
+  nuevas". Y `analytics.ts:136` pide `ieps_acreditable` sin pedir
+  `litros_diesel_acreditables`, así que `dashboard/[id]/page.tsx:35,73` (que solo
+  conoce `d.ieps`) no puede mostrar litros ni aunque quisiera.
+
+- **C [MEDIO] "El descargo legal no sale por el canal principal" — DESCARTADO por
+  falso en su parte sustantiva.** El auditor concluye que la mitigación del Anexo 3
+  RMF / arts. 89-90 CFF "no sale por el canal principal". No es cierto:
+  `LEYENDA_CORTA` **sí se renderiza**, en las dos pantallas del panel —
+  `dashboard/page.tsx:6,197` y `dashboard/[id]/page.tsx:3,113`. `leyendas.ts:19`
+  dice "Para WhatsApp y el dashboard" y la mitad del dashboard está cableada y
+  llega justo a quien va dirigido el descargo: el contralor. El mensaje de WhatsApp
+  va al **operador**, y `resumen.ts:76-80` explica por escrito por qué a él no se le
+  manda. El auditor leyó una rama muerta y le atribuyó una consecuencia legal que
+  el código no tiene.
+  **Lo que SÍ sobrevive, degradado a [BAJO]:** la rama `destinatario === 'contralor'`
+  de `resumen.ts:81` no tiene llamador de producción (verificado: `processor.ts:487`,
+  `processor.ts:555` y `guardia.ts:79` pasan los tres `'operador'`), así que cinco
+  asserts —`resumen.test.ts:52,73,99,129` y `liquidacion_completa.test.ts:134`—
+  validan una forma de llamada que el producto nunca produce. Es deuda de prueba,
+  no exposición legal. `LEYENDA_INLINE` (`leyendas.ts:25`) sí tiene cero consumidores.
+
+- **D [BAJO] `catalogoCuentas` sin consumidor — CONFIRMADO en sustancia, con una
+  imprecisión.** El auditor dice que grep devuelve "solo la declaración y el literal";
+  en realidad hay cuatro referencias en `config_merge.test.ts:22,55,56,67`. Pero el
+  fondo se sostiene: cero consumidores de **producción**, y `export.ts:42-51`
+  (`toLiquidacionRows`) no tiene columna de cuenta contable — verificado leyendo las
+  ocho columnas que sí emite.
+
