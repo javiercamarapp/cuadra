@@ -1,0 +1,128 @@
+<meta charset="utf-8">
+<title>Auditoría 3 · Likida</title>
+<style>
+  :root { --bg:#fbfbfd; --surface:#fff; --ink:#0b0b0f; --muted:#6b7280; --line:#ececef; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0b0b0f; --surface:#16161c; --ink:#e8edf5; --muted:#9aa0aa; --line:#242430; } }
+  :root[data-theme="dark"] { --bg:#0b0b0f; --surface:#16161c; --ink:#e8edf5; --muted:#9aa0aa; --line:#242430; }
+  :root[data-theme="light"] { --bg:#fbfbfd; --surface:#fff; --ink:#0b0b0f; --muted:#6b7280; --line:#ececef; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .wrap { max-width:960px; margin:0 auto; padding:48px 24px 80px; }
+  h1 { font-size:30px; letter-spacing:-.02em; margin:0 0 6px; }
+  .sub { color:var(--muted); margin:0 0 34px; }
+  .global { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:26px 28px; margin-bottom:14px; display:flex; align-items:baseline; gap:18px; flex-wrap:wrap; }
+  .global b { font-size:52px; letter-spacing:-.03em; line-height:1; }
+  .global span { color:var(--muted); }
+  .aviso { background:var(--surface); border:1px solid var(--line); border-left:4px solid #f59e0b; border-radius:12px; padding:16px 20px; margin-bottom:30px; color:var(--muted); font-size:14.5px; }
+  .aviso b { color:var(--ink); }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+  th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); padding:14px 16px; border-bottom:1px solid var(--line); font-weight:600; }
+  td { padding:12px 16px; border-bottom:1px solid var(--line); }
+  tr:last-child td { border-bottom:0; }
+  .rubro { font-weight:500; }
+  .num { text-align:center; width:64px; font-variant-numeric:tabular-nums; }
+  .prev { color:var(--muted); }
+  .pill { display:inline-block; min-width:30px; padding:3px 9px; border-radius:8px; color:#fff; font-weight:600; }
+  .delta { width:34px; text-align:center; font-size:17px; }
+  .sube { color:#16a34a; } .baja { color:#d70015; } .igual { color:var(--muted); }
+  .barra { width:34%; }
+  .barra i { display:block; height:7px; border-radius:4px; }
+  h2 { font-size:14px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:38px 0 12px; }
+  ul { list-style:none; padding:0; margin:0; }
+  .h { display:flex; gap:12px; align-items:baseline; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:11px 14px; margin-bottom:7px; font-size:14.5px; }
+  .sev { font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; font-weight:700; padding:3px 7px; border-radius:5px; color:#fff; white-space:nowrap; }
+  .crítico .sev { background:#d70015; } .alto .sev { background:#ea580c; }
+  .medio .sev { background:#f59e0b; } .abierto .sev { background:#6b7280; }
+  .txt { flex:1; } .txt code { font-size:13px; background:var(--line); padding:1px 5px; border-radius:4px; }
+  .est { font-size:12px; color:var(--muted); white-space:nowrap; }
+  .pendiente .est { color:#ea580c; }
+</style>
+<div class="wrap">
+  <h1>Auditoría 3 · Likida</h1>
+  <p class="sub">28 de julio de 2026 · tras construir la Fase 1 · 12 rubros, 5 auditores con contexto fresco</p>
+
+  <div class="global"><b>6.2</b><span>global, igual que la ronda anterior — pero tres rubros suben y tres bajan. No es estabilidad, es un intercambio.</span></div>
+
+  <div class="aviso"><b>Estas notas califican el código que los auditores encontraron, no el que hay ahora.</b>
+  Los dos críticos y los cuatro altos se arreglaron después de recibirlas, y esos arreglos no están reflejados arriba:
+  se miden en la ronda 4, con auditores frescos. Subirlas yo mismo sería calificar mi propio trabajo.</div>
+
+  <table>
+    <tr><th>Rubro</th><th class="num">Ronda 2</th><th class="num">Ronda 3</th><th></th><th></th></tr>
+    <tr>
+  <td class="rubro">Backend y API</td>
+  <td class="num prev">6</td>
+  <td class="num"><span class="pill" style="background:#16a34a">7</span></td>
+  <td class="delta sube">↑</td>
+  <td class="barra"><i style="width:70%;background:#16a34a"></i></td>
+</tr><tr>
+  <td class="rubro">Pruebas</td>
+  <td class="num prev">6</td>
+  <td class="num"><span class="pill" style="background:#16a34a">7</span></td>
+  <td class="delta sube">↑</td>
+  <td class="barra"><i style="width:70%;background:#16a34a"></i></td>
+</tr><tr>
+  <td class="rubro">Cumplimiento fiscal</td>
+  <td class="num prev">6</td>
+  <td class="num"><span class="pill" style="background:#16a34a">7</span></td>
+  <td class="delta sube">↑</td>
+  <td class="barra"><i style="width:70%;background:#16a34a"></i></td>
+</tr><tr>
+  <td class="rubro">Seguridad</td>
+  <td class="num prev">7</td>
+  <td class="num"><span class="pill" style="background:#16a34a">7</span></td>
+  <td class="delta igual">=</td>
+  <td class="barra"><i style="width:70%;background:#16a34a"></i></td>
+</tr><tr>
+  <td class="rubro">Modelo de datos</td>
+  <td class="num prev">7</td>
+  <td class="num"><span class="pill" style="background:#16a34a">7</span></td>
+  <td class="delta igual">=</td>
+  <td class="barra"><i style="width:70%;background:#16a34a"></i></td>
+</tr><tr>
+  <td class="rubro">Tool calling</td>
+  <td class="num prev">6</td>
+  <td class="num"><span class="pill" style="background:#f59e0b">6</span></td>
+  <td class="delta igual">=</td>
+  <td class="barra"><i style="width:60%;background:#f59e0b"></i></td>
+</tr><tr>
+  <td class="rubro">Rendimiento y costo</td>
+  <td class="num prev">6</td>
+  <td class="num"><span class="pill" style="background:#f59e0b">6</span></td>
+  <td class="delta igual">=</td>
+  <td class="barra"><i style="width:60%;background:#f59e0b"></i></td>
+</tr><tr>
+  <td class="rubro">Operabilidad y DX</td>
+  <td class="num prev">6</td>
+  <td class="num"><span class="pill" style="background:#f59e0b">6</span></td>
+  <td class="delta igual">=</td>
+  <td class="barra"><i style="width:60%;background:#f59e0b"></i></td>
+</tr><tr>
+  <td class="rubro">Cumplimiento legal</td>
+  <td class="num prev">6</td>
+  <td class="num"><span class="pill" style="background:#f59e0b">6</span></td>
+  <td class="delta igual">=</td>
+  <td class="barra"><i style="width:60%;background:#f59e0b"></i></td>
+</tr><tr>
+  <td class="rubro">Frontend</td>
+  <td class="num prev">7</td>
+  <td class="num"><span class="pill" style="background:#f59e0b">6</span></td>
+  <td class="delta baja">↓</td>
+  <td class="barra"><i style="width:60%;background:#f59e0b"></i></td>
+</tr><tr>
+  <td class="rubro">Arquitectura</td>
+  <td class="num prev">6</td>
+  <td class="num"><span class="pill" style="background:#f59e0b">5</span></td>
+  <td class="delta baja">↓</td>
+  <td class="barra"><i style="width:50%;background:#f59e0b"></i></td>
+</tr><tr>
+  <td class="rubro">Sistema agéntico</td>
+  <td class="num prev">5</td>
+  <td class="num"><span class="pill" style="background:#d70015">4</span></td>
+  <td class="delta baja">↓</td>
+  <td class="barra"><i style="width:40%;background:#d70015"></i></td>
+</tr>
+  </table>
+
+  <h2>Hallazgos</h2>
+  <ul><li class="h crítico arreglado"><span class="sev">crítico</span><span class="txt">La coma del español rompía la detección de citas y mutilaba las legítimas</span><span class="est">arreglado</span></li><li class="h crítico arreglado"><span class="sev">crítico</span><span class="txt">guardiaFundamento corrompía el resumen determinístico del motor</span><span class="est">arreglado</span></li><li class="h crítico arreglado"><span class="sev">crítico</span><span class="txt">RPC duplicada: <code>function is not unique</code> en todo cierre</span><span class="est">arreglado</span></li><li class="h alto arreglado"><span class="sev">alto</span><span class="txt">IVA sobre-acreditado con varias comidas el mismo día ($160 vs $120)</span><span class="est">arreglado</span></li><li class="h alto arreglado"><span class="sev">alto</span><span class="txt">El medio ARCO no respondía sin viaje abierto</span><span class="est">arreglado</span></li><li class="h alto arreglado"><span class="sev">alto</span><span class="txt">getViaje no traía demora_no_imputable: la sección del PDF nunca se activaba</span><span class="est">arreglado</span></li><li class="h alto arreglado"><span class="sev">alto</span><span class="txt">El panel mostraba $0.00 en su tarjeta destacada</span><span class="est">arreglado</span></li><li class="h alto arreglado"><span class="sev">alto</span><span class="txt">cuadrar_viaje sin caché: repetía el barrido del ejercicio</span><span class="est">arreglado</span></li><li class="h medio arreglado"><span class="sev">medio</span><span class="txt">limpiar() colapsaba los saltos de línea del resumen</span><span class="est">arreglado</span></li><li class="h medio arreglado"><span class="sev">medio</span><span class="txt">Contraste 3.35:1 en modo oscuro</span><span class="est">arreglado</span></li><li class="h medio arreglado"><span class="sev">medio</span><span class="txt">Sin índice para el contador del 15%</span><span class="est">arreglado</span></li><li class="h abierto pendiente"><span class="sev">abierto</span><span class="txt">El contador del 15% no se persiste en ninguna parte</span><span class="est">pendiente</span></li><li class="h abierto pendiente"><span class="sev">abierto</span><span class="txt">Sin camino de escritura para demora_no_imputable</span><span class="est">pendiente</span></li><li class="h abierto pendiente"><span class="sev">abierto</span><span class="txt">El panel lee Supabase con mapeo a mano, dos rondas seguidas</span><span class="est">pendiente</span></li></ul>
+</div>
