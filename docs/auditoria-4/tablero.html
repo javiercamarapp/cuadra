@@ -1,0 +1,270 @@
+<meta charset="utf-8">
+<title>Likida — Auditoría 4</title>
+<style>
+  :root{
+    color-scheme: light;
+    --plane:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10);
+    --good:#0ca30c; --warn:#fab219; --crit:#d03b3b; --serious:#ec835a;
+    --line:#2a78d6;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:where(:not([data-theme="light"])){
+      color-scheme: dark;
+      --plane:#0d0d0d; --surface:#1a1a19; --ink:#fff; --ink2:#c3c2b7; --muted:#898781;
+      --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --line:#3987e5;
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --plane:#0d0d0d; --surface:#1a1a19; --ink:#fff; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --line:#3987e5;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--plane);color:var(--ink);
+    font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:28px 22px 56px}
+  .wrap{max-width:1060px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 2px}
+  .sub{color:var(--ink2);font-size:13px;margin-bottom:20px}
+  .card{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:16px 18px;margin-bottom:16px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 12px;font-weight:600}
+
+  /* ── franja de estado ── */
+  .gate{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{display:flex;align-items:center;gap:7px;border:1px solid var(--ring);border-radius:999px;
+    padding:6px 13px;font-size:13px;background:var(--surface)}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none}
+
+  /* ── titular ── */
+  .hero{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+  .big{font-size:52px;font-weight:650;line-height:1}
+  .delta{font-size:19px;font-weight:600}
+  .hero p{margin:0;color:var(--ink2);font-size:14px;max-width:46ch}
+
+  /* ── rejilla de rubros ── */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:10px}
+  .r{border:1px solid var(--ring);border-left-width:4px;border-radius:8px;padding:11px 13px;background:var(--surface)}
+  .r.off{opacity:.62}
+  .rt{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .rn{font-size:12.5px;color:var(--ink2);font-weight:600}
+  .rv{font-size:25px;font-weight:650;font-variant-numeric:tabular-nums}
+  .rd{font-size:12px;font-weight:600;margin-left:5px}
+  .rr{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.4}
+  .tag{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--muted);border:1px solid var(--ring);border-radius:4px;padding:1px 5px;margin-top:6px}
+
+  /* ── serie histórica ── */
+  .hist{display:flex;align-items:flex-end;gap:0;height:132px;position:relative;padding-left:26px}
+  .hy{position:absolute;left:0;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative}
+  .bar{width:34px;background:var(--line);border-radius:4px 4px 0 0}
+  .bv{font-size:12.5px;font-weight:650;margin-bottom:5px;font-variant-numeric:tabular-nums}
+  .bl{font-size:11px;color:var(--muted);margin-top:6px;text-align:center;line-height:1.3}
+
+  /* ── tablas ── */
+  .scroll{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:13px;min-width:600px}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--grid);vertical-align:top}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+  code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--plane);
+    border:1px solid var(--ring);border-radius:3px;padding:.5px 4px}
+  .sev{font-weight:650;font-size:11.5px;text-transform:uppercase;white-space:nowrap}
+  .st{font-size:11.5px;white-space:nowrap;font-weight:600}
+  .note{color:var(--ink2);font-size:13px;line-height:1.55}
+  .note strong{color:var(--ink)}
+</style>
+
+<div class="wrap">
+  <h1>Likida — Auditoría 4</h1>
+  <div class="sub">28-jul-2026 · ronda <strong>LIGERA</strong>, 3 rubros por rotación · rama <code>claude/auditoria-4</code> · demo 6-ago-2026</div>
+
+  <div class="card">
+    <h2>Compuerta (en la nube, sin <code>build</code>)</h2>
+    <div class="gate">
+      <span class="chip"><span class="dot" style="background:var(--good)"></span> ✔ <strong>npm test</strong> — 517 pasan / 51 archivos · 11.6s</span>
+      <span class="chip"><span class="dot" style="background:var(--good)"></span> ✔ <strong>tsc --noEmit</strong> — exit 0</span>
+      <span class="chip"><span class="dot" style="background:var(--good)"></span> ✔ <strong>lint</strong> — exit 0</span>
+      <span class="chip"><span class="dot" style="background:var(--muted)"></span> — <strong>build</strong> — no corre aquí: pide credenciales</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Nota global</h2>
+    <div class="hero">
+      <span class="big">5.9</span>
+      <span class="delta" style="color:var(--crit)">▼ 0.3</span>
+      <p>Tres rubros auditados, <strong>los tres bajaron</strong>. Ninguno bajó porque el código
+      empeorara: dos por deuda reincidente que por fin produjo un fallo construible, y uno
+      porque nunca había tenido un auditor dedicado y la nota anterior estaba inflada.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Los 12 rubros</h2>
+    <div class="grid">
+      <div class="r" style="border-left-color:var(--crit)">
+        <div class="rt"><span class="rn">Sistema agéntico</span><span><span class="rv">3</span><span class="rd" style="color:var(--crit)">▼1</span></span></div>
+        <div class="rr">El modelo puede afirmar que cerró un viaje sin haberlo cerrado, y ninguna guardia mira las afirmaciones de estado.</div>
+        <div class="tag">deuda que cobró factura</div>
+      </div>
+      <div class="r" style="border-left-color:var(--crit)">
+        <div class="rt"><span class="rn">Arquitectura</span><span><span class="rv">4</span><span class="rd" style="color:var(--crit)">▼1</span></span></div>
+        <div class="rr"><code>pdf.ts</code> reconstruye la clasificación de dinero del motor y ya da otro resultado.</div>
+        <div class="tag">deuda que cobró factura</div>
+      </div>
+      <div class="r" style="border-left-color:var(--warn)">
+        <div class="rt"><span class="rn">Tool calling</span><span><span class="rv">5</span><span class="rd" style="color:var(--crit)">▼1</span></span></div>
+        <div class="rr">El fallback cross-provider no se dispara con el error que produce un proveedor caído de verdad.</div>
+        <div class="tag">mirada más profunda</div>
+      </div>
+
+      <div class="r off" style="border-left-color:var(--good)">
+        <div class="rt"><span class="rn">Backend y API</span><span><span class="rv">7</span><span class="rd" style="color:var(--muted)">=</span></span></div>
+        <div class="rr">Sin auditar esta ronda.</div><div class="tag">no auditado</div>
+      </div>
+      <div class="r off" style="border-left-color:var(--good)">
+        <div class="rt"><span class="rn">Pruebas</span><span><span class="rv">7</span><span class="rd" style="color:var(--muted)">=</span></span></div>
+        <div class="rr">Sin auditar esta ronda.</div><div class="tag">no auditado</div>
+      </div>
+      <div class="r off" style="border-left-color:var(--good)">
+        <div class="rt"><span class="rn">Cumplimiento fiscal</span><span><span class="rv">7</span><span class="rd" style="color:var(--muted)">=</span></span></div>
+        <div class="rr">Sin auditar esta ronda.</div><div class="tag">no auditado</div>
+      </div>
+      <div class="r off" style="border-left-color:var(--good)">
+        <div class="rt"><span class="rn">Seguridad</span><span><span class="rv">7</span><span class="rd" style="color:var(--muted)">=</span></span></div>
+        <div class="rr">Sin auditar esta ronda.</div><div class="tag">no auditado</div>
+      </div>
+      <div class="r off" style="border-left-color:var(--good)">
+        <div class="rt"><span class="rn">Modelo de datos</span><span><span class="rv">7</span><span class="rd" style="color:var(--muted)">=</span></span></div>
+        <div class="rr">Sin auditar esta ronda.</div><div class="tag">no auditado</div>
+      </div>
+      <div class="r off" style="border-left-color:var(--warn)">
+        <div class="rt"><span class="rn">Rendimiento y costo</span><span><span class="rv">6</span><span class="rd" style="color:var(--muted)">=</span></span></div>
+        <div class="rr">Sin auditar esta ronda.</div><div class="tag">no auditado</div>
+      </div>
+      <div class="r off" style="border-left-color:var(--warn)">
+        <div class="rt"><span class="rn">Operabilidad y DX</span><span><span class="rv">6</span><span class="rd" style="color:var(--muted)">=</span></span></div>
+        <div class="rr">Sin auditar esta ronda.</div><div class="tag">no auditado</div>
+      </div>
+      <div class="r off" style="border-left-color:var(--warn)">
+        <div class="rt"><span class="rn">Cumplimiento legal</span><span><span class="rv">6</span><span class="rd" style="color:var(--muted)">=</span></span></div>
+        <div class="rr">Sin auditar esta ronda.</div><div class="tag">no auditado</div>
+      </div>
+      <div class="r off" style="border-left-color:var(--warn)">
+        <div class="rt"><span class="rn">Frontend</span><span><span class="rv">6</span><span class="rd" style="color:var(--muted)">=</span></span></div>
+        <div class="rr">Sin auditar esta ronda.</div><div class="tag">no auditado</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>La global, ronda a ronda</h2>
+    <div class="hist">
+      <span class="hy" style="bottom:118px">10</span><span class="hy" style="bottom:4px">0</span>
+      <div class="col"><span class="bv">6.4</span><div class="bar" style="height:73px"></div><span class="bl">Boletín<br>(previa)</span></div>
+      <div class="col"><span class="bv">6.2</span><div class="bar" style="height:71px"></div><span class="bl">Aud. 2</span></div>
+      <div class="col"><span class="bv">6.2</span><div class="bar" style="height:71px"></div><span class="bl">Aud. 3</span></div>
+      <div class="col"><span class="bv">5.9</span><div class="bar" style="height:67px;background:var(--crit)"></div><span class="bl">Aud. 4<br>(hoy)</span></div>
+    </div>
+    <p class="note" style="margin:14px 0 0">Cuatro rondas y la nota no ha subido nunca. Es el resultado esperado
+    mientras la verificación siga haciéndose más profunda que el código: cada ronda encuentra lo que la anterior
+    no supo mirar. Una global que subiera aquí sería la señal de alarma.</p>
+  </div>
+
+  <div class="card">
+    <h2>Reincidentes — peor noticia que un hallazgo nuevo</h2>
+    <div class="scroll"><table>
+      <tr><th>Rondas</th><th>Qué</th><th>Dónde</th><th>Estado</th></tr>
+      <tr><td><strong>3ª</strong></td><td>El panel lee Supabase con mapeo a mano fuera de <code>repo.ts</code></td>
+        <td><code>dashboard/page.tsx:24-41</code></td><td class="st" style="color:var(--crit)">pendiente</td></tr>
+      <tr><td><strong>2ª</strong></td><td>El detector de citas era una lista de formas conocidas, no un detector</td>
+        <td><code>fundamento.ts:86-90</code></td><td class="st" style="color:var(--good)">arreglado (parcial)</td></tr>
+      <tr><td><strong>2ª</strong></td><td><code>CITA_DESCONOCIDA</code> deja el sufijo de letra huérfano (<code>"-B"</code>)</td>
+        <td><code>fundamento.ts:185</code></td><td class="st" style="color:var(--serious)">propuesto</td></tr>
+      <tr><td><strong>2ª</strong></td><td>Lógica de negocio del 15% en <code>tools.ts</code> sin ningún test</td>
+        <td><code>tools.ts:79</code></td><td class="st" style="color:var(--serious)">propuesto</td></tr>
+      <tr><td><strong>2ª</strong></td><td><code>resumenLaboral</code> solo llega al PDF, nunca a WhatsApp</td>
+        <td><code>pdf.ts:312</code></td><td class="st" style="color:var(--serious)">propuesto</td></tr>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h2>Críticos y altos</h2>
+    <div class="scroll"><table>
+      <tr><th>Sev</th><th>Hallazgo</th><th>Dónde</th><th>Estado</th></tr>
+      <tr><td class="sev" style="color:var(--crit)">Crítico</td>
+        <td>La guardia <strong>certificaba</strong> una cita de la ley equivocada: con permiso para la LISR, "artículo 27, fracción III del CFF" salía intacto y aprobado</td>
+        <td><code>fundamento.ts:56</code></td><td class="st" style="color:var(--good)">arreglado <code>11c9529</code></td></tr>
+      <tr><td class="sev" style="color:var(--crit)">Crítico</td>
+        <td>Citas sin palabra clave, con sigla invertida o número en palabras no llegaban ni a <code>DESCONOCIDA</code></td>
+        <td><code>fundamento.ts:86-90</code></td><td class="st" style="color:var(--good)">arreglado <code>063d426</code></td></tr>
+      <tr><td class="sev" style="color:var(--crit)">Crítico</td>
+        <td>Ninguna guardia mira las <strong>afirmaciones de estado</strong>: "ya te lo cerré" sin tool call deja la base abierta y al operador esperando un PDF</td>
+        <td><code>guardia.ts:51</code></td><td class="st" style="color:var(--crit)">pendiente — necesita decisión</td></tr>
+      <tr><td class="sev" style="color:var(--serious)">Alto</td>
+        <td>La caché de lectura guardaba los fracasos: un blip de un segundo mataba el turno (regresión de la ronda 3)</td>
+        <td><code>openrouter.ts:515</code></td><td class="st" style="color:var(--good)">arreglado <code>5ca0456</code></td></tr>
+      <tr><td class="sev" style="color:var(--serious)">Alto</td>
+        <td>El fallback cross-provider no se dispara con <code>APIConnectionError</code>: "Connection error." no matchea <code>isTransientError</code></td>
+        <td><code>openrouter.ts</code></td><td class="st" style="color:var(--serious)">propuesto</td></tr>
+      <tr><td class="sev" style="color:var(--serious)">Alto</td>
+        <td><code>generateWithTools</code> nunca mira <code>finish_reason</code>: una respuesta truncada sale como "Listo. 👍" con cero tools</td>
+        <td><code>openrouter.ts</code></td><td class="st" style="color:var(--serious)">propuesto</td></tr>
+      <tr><td class="sev" style="color:var(--serious)">Alto</td>
+        <td>La dedup de mutaciones llavea por <code>JSON.stringify(args)</code> mientras los handlers ignoran <code>args</code></td>
+        <td><code>tool-executor.ts:78</code></td><td class="st" style="color:var(--serious)">propuesto</td></tr>
+      <tr><td class="sev" style="color:var(--serious)">Alto</td>
+        <td><code>pdf.ts</code> reconstruye la clasificación del motor con un criterio menos: la sección que protege al operador desaparece con la config del demo</td>
+        <td><code>pdf.ts:315</code></td><td class="st" style="color:var(--serious)">propuesto</td></tr>
+      <tr><td class="sev" style="color:var(--serious)">Alto</td>
+        <td>El estímulo de diésel no llega ni a WhatsApp ni al detalle del panel; <code>resumen.ts:73</code> es código muerto</td>
+        <td><code>analytics.ts:136</code></td><td class="st" style="color:var(--serious)">propuesto</td></tr>
+      <tr><td class="sev" style="color:var(--serious)">Alto</td>
+        <td>El PDF que se le manda al chofer trae los veredictos EFOS/cancelado que <code>resumenCuadre</code> le oculta a propósito</td>
+        <td><code>processor.ts:630</code></td><td class="st" style="color:var(--serious)">propuesto</td></tr>
+      <tr><td class="sev" style="color:var(--serious)">Alto</td>
+        <td>El XML que el propio mensaje le pide al operador se rechaza tras el cierre (~$1,103 de IVA no acreditable)</td>
+        <td><code>processor.ts:195-199</code></td><td class="st" style="color:var(--serious)">propuesto</td></tr>
+      <tr><td class="sev" style="color:var(--serious)">Alto</td>
+        <td>Se cierra la liquidación, el PDF no se generó, y no hay PDF ni una sola línea de log</td>
+        <td><code>processor.ts:625-636</code></td><td class="st" style="color:var(--serious)">propuesto</td></tr>
+      <tr><td class="sev" style="color:var(--serious)">Alto</td>
+        <td><code>claimMessage</code> fail-closed se apoya en un reintento de Meta que <code>route.ts</code> hace imposible: el "listo" desaparece sin una sola salida</td>
+        <td><code>conv.ts:92-97</code></td><td class="st" style="color:var(--serious)">propuesto</td></tr>
+      <tr><td class="sev" style="color:var(--serious)">Alto</td>
+        <td>El historial de conversación no está ligado al viaje: los turnos del viaje anterior entran al prompt del siguiente</td>
+        <td><code>conv.ts:60-78</code></td><td class="st" style="color:var(--serious)">propuesto</td></tr>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h2>Descartados tras verificar — la prueba de que la verificación ocurrió</h2>
+    <div class="scroll"><table>
+      <tr><th>Lo que se reportó</th><th>Por qué no se sostiene</th></tr>
+      <tr><td>"El descargo legal del Anexo 3 RMF / arts. 89-90 CFF no sale por el canal principal"</td>
+        <td><strong>Falso.</strong> <code>LEYENDA_CORTA</code> sí se renderiza, en las dos pantallas del panel
+        (<code>dashboard/page.tsx:197</code> y <code>dashboard/[id]/page.tsx:113</code>), que es el canal del
+        contralor —a quien va dirigido—. El WhatsApp va al operador y <code>resumen.ts:76-80</code> explica por
+        escrito por qué a él no se le manda. Sobrevive degradado a <strong>bajo</strong>: la rama
+        <code>'contralor'</code> de <code>resumen.ts:81</code> no tiene llamador de producción, así que cinco
+        asserts validan una forma de llamada que el producto nunca produce.</td></tr>
+      <tr><td>"Una <code>tool_call</code> malformada podría engañar a <code>guardiaCifras</code> para narrar cifras inventadas"</td>
+        <td>Cerrado por diseño: <code>openrouter.ts:500-505</code> registra <code>error:'args_parse'</code> sin
+        ejecutar, y <code>guardia.ts:37-38</code> exige <code>!t.error</code>. El propio auditor lo descartó tras
+        intentarlo.</td></tr>
+      <tr><td>"<code>catalogoCuentas</code> no lo lee nadie, ni siquiera un test"</td>
+        <td>Impreciso: hay cuatro referencias en <code>config_merge.test.ts</code>. El fondo se sostiene
+        (cero consumidores de producción, <code>export.ts:42-51</code> sin columna de cuenta), así que queda
+        como <strong>bajo</strong> con la corrección anotada.</td></tr>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h2>Lo que esta ronda NO miró</h2>
+    <p class="note">Nueve rubros conservan su nota sin haber sido auditados: backend, pruebas, fiscal, seguridad,
+    modelo de datos, rendimiento, operabilidad, legal y frontend. Sus notas son de la ronda 3 y <strong>califican
+    código anterior a los arreglos de esa misma ronda</strong>. Además, ningún auditor pudo tocar Postgres ni
+    OpenRouter: la concurrencia real (<code>try_lock_viaje</code>, <code>guardar_liquidacion_tx</code>) y el ciclo
+    de tool-calling contra un modelo vivo quedan sin verificar en este entorno.</p>
+  </div>
+</div>
