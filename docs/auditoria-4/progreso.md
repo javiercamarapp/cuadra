@@ -100,3 +100,15 @@ Abrí cada hallazgo contra el código antes de anotarlo. Tres sobreviven, uno se
   (`toLiquidacionRows`) no tiene columna de cuenta contable — verificado leyendo las
   ocho columnas que sí emite.
 
+| 12 | Vuelve **agéntico**: 3/10 (antes 4). 3 críticos, 5 altos, 2 medios | verificado con `npx tsx` sobre el módulo real | — |
+| 13 | Vuelve **tool calling**: 5/10 (antes 6). 4 altos, 3 medios, 2 bajos | mirada más profunda | — |
+| 14 | Verificados los 3 críticos ejecutando `guardiaFundamento` real | los 3 CONFIRMADOS | — |
+| 15 | **Vuelta 1/3** — prueba que reproduce el crítico 2 (instrumento equivocado) | 6 fallan, 2 de regresión pasan | — |
+| 16 | Arreglo `patronesDe`: `FIN_DE_NUMERO` + veto de ley ajena | 26/26 · suite 509 · tsc 0 · lint 0 | `11c9529` |
+| 17 | **Vuelta 2/3** — prueba que reproduce el crítico 1 (reincidente) | 4 fallan, 2 de falsos positivos pasan | — |
+| 18 | Arreglo `FORMA_DE_CITA` ensanchado (3 de las 4 formas) | 32/32 · suite 515 · tsc 0 · lint 0 | `063d426` |
+| 19 | **Vuelta 3/3** — prueba que reproduce la regresión de caché | 1 ejecución en vez de 2 | — |
+| 20 | Arreglo `crossRound.set` solo con `exec.success` | 2/2 · suite 517 · tsc 0 · lint 0 | `5ca0456` |
+| 21 | Tope de 3 vueltas alcanzado. Crítico 3 queda PENDIENTE con razón | necesita decisión de producto | — |
+| 22 | `tablero.html` + captura headless, y **mirado**: 12 rubros, 71/12 = 5.9 | coincide con la síntesis | — |
+| 23 | `00-SINTESIS.md` y `RESULTADO.md` escritos | — | — |
