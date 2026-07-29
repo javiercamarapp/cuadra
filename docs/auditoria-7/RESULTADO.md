@@ -44,4 +44,4 @@ la nube.
 Tablero renderizado y mirado: tablero.png (12 rubros, notas cuadran con la
 síntesis, 66/12 = 5.5, 11 hallazgos críticos+altos en la tabla).
 
-PR: https://github.com/javiercamarapp/cuadra/pull/4
+PR: https://github.com/javiercamarapp/cuadra/pull/5
