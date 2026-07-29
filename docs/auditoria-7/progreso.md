@@ -47,3 +47,21 @@ rondas.
 | CRÍT-3 · la prueba corre una COPIA de la función, no la de producción | **CONFIRMADO** | `derivoLaConfig` (`analytics.ts:385`) no se exporta y `git grep` confirma que la prueba no la importa: `analytics_deriva.test.ts:61-66` la reimplementa. La copia además **no es fiel** — le falta el `if (!Array.isArray(persistidas)) return false` de `analytics.ts:386`. El arreglo del CRÍTICO de frontend de la ronda 6 quedó sin anclar |
 
 
+
+## Cierre
+
+| # | Acción | Resultado |
+|---|---|---|
+| 13 | Arreglo **AG-1** (`guardia.ts`): `cerro` separado de `cuadro` | prueba roja antes / verde después · `2c73e8e` |
+| 14 | Arreglo **PR-3** (`analytics_deriva.test.ts`): importa la función real | con mutante: 7 passed → 2 failed · `3fb1e81` |
+| 15 | Arreglo **PR-2** (`repo_escritura.test.ts`): los 12 parámetros | con mutante: 10 passed → 1 failed · `40b886c` |
+| 16 | **Tope de 3 vueltas alcanzado.** Se deja de arreglar | 3 críticos pendientes + 5 altos propuestos |
+| 17 | Auditor de **arquitectura** (relanzado) entrega | 0 críticos · 0 altos · 3 medios · 2 bajos. Nota 5/10 |
+| 18 | Verificación de arquitectura: `CONCEPTO_LABEL` borrado + prueba que lo prohíbe | **CONFIRMADO** → se acepta el 5 |
+| 19 | Métrica reproducida por el orquestador | 55 total · **38 fuera de `repo.ts`** · 17 dentro. Las rondas 4–6 citaban el total mal etiquetado |
+| 20 | `tablero.html` + `tablero.png` renderizado y **mirado** | 12 rubros, 66/12 = 5.5, 11 hallazgos crít+altos. Cuadra con la síntesis |
+| 21 | Compuerta final | `npm test` 1119 (1 saltada, 112 archivos) exit 0 · `tsc` exit 0 · `eslint` exit 0 |
+
+**INFRA de la corrida:** el primer auditor de arquitectura murió sin entregar
+(transcripción detenida 11:10, archivo nunca escrito); relanzado, entregó 11:46.
+El clon venía sin `node_modules`. Ninguna de las dos es un hallazgo de rubro.
