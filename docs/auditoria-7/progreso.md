@@ -31,3 +31,19 @@ para medir mutantes, y leer el árbol durante esa ventana daría una lectura fal
 | ALTO-1 · `ctxCerro` sin actualizar en recuperación de cierre parcial | **CONFIRMADO** (ver abajo) | |
 | ALTO-3 · `+1` de la barrera sin proteger, `-1` incondicional | **CONFIRMADO** | `processor.ts:314` descarta el valor de `intakeDelta(viajeId, 1)`; `:461` decrementa en un `finally` "pase lo que pase" |
 
+## Verificación adversarial — pruebas
+
+El auditor midió **34 mutaciones** sobre copia fuera del árbol y lo devolvió
+limpio (verificado: `git status --short` sin nada en `src/`). Números que trae:
+**4 de 18 sobrevivientes** en las pruebas de la ronda 6 (19% descontando dos
+equivalentes) contra el 83% de la ronda 6 — el arnés nuevo sí funciona — pero
+**6 de 6 sobreviven** en la ESCRITURA de la liquidación, nunca medida en seis
+rondas.
+
+| Hallazgo | Veredicto | Evidencia con la que lo confirmé |
+|---|---|---|
+| CRÍT-1 · el mock ignora `.limit()`, el arreglo del multi-tenant se puede revertir en verde | **CONFIRMADO** | `conv_directo.test.ts:32` mete `limit` en la lista de métodos que devuelven el mismo enlace, y `:34` delega en el fixture `limit()` sin mirar el argumento. Cambiar `conv.ts:73` de `.limit(2)` a `.limit(1)` —que es exactamente el bug de "devuelve una fila arbitraria y decide el tenant con ella"— es invisible para la prueba |
+| CRÍT-2 · la escritura de la liquidación verifica 8 de 12 parámetros | **CONFIRMADO** | `repo.ts:397-410` manda 12 parámetros; `repo_escritura.test.ts:106-110` usa `toMatchObject` con 8. Quedan sin mirar `p_diferencias`, `p_ieps`, `p_litros_diesel` y `p_pdf_url` — el IEPS y los litros de diésel son justo las cifras fiscales que el producto vende |
+| CRÍT-3 · la prueba corre una COPIA de la función, no la de producción | **CONFIRMADO** | `derivoLaConfig` (`analytics.ts:385`) no se exporta y `git grep` confirma que la prueba no la importa: `analytics_deriva.test.ts:61-66` la reimplementa. La copia además **no es fiel** — le falta el `if (!Array.isArray(persistidas)) return false` de `analytics.ts:386`. El arreglo del CRÍTICO de frontend de la ronda 6 quedó sin anclar |
+
+
