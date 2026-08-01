@@ -99,21 +99,21 @@
     <span class="chip"><span class="dot" style="background:var(--good)"></span><b>tsc --noEmit</b> exit 0</span>
     <span class="chip"><span class="dot" style="background:var(--good)"></span><b>eslint</b> exit 0</span>
     <span class="chip"><span class="dot" style="background:var(--muted)"></span><b>build</b> <span class="na">no se corre en la nube</span></span>
-    <span class="chip"><span class="dot" style="background:var(--warn)"></span><b>pruebas.md</b> <span class="na">auditor caído — INFRA</span></span>
+    <span class="chip"><span class="dot" style="background:var(--good)"></span><b>12 de 12 rubros</b> entregados</span>
   </div>
 
   <div class="top">
     <div class="hero">
       <div class="lbl">Nota global</div>
-      <div class="num tabular">5.6</div>
-      <div class="delta" style="color:var(--up)">▲ 0.1 &nbsp;<span style="color:var(--muted);font-weight:400">desde 5.5</span></div>
-      <div class="note">Once rubros auditados. Cuatro suben, cinco bajan: la décima de mejora esconde el mayor reacomodo de la serie.</div>
+      <div class="num tabular">5.7</div>
+      <div class="delta" style="color:var(--up)">▲ 0.2 &nbsp;<span style="color:var(--muted);font-weight:400">desde 5.5</span></div>
+      <div class="note">Los doce entregaron. Cinco suben, cinco bajan: las dos décimas esconden el mayor reacomodo de la serie.</div>
     </div>
 
     <div class="serie">
       <div class="lbl" style="font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Serie histórica de la global</div>
       <!-- Línea de 2 px, marcadores de 9 px, ejes recesivos. Un solo dato: sin leyenda. -->
-      <svg viewBox="0 0 560 150" role="img" aria-label="Nota global por ronda: 6.2, 6.2, 5.9, 5.2, 5.3, 5.5, 5.6">
+      <svg viewBox="0 0 560 150" role="img" aria-label="Nota global por ronda: 6.2, 6.2, 5.9, 5.2, 5.3, 5.5, 5.7">
         <g stroke="var(--grid)" stroke-width="1">
           <line x1="34" y1="16" x2="548" y2="16"/><line x1="34" y1="56" x2="548" y2="56"/>
           <line x1="34" y1="96" x2="548" y2="96"/><line x1="34" y1="116" x2="548" y2="116"/>
@@ -123,16 +123,16 @@
         </g>
         <!-- y = 96 - (nota-5)*40 -->
         <polyline fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
-                  points="60,48 141,48 222,60 303,88 384,84 465,76 546,72"/>
+                  points="60,48 141,48 222,60 303,88 384,84 465,76 546,68"/>
         <g fill="var(--ink)">
           <circle cx="60" cy="48" r="4.5"/><circle cx="141" cy="48" r="4.5"/><circle cx="222" cy="60" r="4.5"/>
           <circle cx="303" cy="88" r="4.5"/><circle cx="384" cy="84" r="4.5"/><circle cx="465" cy="76" r="4.5"/>
         </g>
-        <circle cx="546" cy="72" r="6" fill="var(--ink)" stroke="var(--panel)" stroke-width="2"/>
+        <circle cx="546" cy="68" r="6" fill="var(--ink)" stroke="var(--panel)" stroke-width="2"/>
         <g fill="var(--ink-2)" font-size="11" font-weight="600" font-family="inherit" text-anchor="middle">
           <text x="60" y="38">6.2</text><text x="141" y="38">6.2</text><text x="222" y="50">5.9</text>
           <text x="303" y="102">5.2</text><text x="384" y="98">5.3</text><text x="465" y="66">5.5</text>
-          <text x="546" y="60">5.6</text>
+          <text x="546" y="56">5.7</text>
         </g>
         <g fill="var(--muted)" font-size="10.5" font-family="inherit" text-anchor="middle">
           <text x="60" y="138">Aud 2</text><text x="141" y="138">3</text><text x="222" y="138">4</text>
@@ -210,10 +210,10 @@
     </div>
 
     <div class="card" style="border-left-color:var(--warn)">
-      <div class="hd"><span class="name">Pruebas</span><span class="grade tabular">5</span></div>
-      <div class="meta"><span class="arrow" style="color:var(--muted)">＝</span><span>desde 5 · sin auditar</span></div>
-      <div class="risk">Su auditor dejó de escribir a las 11:25:53 y nunca entregó el archivo, mientras los otros once cerraron.</div>
-      <div class="no-aud">INFRA — no es un rubro limpio. La nota no se mueve.</div>
+      <div class="hd"><span class="name">Pruebas</span><span class="grade tabular">6</span></div>
+      <div class="meta"><span class="arrow" style="color:var(--up)">▲ 1</span><span>desde 5 · se atacó y subió</span></div>
+      <div class="risk">Mutantes que sobreviven: <b>8 de 36 = 22%</b> (serie 57→83→19→22), con el doble de denominador. La escritura del dinero pasó de 6/6 a <b>0/4</b>. Quedan arreglos anclados por <code>grep</code> sobre el fuente, no por ejecución.</div>
+      <div class="sev"><span class="pill c">3 críticos</span><span class="pill a">3 altos</span></div>
     </div>
 
     <div class="card" style="border-left-color:var(--crit)">

@@ -3,11 +3,12 @@
 **Fecha:** 1-ago-2026. **Anterior:** `docs/auditoria-7/00-SINTESIS.md` (5.5).
 **Sha base:** `abdc98d` → `337e1a8`. **Modo:** desatendido, en la nube.
 Árbol limpio al arrancar → autofix habilitado. **Rama:** `claude/auditoria-8`.
-**Tipo:** **RONDA COMPLETA**, doce auditores, contexto fresco.
+**Tipo:** **RONDA COMPLETA**, doce auditores, contexto fresco, **los doce
+entregaron**.
 
 ---
 
-## Nota global: 5.6 (antes 5.5, ▲0.1)
+## Nota global: 5.7 (antes 5.5, ▲0.2)
 
 | Rubro | Aud. 7 | Aud. 8 | | Razón |
 |---|:--:|:--:|---|---|
@@ -17,15 +18,15 @@
 | **Frontend** | 4 | **6** | ▲2 | se atacó y subió |
 | **Cumplimiento legal** | 4 | **6** | ▲2 | se atacó y subió |
 | Modelo de datos | 7 | **6** | ▼1 | deuda que cobró factura |
+| **Pruebas** | 5 | **6** | ▲1 | se atacó y subió |
 | **Sistema agéntico** | 3 | **5** | ▲2 | se atacó y subió |
 | Arquitectura | 5 | 5 | = | dos fuerzas que se cancelan |
 | Cumplimiento fiscal | 5 | 5 | = | dos fuerzas que se cancelan |
-| Pruebas | 5 | 5 | = | **no auditado — el auditor no entregó (INFRA)** |
 | **Backend y API** | 6 | **4** | ▼2 | mirada más profunda |
 | **Rendimiento y costo** | 7 | **4** | ▼3 | mirada más profunda |
 
-**67/12 = 5.6.** Cuatro rubros suben, cinco bajan, tres se quedan. La décima de
-mejora esconde **el mayor reacomodo de toda la serie**: nueve de doce notas se
+**68/12 = 5.7.** Cinco rubros suben, cinco bajan, dos se quedan. Las dos décimas
+de mejora esconden **el mayor reacomodo de toda la serie**: diez de doce notas se
 movieron, contra dos en la ronda 7.
 
 Y el sentido de la décima importa menos que su composición. Las tres subidas
@@ -87,6 +88,14 @@ de revocación existe en el texto y no existe en el sistema**.
 **Frontend ▲2.** `formato.ts` sí es el único origen del formato de cifras, y el
 panel lo consume en las cuatro superficies que imprimen dinero. El auditor lo
 verificó contando, no leyendo.
+
+**Pruebas ▲1, y trae el número que la ronda 7 pidió.** Mutantes que sobreviven:
+**8 de 36 = 22%**, con el denominador el doble de grande que la ronda anterior y
+sin descontar equivalentes. La serie va **57% (r5) → 83% (r6) → 19% (r7) → 22%
+(r8)**. Y la respuesta a la peor pregunta de la ronda 7 —*¿está probada la
+escritura del dinero?*— pasó de **6/6 sobrevivientes a 0/4**. PR-1 quedó cerrado,
+verificado con el mutante real: `conv.ts:73` `.limit(2)→.limit(1)` da
+`1 failed | 1261 passed`, donde antes daba 1262 en verde.
 
 **Agéntico ▲2, de la nota más baja del repo.** AG-3 quedó cerrado y verificado
 ejecutando `guardiaCifras` con el snapshot real: el texto y el PDF ya salen de
@@ -187,12 +196,15 @@ delta —frontend sube 2 y sigue ámbar en 6; seguridad baja 1 y sigue verde en 
 
 - **El clon vino sin `node_modules`** (`vitest: not found` en el primer intento).
   Se corrió `npm ci` antes de tomar la línea base. Segunda ronda seguida.
-- **`pruebas.md` no se entregó.** Su auditor **seguía vivo y escribiendo** al
-  cerrar esta ronda —transcripción creciendo, última línea a las 11:38:40— pero
-  llevaba veinte minutos más que los otros once sin producir el archivo. Es el
-  auditor que corre suites enteras para medir mutantes, así que la lentitud es
-  esperable; el que no entregara dentro de la ronda, no. **`INFRA`, no un rubro
-  limpio: la nota de pruebas NO se mueve y se marca sin auditar.**
+- **`pruebas.md` tardó 35 minutos y entregó — y yo lo di por muerto antes de
+  tiempo.** Cerré la síntesis, el `RESULTADO.md` y el PR marcándolo `INFRA` y
+  como rubro sin auditar. **Era falso: el auditor estaba lento, no caído**, y
+  entregó a las 11:43 con tres críticos. Todo se corrigió y la nota global pasó
+  de 5.6 a 5.7. La lección va escrita aquí porque es exactamente el error que
+  `desatendido.md` advierte al revés —confundir *la tarea falló* con *la infra
+  falló*— cometido en la dirección contraria: **declarar INFRA lo que solo era
+  lento**. El auditor de mutantes corre suites enteras; su presupuesto de tiempo
+  no es el de los otros once y la ronda 9 debe esperarlo por defecto.
 - `git status --short` tras la ronda: limpio de código de producción. El auditor
   de pruebas muta archivos a propósito y no dejó ninguno atrás.
 - `gh` **no existe en este entorno**; el listado de PR se hizo con el MCP de
@@ -206,11 +218,15 @@ delta —frontend sube 2 y sigue ámbar en 6; seguridad baja 1 y sigue verde en 
    reportes se escribieron **antes** de que ARQ-1, BE-1 y AG-1 aterrizaran. Las
    notas de arquitectura, backend y agéntico califican un árbol que ya no
    existe. Es una propiedad conocida del proceso y la rotación la corrige.
-2. **Pruebas es el rubro obligado**, y no por rotación: es el único de los doce
-   sin auditar en dos rondas consecutivas de las tres últimas. La pregunta que
-   dejó pendiente la ronda 7 sigue sin respuesta: *de las pruebas escritas por
-   la ronda 8, ¿cuántas sobreviven a romper la función que dicen cubrir?* La
-   serie va 57% → 83% → 19%.
+2. **Los tres críticos de pruebas son la lista, y los tres dicen lo mismo**: hay
+   arreglos de dinero anclados por un `grep` sobre el fuente en vez de por una
+   ejecución. El detector de vouchers —el que quitó $1,600 de comprobado
+   fantasma— se prueba leyendo `ocr.ts` con `readFileSync` y `toContain`
+   (`voucher.test.ts:78,91,112`, verificado); la mitad productora de AG-3 no
+   tiene prueba, así que la tool puede dejar de mandar el snapshot y la guardia
+   vuelve a recalcular en verde; y la prueba de AG-2 reimplementa dentro del
+   archivo de prueba lo que devuelve `consultar_politica`. Es el mismo modo de
+   falla que la ronda 7 encontró con `analytics_deriva`, en tres sitios nuevos.
 3. **BE-2 y REND-1 son los dos que más caro salen**, y los dos piden una
    decisión de diseño antes que un parche. BE-2 necesita saber qué rango de
    fechas ata un CFDI a un viaje; REND-1 necesita que alguien decida qué se
