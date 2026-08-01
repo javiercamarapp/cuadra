@@ -1,0 +1,198 @@
+<title>Likida · Auditoría 8</title>
+<style>
+  :root {
+    --bg: #fbfaf9; --card: #ffffff; --ink: #1c1a17; --ink2: #55504a; --ink3: #8a837a;
+    --linea: #e6e2dc; --rejilla: #efece8;
+    --sube: #2f6f4e; --baja: #a13d2d; --igual: #8a837a;
+    --sev-crit: #a13d2d; --sev-alto: #b8763a; --sev-medio: #7a6a4f; --sev-bajo: #8a837a;
+    --acento: #2f5d7c; --apagado: #cfc9c1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16151a; --card: #1e1d23; --ink: #f0eee9; --ink2: #b8b2a8; --ink3: #857f75;
+      --linea: #302e36; --rejilla: #272630;
+      --sube: #6fbf90; --baja: #e2836e; --igual: #857f75;
+      --sev-crit: #e2836e; --sev-alto: #e0a765; --sev-medio: #c4b28a; --sev-bajo: #857f75;
+      --acento: #7fb4d8; --apagado: #494650;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16151a; --card: #1e1d23; --ink: #f0eee9; --ink2: #b8b2a8; --ink3: #857f75;
+    --linea: #302e36; --rejilla: #272630;
+    --sube: #6fbf90; --baja: #e2836e; --igual: #857f75;
+    --sev-crit: #e2836e; --sev-alto: #e0a765; --sev-medio: #c4b28a; --sev-bajo: #857f75;
+    --acento: #7fb4d8; --apagado: #494650;
+  }
+  :root[data-theme="light"] {
+    --bg: #fbfaf9; --card: #ffffff; --ink: #1c1a17; --ink2: #55504a; --ink3: #8a837a;
+    --linea: #e6e2dc; --rejilla: #efece8;
+    --sube: #2f6f4e; --baja: #a13d2d; --igual: #8a837a;
+    --sev-crit: #a13d2d; --sev-alto: #b8763a; --sev-medio: #7a6a4f; --sev-bajo: #8a837a;
+    --acento: #2f5d7c; --apagado: #cfc9c1;
+  }
+  body { background: var(--bg); color: var(--ink); margin: 0; font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  .hoja { max-width: 1080px; margin: 0 auto; padding: 40px 24px 72px; }
+  h1 { font-size: 26px; font-weight: 620; letter-spacing: -0.015em; margin: 0 0 4px; }
+  .sub { color: var(--ink3); font-size: 13.5px; margin: 0 0 34px; }
+  h2 { font-size: 12px; font-weight: 640; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink3); margin: 44px 0 14px; }
+  .tarjeta { background: var(--card); border: 1px solid var(--linea); border-radius: 12px; padding: 22px 24px; }
+  .cabecera { display: flex; flex-wrap: wrap; gap: 30px; align-items: flex-start; }
+  .heroe { flex: 0 0 auto; }
+  .heroe .n { font-size: 62px; font-weight: 300; letter-spacing: -0.03em; line-height: 1; }
+  .heroe .pie { color: var(--ink3); font-size: 13px; margin-top: 6px; }
+  .heroe .delta { font-size: 15px; font-weight: 600; color: var(--sube); }
+  .lectura { flex: 1 1 340px; color: var(--ink2); font-size: 14.5px; }
+  .lectura strong { color: var(--ink); font-weight: 600; }
+  .serie { margin-top: 8px; }
+  figure { margin: 0; }
+  figcaption { color: var(--ink3); font-size: 12.5px; margin-top: 10px; }
+  .rubros { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 10px; }
+  .rubro { background: var(--card); border: 1px solid var(--linea); border-radius: 10px; padding: 13px 15px; display: flex; flex-direction: column; gap: 7px; }
+  .rubro .fila1 { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .rubro .nom { font-size: 13.5px; font-weight: 560; }
+  .rubro .par { display: flex; align-items: baseline; gap: 6px; }
+  .rubro .ant { color: var(--ink3); font-size: 12.5px; }
+  .rubro .act { font-size: 21px; font-weight: 500; letter-spacing: -0.02em; }
+  .flecha { font-size: 12px; font-weight: 700; }
+  .sube { color: var(--sube); } .baja { color: var(--baja); } .igual { color: var(--igual); }
+  .barra { height: 5px; border-radius: 3px; background: var(--rejilla); overflow: hidden; }
+  .barra > i { display: block; height: 100%; border-radius: 3px; background: var(--acento); }
+  .porque { color: var(--ink3); font-size: 11.5px; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 620px; }
+  th { text-align: left; font-weight: 600; color: var(--ink3); font-size: 11.5px; letter-spacing: 0.055em; text-transform: uppercase; padding: 0 12px 9px 0; border-bottom: 1px solid var(--linea); }
+  td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--rejilla); vertical-align: top; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  code { font: 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--rejilla); padding: 1.5px 5px; border-radius: 4px; }
+  .sha { color: var(--ink3); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .etq { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
+  .crit { color: var(--sev-crit); border: 1px solid var(--sev-crit); }
+  .alto { color: var(--sev-alto); border: 1px solid var(--sev-alto); }
+  .ok { color: var(--sube); font-weight: 600; }
+  .pend { color: var(--sev-alto); font-weight: 600; }
+  .nota { border-left: 2px solid var(--acento); padding: 2px 0 2px 15px; margin: 16px 0; color: var(--ink2); font-size: 14px; }
+  .nota strong { color: var(--ink); }
+  .pie-doc { color: var(--ink3); font-size: 12.5px; margin-top: 44px; border-top: 1px solid var(--linea); padding-top: 16px; }
+  .compuerta { display: flex; flex-wrap: wrap; gap: 22px; }
+  .compuerta div { font-size: 13.5px; }
+  .compuerta .k { color: var(--ink3); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.055em; display: block; margin-bottom: 3px; }
+</style>
+
+<div class="hoja">
+
+  <h1>Auditoría 8 · Likida</h1>
+  <p class="sub">1 de agosto de 2026 · <strong>ronda completa</strong>, doce rubros · base <span class="sha">abdc98d</span> → <span class="sha">ac752de</span> (41 commits) · local, con el operador presente</p>
+
+  <div class="tarjeta cabecera">
+    <div class="heroe">
+      <div class="n">6.5</div>
+      <div class="pie">nota global · <span class="delta">▲ 1.0</span> vs 5.5</div>
+    </div>
+    <div class="lectura">
+      <strong>Nueve de doce rubros subieron.</strong> Los doce auditores encontraron
+      seis críticos nuevos — tres en fiscal, uno cada uno en frontend, agéntico y
+      pruebas — y <strong>cinco se arreglaron el mismo día</strong>, con prueba roja
+      antes/verde después y commit atómico citando el hallazgo. El sexto (CFDI sin RFC
+      receptor) se revirtió a propósito: el arreglo correcto rompía 25 pruebas en 4
+      archivos porque casi todos los fixtures fiscales asumen "hay CFDI ⇒ receptor
+      verificado", y ese blast radius no se resuelve a las carreras. Queda diseñado y
+      documentado para la ronda 9.
+    </div>
+  </div>
+
+  <h2>Serie histórica · nota global</h2>
+  <div class="tarjeta serie">
+    <figure>
+      <div class="scroll">
+        <svg viewBox="0 0 900 200" width="100%" height="200" role="img" aria-label="Nota global por ronda: 6.2, 6.2, 5.9, 5.2, 5.3, 5.5, 6.3">
+          <g stroke="var(--rejilla)" stroke-width="1">
+            <line x1="60" y1="20"  x2="850" y2="20"/>
+            <line x1="60" y1="62"  x2="850" y2="62"/>
+            <line x1="60" y1="104" x2="850" y2="104"/>
+            <line x1="60" y1="146" x2="850" y2="146"/>
+          </g>
+          <g fill="var(--ink3)" font-size="11" font-family="ui-sans-serif, system-ui">
+            <text x="46" y="24"  text-anchor="end">7.0</text>
+            <text x="46" y="66"  text-anchor="end">6.0</text>
+            <text x="46" y="108" text-anchor="end">5.0</text>
+            <text x="46" y="150" text-anchor="end">4.0</text>
+          </g>
+          <polyline fill="none" stroke="var(--acento)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+            points="90,53.6 212,53.6 334,66.2 456,95.6 578,91.4 690,83 802,41"/>
+          <g fill="var(--acento)">
+            <circle cx="90"  cy="53.6" r="4.5" stroke="var(--card)" stroke-width="2"/>
+            <circle cx="212" cy="53.6" r="4.5" stroke="var(--card)" stroke-width="2"/>
+            <circle cx="334" cy="66.2" r="4.5" stroke="var(--card)" stroke-width="2"/>
+            <circle cx="456" cy="95.6" r="4.5" stroke="var(--card)" stroke-width="2"/>
+            <circle cx="578" cy="91.4" r="4.5" stroke="var(--card)" stroke-width="2"/>
+            <circle cx="690" cy="83"   r="4.5" stroke="var(--card)" stroke-width="2"/>
+            <circle cx="802" cy="41"   r="5.5" stroke="var(--card)" stroke-width="2"/>
+          </g>
+          <g fill="var(--ink)" font-size="12.5" font-weight="600" font-family="ui-sans-serif, system-ui" text-anchor="middle">
+            <text x="90"  y="42">6.2</text>
+            <text x="212" y="42">6.2</text>
+            <text x="334" y="55">5.9</text>
+            <text x="456" y="84">5.2</text>
+            <text x="578" y="80">5.3</text>
+            <text x="690" y="72">5.5</text>
+            <text x="802" y="30">6.5</text>
+          </g>
+          <g fill="var(--ink3)" font-size="11.5" font-family="ui-sans-serif, system-ui" text-anchor="middle">
+            <text x="90"  y="178">Aud. 2</text>
+            <text x="212" y="178">Aud. 3</text>
+            <text x="334" y="178">Aud. 4</text>
+            <text x="456" y="178">Aud. 5</text>
+            <text x="578" y="178">Aud. 6</text>
+            <text x="690" y="178">Aud. 7</text>
+            <text x="802" y="178">Aud. 8</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Siete rondas. La 8 es la primera "completa" desde la 6: doce auditores, contexto fresco, HEAD lejos del ancla.</figcaption>
+    </figure>
+  </div>
+
+  <h2>Los doce rubros — nota final, después de los arreglos</h2>
+  <div class="rubros">
+    <div class="rubro"><div class="fila1"><span class="nom">Pruebas</span><span class="par"><span class="ant">5</span><span class="flecha sube">▲</span><span class="act">8</span></span></div><div class="barra"><i style="width:80%"></i></div><div class="porque">se atacó y subió · crítico cerrado con arnés real, mutante por mutante</div></div>
+    <div class="rubro"><div class="fila1"><span class="nom">Modelo de datos</span><span class="par"><span class="ant">7</span><span class="flecha sube">▲</span><span class="act">8</span></span></div><div class="barra"><i style="width:80%"></i></div><div class="porque">se atacó y subió · 1 alto nuevo (trigger 0036 no cubre UPDATE)</div></div>
+    <div class="rubro"><div class="fila1"><span class="nom">Seguridad</span><span class="par"><span class="ant">8</span><span class="flecha igual">=</span><span class="act">8</span></span></div><div class="barra"><i style="width:80%"></i></div><div class="porque">sin críticos · 5 hallazgos bajos nuevos</div></div>
+    <div class="rubro"><div class="fila1"><span class="nom">Tool calling</span><span class="par"><span class="ant">8</span><span class="flecha igual">=</span><span class="act">8</span></span></div><div class="barra"><i style="width:80%"></i></div><div class="porque">no se atacó nada del rubro; sin críticos</div></div>
+    <div class="rubro"><div class="fila1"><span class="nom">Backend y API</span><span class="par"><span class="ant">6</span><span class="flecha sube">▲</span><span class="act">7</span></span></div><div class="barra"><i style="width:70%"></i></div><div class="porque">se atacó y subió, con freno · sin críticos</div></div>
+    <div class="rubro"><div class="fila1"><span class="nom">Legal</span><span class="par"><span class="ant">4</span><span class="flecha sube">▲</span><span class="act">6</span></span></div><div class="barra"><i style="width:60%"></i></div><div class="porque">se atacó y subió · el crítico NXDOMAIN cerró de verdad</div></div>
+    <div class="rubro"><div class="fila1"><span class="nom">Arquitectura</span><span class="par"><span class="ant">5</span><span class="flecha sube">▲</span><span class="act">6</span></span></div><div class="barra"><i style="width:60%"></i></div><div class="porque">se atacó y subió · sin críticos, pero round2() nuevo con bug de redondeo en 4 sitios</div></div>
+    <div class="rubro"><div class="fila1"><span class="nom">Operabilidad y DX</span><span class="par"><span class="ant">4</span><span class="flecha sube">▲</span><span class="act">6</span></span></div><div class="barra"><i style="width:60%"></i></div><div class="porque">se atacó y subió · los 2 críticos viejos (getConfig, flush Sentry) cerraron de verdad</div></div>
+    <div class="rubro"><div class="fila1"><span class="nom">Frontend</span><span class="par"><span class="ant">4</span><span class="flecha sube">▲</span><span class="act">6</span></span></div><div class="barra"><i style="width:60%"></i></div><div class="porque">se atacó y subió · crítico cerrado (derivoLaConfig ya mira el esperado)</div></div>
+    <div class="rubro"><div class="fila1"><span class="nom">Rendimiento y costo</span><span class="par"><span class="ant">7</span><span class="flecha baja">▼</span><span class="act">6</span></span></div><div class="barra"><i style="width:60%"></i></div><div class="porque">mirada más profunda · reincidentes de 2+ rondas empeoraron medible, nadie los tocó</div></div>
+    <div class="rubro"><div class="fila1"><span class="nom">Sistema agéntico</span><span class="par"><span class="ant">3</span><span class="flecha sube">▲</span><span class="act">5</span></span></div><div class="barra"><i style="width:50%"></i></div><div class="porque">se atacó y subió · crítico cerrado (cláusula, no frase); 3 altos siguen abiertos</div></div>
+    <div class="rubro"><div class="fila1"><span class="nom">Cumplimiento fiscal</span><span class="par"><span class="ant">5</span><span class="flecha baja">▼</span><span class="act">4</span></span></div><div class="barra"><i style="width:40%"></i></div><div class="porque">mirada más profunda · 2 de 3 críticos cerrados, 1 pendiente (blast radius, ver síntesis)</div></div>
+  </div>
+
+  <h2>Compuerta sobre el árbol final</h2>
+  <div class="tarjeta compuerta">
+    <div><span class="k">npm test</span><span class="ok">1317 pasan</span> · 1 saltada · 139 archivos</div>
+    <div><span class="k">tsc --noEmit</span><span class="ok">exit 0</span></div>
+    <div><span class="k">eslint</span><span class="ok">exit 0</span></div>
+    <div><span class="k">npm run build</span><span class="sha">no se corre localmente sin credenciales de deploy</span></div>
+    <div><span class="k">línea base ronda 7</span>1119 pruebas → <strong>+198</strong></div>
+  </div>
+
+  <h2>Los seis críticos de la ronda, verificados uno por uno por el orquestador</h2>
+  <p class="sub" style="margin:-6px 0 14px">Ninguno resultó falso. Cinco se arreglaron el mismo día, con prueba roja antes / verde después.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Sev.</th><th>Hallazgo</th><th>Dónde</th><th>Estado</th></tr></thead>
+      <tbody>
+        <tr><td><span class="etq crit">crítico</span></td><td><strong>Agéntico</strong> · el portón de cifras se apagaba con una palabra del propio dominio</td><td><code>cifras.ts:36-64</code></td><td><span class="ok">ARREGLADO</span><br><span class="sha">ebf2220</span></td></tr>
+        <tr><td><span class="etq crit">crítico</span></td><td><strong>Frontend</strong> · el portón de <code>reconstruir()</code> no veía el tope de viáticos</td><td><code>analytics.ts:385-394</code></td><td><span class="ok">ARREGLADO</span><br><span class="sha">40714ba</span></td></tr>
+        <tr><td><span class="etq crit">crítico</span></td><td><strong>Pruebas</strong> · cinco supervivientes de la ronda 6, uno apagaba el bloqueo de datos personales</td><td><code>processor.ts:314</code> +4</td><td><span class="ok">ARREGLADO</span><br><span class="sha">9bbfa35</span></td></tr>
+        <tr><td><span class="etq crit">crítico</span></td><td><strong>Fiscal</strong> · litros del estímulo de IEPS salían del OCR sin verificación</td><td><code>engine.ts:770-800</code></td><td><span class="ok">ARREGLADO</span><br><span class="sha">af0acfb</span></td></tr>
+        <tr><td><span class="etq crit">crítico</span></td><td><strong>Fiscal</strong> · el tope diario se repartía contra pesos que no eran deducción de nadie</td><td><code>engine.ts:648-676</code></td><td><span class="ok">ARREGLADO</span><br><span class="sha">43ebf41</span></td></tr>
+        <tr><td><span class="etq crit">crítico</span></td><td><strong>Fiscal</strong> · CFDI sin RFC receptor sale "Deducible para ISR" en verde</td><td><code>engine.ts:339,355</code></td><td><span class="pend">PENDIENTE</span><br><span class="sha">blast radius: 25 pruebas, ver síntesis</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="pie-doc">Reportes completos por rubro en <code>docs/auditoria-8/&lt;rubro&gt;.md</code>. Síntesis en <code>00-SINTESIS.md</code>.</p>
+</div>
