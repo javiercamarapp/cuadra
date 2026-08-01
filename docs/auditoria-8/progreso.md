@@ -26,4 +26,13 @@ esto es lo único que sabe dónde se quedó.
 | 19 | Verificado BE-CRÍTICO-1 (el XML ambiguo inventa un gasto) | **CONFIRMADO**: `emparejar.ts:83-90` devuelve `null` a propósito ante ambigüedad; `processor.ts:561-587` lo trata como «es nuevo» y hace `addGasto` SIN `folio`, así que la llave de duplicado de `engine.ts` no lo ve |
 | 20 | Verificado BE-CRÍTICO-2 (el XML se pega al viaje abierto) | **CONFIRMADO**: `processor.ts:539` hace `getGastos(viajeId…)` y `:569` `addGasto(…, viajeId, …)` con el viaje abierto de hoy; no hay cotejo de la fecha del CFDI contra el rango del viaje |
 | 21 | **fiscal.md** entregado | 5/10 (=) · 0 críticos, 4 altos, 2 medios, 1 bajo |
+| 22 | **operabilidad.md** · **arquitectura.md** · **seguridad.md** · **datos.md** · **agentico.md** · **rendimiento.md** entregados | 7 (▲3) · 5 (=) · 7 (▼1) · 6 (▼1) · 5 (▲2) · 4 (▼3) |
+| 23 | Verificado ARQ-1 (dos nombres de producto en la misma hoja) | **CONFIRMADO**: `pdf.ts:150` imprime `Cuadra` en 20pt y `pdf.ts:387` `Generado por Likida` en el pie del mismo papel; `setProducer` llevaba la marca vieja también |
+| 24 | **VUELTA 1** · arreglo ARQ-1 | prueba nueva que lee el PDF renderizado. Primer intento buscó en bytes crudos y **pasó en verde con el bug puesto** (pdf-lib deflata); corregida a inflar + decodificar hex. Roja: `expected 'Cuadra' to be 'Likida'`. Verde tras el arreglo. Suite 1264 ✓. Commit `9edae2d` |
+| 25 | **VUELTA 2** · arreglo BE-1 | 4 pruebas nuevas sobre el brazo de DOCUMENTO (que no tenía ninguna), con control. Roja: `addGasto` llamado 1 vez con dos tickets ambiguos. Verde tras el arreglo; las 19 de `emparejar.test.ts` intactas. Suite 1268 ✓. Commit `e447f70` |
+| 26 | Verificado AG-1 (el cierre sin comprobar entrega) | **CONFIRMADO**: `meta/client.ts:118` registra el `!res.ok` y **retorna normal**, así que el `try/catch` de `processor.ts:876-905` nunca se dispara y `pdf.no_entregado` no corre |
+| 27 | **VUELTA 3** · arreglo AG-1 | 3 pruebas con cliente real y solo la Graph API mockeada. Roja: `pdf.no_entregado` nunca llamado con Meta devolviendo 401. Verde tras el arreglo. Suite 1271 ✓. Commit `8b621ea`. **Tope de 3 vueltas alcanzado** |
+| 28 | `git status --short` tras el auditor de mutantes | limpio de código de producción: solo `docs/`. Sin mutantes olvidados |
+| 29 | Tablero renderizado y **mirado** | 12 rubros contados en la imagen, 67/12 = 5.6 cuadra con la síntesis, color por nota y no por delta. Commit `47cdb68` |
+| 30 | `pruebas.md` | el auditor seguía escribiendo a las 11:32:42 mientras los otros once ya habían cerrado; **no está muerto, va lento** (corre suites enteras para medir mutantes). Se espera |
 
