@@ -103,8 +103,20 @@ async function idDeRespuesta(res: Response): Promise<string | undefined> {
   } catch { return undefined; }
 }
 
-/** Envía un documento (PDF de liquidación) por link público o media id. */
-export async function sendDocument(to: string, link: string, filename: string, caption?: string): Promise<void> {
+/**
+ * Envía un documento (PDF de liquidación) por link público o media id.
+ * Devuelve el wamid, o `null` si Meta lo rechazó.
+ *
+ * Devolvía `void`, igual que `sendText` antes de la ronda 6, y ante un rechazo
+ * registraba y retornaba NORMAL. El único llamador es el del entregable, y su
+ * `try/catch` no se disparaba: con el token vencido la liquidación quedaba
+ * emitida, el PDF en storage, el panel del contralor completo, y el chofer sin
+ * nada y sin viaje abierto al que volver. `pdf.no_entregado` vive en ese catch,
+ * así que tampoco había una línea en los logs.
+ *
+ * Mismo contrato que `sendText`: un wamid significa ACEPTADO, no entregado.
+ */
+export async function sendDocument(to: string, link: string, filename: string, caption?: string): Promise<string | null> {
   const res = await fetch(`${GRAPH}/${phoneNumberId()}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
@@ -115,11 +127,13 @@ export async function sendDocument(to: string, link: string, filename: string, c
       document: { link, filename, caption },
     }),
   });
-  if (!res.ok) { logger.error('wa.sendDocument', { status: res.status, body: await res.text().catch(() => '') }); return; }
+  if (!res.ok) { logger.error('wa.sendDocument', { status: res.status, body: await res.text().catch(() => '') }); return null; }
   // Igual que en `sendText`: el envío del PDF es EL entregable, y su éxito no
   // dejaba ninguna huella. Meta acepta el mensaje y descarga el `link` después,
   // por su cuenta; sin el wamid no hay forma de preguntarle qué pasó con él.
-  logger.info('wa.sendDocument.ok', { id: await idDeRespuesta(res), filename });
+  const id = await idDeRespuesta(res);
+  logger.info('wa.sendDocument.ok', { id, filename });
+  return id ?? null;
 }
 
 /**

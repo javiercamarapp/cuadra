@@ -900,7 +900,13 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
         const path = `${op.tenantId}/${viajeId}-operador.pdf`;
         const { data, error } = await supabaseAdmin().storage.from('liquidaciones').createSignedUrl(path, 3600);
         if (error || !data?.signedUrl) throw new Error(error?.message ?? 'storage no devolvió URL firmada');
-        await sendDocument(msg.from, data.signedUrl, 'liquidacion.pdf', 'Aquí está tu liquidación 📄');
+        // El resultado del envío es un dato que existe y que el único camino
+        // que lo necesita no consultaba. Sin esto, un rechazo de Meta —un token
+        // vencido, el `#131030` de la allowed-list— se veía EXACTAMENTE igual
+        // que una entrega buena: el catch de abajo no se disparaba, y con él se
+        // quedaban sin correr `pdf.no_entregado` y el aviso al operador.
+        const wamid = await sendDocument(msg.from, data.signedUrl, 'liquidacion.pdf', 'Aquí está tu liquidación 📄');
+        if (!wamid) throw new Error('Meta rechazó el documento');
         await registrarCostoWhatsApp(op.tenantId, viajeId);
       } catch (e) {
         // Ruidoso a propósito: la liquidación SÍ quedó cerrada en la base, así que
