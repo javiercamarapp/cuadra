@@ -51,4 +51,6 @@ INFRA: el clon vino sin node_modules por segunda ronda seguida (npm ci antes de
 la línea base). `gh` no existe en este entorno; el listado de PR se hizo con el
 MCP de GitHub.
 
-PR: pendiente de verificar con gh pr list — se escribe abajo con la salida real.
+PR: https://github.com/javiercamarapp/likida.ai/pull/6 (draft, abierto). Verificado
+con list_pull_requests, no con memoria. OJO: el repo se renombró de `cuadra` a
+`likida.ai` en GitHub; el remoto sigue respondiendo por el nombre viejo.
