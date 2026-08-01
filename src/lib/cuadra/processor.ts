@@ -24,7 +24,7 @@ import { guardiaEstado } from '@/lib/cuadra/cuadre/estado_afirmado';
 import { crearPresupuesto, PRESUPUESTO_WEBHOOK_MS } from '@/lib/cuadra/presupuesto';
 import { conceptoDesdeClave } from '@/lib/cuadra/intake/concepto';
 import { getConfig } from '@/lib/cuadra/config';
-import { emparejarPendiente, emparejarXmlConTicket } from '@/lib/cuadra/intake/emparejar';
+import { emparejarPendiente, emparejarXmlConTicket, candidatosDeXml } from '@/lib/cuadra/intake/emparejar';
 import { parseCfdiXml } from '@/lib/cuadra/intake/cfdi_xml';
 import {
   addGasto, getGastos, updateGastoCfdiXml, saveCfdiXmlRaw, gastoExistePorHash,
@@ -548,6 +548,27 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
         // arregla: el del ticket es NULL y NULL no colisiona.
         const porTicket = emparejarXmlConTicket({ total: xml.total, fecha: xml.fecha }, gastos);
         if (porTicket) { match = porTicket; eraTicket = true; }
+        else {
+          // NO SÉ CUÁL ≠ NINGUNO. `emparejarXmlConTicket` devuelve `null` por
+          // dos razones distintas, y el `else` de abajo trataba las dos como
+          // "este XML es un gasto nuevo". Con dos casetas de $500 el mismo día
+          // —corriente, lo dice `emparejar.ts`— cada XML se daba de alta aparte:
+          // cuatro gastos por dos casetas, $2,000 comprobados sobre $1,000
+          // gastados, y el motor no lo veía porque el gasto que crea el XML no
+          // lleva `folio` y sus dos llaves de duplicado fallan por construcción.
+          //
+          // Con ambigüedad no se escribe nada: ni gasto nuevo (cuenta doble) ni
+          // pegarlo a uno de los dos (le cambia emisor, IVA e IEPS al que no
+          // era, y deja al otro sin factura). Se para y se pregunta.
+          const candidatos = candidatosDeXml({ total: xml.total }, gastos);
+          if (candidatos.length > 1) {
+            logger.warn('xml.ambiguo', { viaje: viajeId, uuid: xml.uuid, candidatos: candidatos.length });
+            await say(`Recibí tu XML de ${mxn(xml.total ?? 0)}, pero tienes ${candidatos.length} tickets de ese mismo monto y no sé a cuál corresponde. ¿Me dices de cuál es? 🤔`);
+            // El XML crudo se conserva igual (CFF 30): el dato no se pierde.
+            await saveCfdiXmlRaw(op.tenantId, xml.uuid, null, xmlText!);
+            return;
+          }
+        }
       }
       let gastoId: string;
       if (match) {
@@ -879,7 +900,13 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
         const path = `${op.tenantId}/${viajeId}-operador.pdf`;
         const { data, error } = await supabaseAdmin().storage.from('liquidaciones').createSignedUrl(path, 3600);
         if (error || !data?.signedUrl) throw new Error(error?.message ?? 'storage no devolvió URL firmada');
-        await sendDocument(msg.from, data.signedUrl, 'liquidacion.pdf', 'Aquí está tu liquidación 📄');
+        // El resultado del envío es un dato que existe y que el único camino
+        // que lo necesita no consultaba. Sin esto, un rechazo de Meta —un token
+        // vencido, el `#131030` de la allowed-list— se veía EXACTAMENTE igual
+        // que una entrega buena: el catch de abajo no se disparaba, y con él se
+        // quedaban sin correr `pdf.no_entregado` y el aviso al operador.
+        const wamid = await sendDocument(msg.from, data.signedUrl, 'liquidacion.pdf', 'Aquí está tu liquidación 📄');
+        if (!wamid) throw new Error('Meta rechazó el documento');
         await registrarCostoWhatsApp(op.tenantId, viajeId);
       } catch (e) {
         // Ruidoso a propósito: la liquidación SÍ quedó cerrada en la base, así que

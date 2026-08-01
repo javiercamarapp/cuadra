@@ -73,7 +73,7 @@ export async function generarLiquidacionPDF(
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle(`Liquidación ${viaje.folio ?? liq.id.slice(0, 8)}`);
-  doc.setProducer('Cuadra');
+  doc.setProducer('Likida');
 
   const A4: [number, number] = [595.28, 841.89];
   // `page` es MUTABLE: el documento ya no cabe forzosamente en una hoja. Un
@@ -147,7 +147,11 @@ export async function generarLiquidacionPDF(
   };
 
   // ─── Encabezado ───────────────────────────────────────────────────────────
-  text('Cuadra', M, y, 20, bold, INK);
+  // El producto se llama Likida. Esta cabecera decía `Cuadra` mientras el pie
+  // de la MISMA hoja decía `Generado por Likida`: residuo del cambio de nombre
+  // que sobrevivió porque las dos líneas están a 237 de distancia y nada las
+  // comparaba. Lo compara `pdf_un_solo_nombre.test.ts`, sobre el PDF impreso.
+  text('Likida', M, y, 20, bold, INK);
   right('LIQUIDACIÓN DE VIAJE', 595.28 - M, y + 3, 9, bold, MUTED);
   right(`Folio ${viaje.folio ?? liq.id.slice(0, 8).toUpperCase()}`, 595.28 - M, y - 10, 9, font, MUTED);
   y -= 28;

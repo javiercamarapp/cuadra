@@ -73,14 +73,31 @@ export function emparejarPendiente(monto: number, bandeja: CodigoPendiente[]): C
  * el XML al ticket equivocado le cambia el emisor, el IVA y el IEPS a un gasto que
  * no era — y encima deja el otro sin factura.
  */
+/**
+ * Los tickets sin timbrar que ESTE XML podría estar facturando.
+ *
+ * Existe porque `emparejarXmlConTicket` devuelve `null` por dos razones que no
+ * son la misma —"no hay ninguno" y "hay varios y no sé cuál"— y su consumidor
+ * necesita distinguirlas: con la primera el XML es un gasto nuevo, con la
+ * segunda dar de alta un gasto cuenta el mismo consumo dos veces.
+ *
+ * No duplica el criterio: `emparejarXmlConTicket` filtra con esta función.
+ */
+export function candidatosDeXml(
+  xml: { total?: number },
+  gastos: Gasto[],
+): Gasto[] {
+  if (!(xml.total != null && xml.total > 0)) return []; // sin monto no se adivina
+  // Solo tickets SIN timbrar: los que ya tienen UUID son facturas y se emparejan
+  // por UUID antes de llegar aquí.
+  return gastos.filter((g) => !g.cfdiUuid && Math.abs(g.monto - xml.total!) <= TOLERANCIA);
+}
+
 export function emparejarXmlConTicket(
   xml: { total?: number; fecha?: string },
   gastos: Gasto[],
 ): Gasto | null {
-  if (!(xml.total != null && xml.total > 0)) return null; // sin monto no se adivina
-  // Solo tickets SIN timbrar: los que ya tienen UUID son facturas y se emparejan
-  // por UUID antes de llegar aquí.
-  const candidatos = gastos.filter((g) => !g.cfdiUuid && Math.abs(g.monto - xml.total!) <= TOLERANCIA);
+  const candidatos = candidatosDeXml(xml, gastos);
   if (candidatos.length === 1) return candidatos[0];
   if (candidatos.length === 0) return null;
   // Varios del mismo monto: la fecha desempata (dos cargas iguales en días

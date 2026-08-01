@@ -1,0 +1,286 @@
+<title>Likida · Auditoría 8 — 1-ago-2026</title>
+<style>
+  :root{
+    --surface:#fcfcfb; --panel:#ffffff; --ink:#1a1a19; --ink-2:#4a4a46; --muted:#77776f;
+    --hair:#e4e4e0; --grid:#ececE8;
+    --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
+    --good-ink:#046904; --warn-ink:#6b4a00; --crit-ink:#8f2424;
+    --up:#046904; --down:#8f2424;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --surface:#141413; --panel:#1f1f1d; --ink:#f2f2ef; --ink-2:#c9c9c3; --muted:#95958d;
+      --hair:#33332f; --grid:#2b2b28;
+      --good-ink:#5fd05f; --warn-ink:#fab219; --crit-ink:#f07070;
+      --up:#5fd05f; --down:#f07070;
+    }
+  }
+  :root[data-theme="dark"]{
+    --surface:#141413; --panel:#1f1f1d; --ink:#f2f2ef; --ink-2:#c9c9c3; --muted:#95958d;
+    --hair:#33332f; --grid:#2b2b28;
+    --good-ink:#5fd05f; --warn-ink:#fab219; --crit-ink:#f07070;
+    --up:#5fd05f; --down:#f07070;
+  }
+  :root[data-theme="light"]{
+    --surface:#fcfcfb; --panel:#ffffff; --ink:#1a1a19; --ink-2:#4a4a46; --muted:#77776f;
+    --hair:#e4e4e0; --grid:#ececE8;
+    --good-ink:#046904; --warn-ink:#6b4a00; --crit-ink:#8f2424;
+    --up:#046904; --down:#8f2424;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:32px 28px 56px; background:var(--surface); color:var(--ink);
+    font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    overflow-x:hidden; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1120px;margin:0 auto}
+  h1{font-size:23px;font-weight:600;letter-spacing:-.02em;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:13.5px;margin:0 0 22px}
+  h2{font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+     color:var(--muted);margin:34px 0 13px}
+  .tabular{font-variant-numeric:tabular-nums}
+
+  /* ── Barra de compuerta ─────────────────────────────────────────────── */
+  .gate{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:26px}
+  .chip{display:flex;align-items:center;gap:7px;background:var(--panel);
+        border:1px solid var(--hair);border-radius:8px;padding:8px 13px;font-size:13px}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .chip b{font-weight:600}
+  .chip .na{color:var(--muted)}
+
+  /* ── Cabecera global ────────────────────────────────────────────────── */
+  .top{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:22px;
+       align-items:stretch;margin-bottom:6px}
+  @media(max-width:720px){.top{grid-template-columns:1fr}}
+  .hero,.serie{background:var(--panel);border:1px solid var(--hair);border-radius:12px;padding:18px 20px}
+  .hero .lbl{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .hero .num{font-size:56px;line-height:1.05;font-weight:600;letter-spacing:-.03em;margin-top:6px}
+  .hero .delta{font-size:14px;font-weight:600;margin-top:4px}
+  .hero .note{font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.45}
+  .serie svg{display:block;width:100%;height:auto}
+
+  /* ── Rejilla de rubros ──────────────────────────────────────────────── */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:12px}
+  .card{background:var(--panel);border:1px solid var(--hair);border-left-width:4px;
+        border-radius:10px;padding:14px 15px;min-width:0}
+  .card .hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .card .name{font-size:13.5px;font-weight:600;letter-spacing:-.01em;min-width:0}
+  .card .grade{font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1;flex:none}
+  .card .meta{display:flex;align-items:center;gap:8px;margin-top:5px;font-size:12.5px;color:var(--muted)}
+  .card .arrow{font-weight:700}
+  .card .risk{font-size:12.5px;color:var(--ink-2);margin-top:9px;line-height:1.42}
+  .card .sev{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+  .pill{font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;border:1px solid var(--hair);
+        color:var(--ink-2);background:transparent}
+  .pill.c{color:var(--crit-ink);border-color:var(--crit)}
+  .pill.a{color:var(--warn-ink);border-color:var(--serious)}
+  .no-aud{font-size:11.5px;color:var(--muted);font-style:italic;margin-top:9px}
+
+  /* ── Tablas ─────────────────────────────────────────────────────────── */
+  .scroll{overflow-x:auto;border:1px solid var(--hair);border-radius:10px;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;font-size:13px;min-width:640px}
+  th,td{text-align:left;padding:9px 13px;border-bottom:1px solid var(--grid);vertical-align:top}
+  th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;
+     white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
+       background:var(--grid);padding:1px 5px;border-radius:4px;color:var(--ink-2)}
+  .st{font-weight:600;white-space:nowrap}
+  .st.fix{color:var(--good-ink)} .st.pend{color:var(--crit-ink)} .st.prop{color:var(--warn-ink)}
+  .foot{color:var(--muted);font-size:12px;margin-top:26px;line-height:1.55}
+</style>
+
+<div class="wrap">
+  <h1>Likida · Auditoría 8</h1>
+  <p class="sub">1-ago-2026 · ronda <b>COMPLETA</b> · rama <code>claude/auditoria-8</code> · base <code>abdc98d</code> → <code>337e1a8</code> (34 commits) · demo con Transportes Innovativos el 6-ago</p>
+
+  <div class="gate">
+    <span class="chip"><span class="dot" style="background:var(--good)"></span><b>npm test</b> 1271 pasan · 1 saltada · 130 archivos</span>
+    <span class="chip"><span class="dot" style="background:var(--good)"></span><b>tsc --noEmit</b> exit 0</span>
+    <span class="chip"><span class="dot" style="background:var(--good)"></span><b>eslint</b> exit 0</span>
+    <span class="chip"><span class="dot" style="background:var(--muted)"></span><b>build</b> <span class="na">no se corre en la nube</span></span>
+    <span class="chip"><span class="dot" style="background:var(--good)"></span><b>12 de 12 rubros</b> entregados</span>
+  </div>
+
+  <div class="top">
+    <div class="hero">
+      <div class="lbl">Nota global</div>
+      <div class="num tabular">5.7</div>
+      <div class="delta" style="color:var(--up)">▲ 0.2 &nbsp;<span style="color:var(--muted);font-weight:400">desde 5.5</span></div>
+      <div class="note">Los doce entregaron. Cinco suben, cinco bajan: las dos décimas esconden el mayor reacomodo de la serie.</div>
+    </div>
+
+    <div class="serie">
+      <div class="lbl" style="font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Serie histórica de la global</div>
+      <!-- Línea de 2 px, marcadores de 9 px, ejes recesivos. Un solo dato: sin leyenda. -->
+      <svg viewBox="0 0 560 150" role="img" aria-label="Nota global por ronda: 6.2, 6.2, 5.9, 5.2, 5.3, 5.5, 5.7">
+        <g stroke="var(--grid)" stroke-width="1">
+          <line x1="34" y1="16" x2="548" y2="16"/><line x1="34" y1="56" x2="548" y2="56"/>
+          <line x1="34" y1="96" x2="548" y2="96"/><line x1="34" y1="116" x2="548" y2="116"/>
+        </g>
+        <g fill="var(--muted)" font-size="10" font-family="inherit">
+          <text x="6" y="19">7</text><text x="6" y="59">6</text><text x="6" y="99">5</text>
+        </g>
+        <!-- y = 96 - (nota-5)*40 -->
+        <polyline fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+                  points="60,48 141,48 222,60 303,88 384,84 465,76 546,68"/>
+        <g fill="var(--ink)">
+          <circle cx="60" cy="48" r="4.5"/><circle cx="141" cy="48" r="4.5"/><circle cx="222" cy="60" r="4.5"/>
+          <circle cx="303" cy="88" r="4.5"/><circle cx="384" cy="84" r="4.5"/><circle cx="465" cy="76" r="4.5"/>
+        </g>
+        <circle cx="546" cy="68" r="6" fill="var(--ink)" stroke="var(--panel)" stroke-width="2"/>
+        <g fill="var(--ink-2)" font-size="11" font-weight="600" font-family="inherit" text-anchor="middle">
+          <text x="60" y="38">6.2</text><text x="141" y="38">6.2</text><text x="222" y="50">5.9</text>
+          <text x="303" y="102">5.2</text><text x="384" y="98">5.3</text><text x="465" y="66">5.5</text>
+          <text x="546" y="56">5.7</text>
+        </g>
+        <g fill="var(--muted)" font-size="10.5" font-family="inherit" text-anchor="middle">
+          <text x="60" y="138">Aud 2</text><text x="141" y="138">3</text><text x="222" y="138">4</text>
+          <text x="303" y="138">5</text><text x="384" y="138">6</text><text x="465" y="138">7</text>
+          <text x="546" y="138">8</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <h2>Los doce rubros — el color codifica la nota, nunca el delta</h2>
+  <div class="grid">
+
+    <div class="card" style="border-left-color:var(--good)">
+      <div class="hd"><span class="name">Operabilidad y DX</span><span class="grade tabular">7</span></div>
+      <div class="meta"><span class="arrow" style="color:var(--up)">▲ 3</span><span>desde 4 · se atacó y subió</span></div>
+      <div class="risk">Sentry quedó cableado de verdad, punta a punta. Lo que falta es alerta en el camino del dinero.</div>
+      <div class="sev"><span class="pill a">3 altos</span><span class="pill">2 medios</span></div>
+    </div>
+
+    <div class="card" style="border-left-color:var(--good)">
+      <div class="hd"><span class="name">Seguridad</span><span class="grade tabular">7</span></div>
+      <div class="meta"><span class="arrow" style="color:var(--down)">▼ 1</span><span>desde 8 · mirada más profunda</span></div>
+      <div class="risk">El panel no tiene dos candados: tiene uno con dos cerraduras sobre el mismo pestillo, y el pestillo es <code>DASHBOARD_PASSCODE</code>.</div>
+      <div class="sev"><span class="pill">0 hallazgos nuevos de peso</span></div>
+    </div>
+
+    <div class="card" style="border-left-color:var(--good)">
+      <div class="hd"><span class="name">Tool calling</span><span class="grade tabular">7</span></div>
+      <div class="meta"><span class="arrow" style="color:var(--down)">▼ 1</span><span>desde 8 · deuda que cobró factura</span></div>
+      <div class="risk">El permiso de citar que ahora viaja con <code>consultar_politica</code> arrastra los números de la cita, y <code>cifrasSinRespaldo</code> los acepta como respaldo.</div>
+      <div class="sev"><span class="pill a">1 alto</span><span class="pill">5 medios</span></div>
+    </div>
+
+    <div class="card" style="border-left-color:var(--warn)">
+      <div class="hd"><span class="name">Frontend</span><span class="grade tabular">6</span></div>
+      <div class="meta"><span class="arrow" style="color:var(--up)">▲ 2</span><span>desde 4 · se atacó y subió</span></div>
+      <div class="risk">El hero del panel sale <b>0 L · $0.00 · $0.00</b> en la pantalla que el guion manda proyectar, y no distingue cero de «no lo pude determinar».</div>
+      <div class="sev"><span class="pill a">2 altos</span><span class="pill">3 medios</span></div>
+    </div>
+
+    <div class="card" style="border-left-color:var(--warn)">
+      <div class="hd"><span class="name">Cumplimiento legal</span><span class="grade tabular">6</span></div>
+      <div class="meta"><span class="arrow" style="color:var(--up)">▲ 2</span><span>desde 4 · se atacó y subió</span></div>
+      <div class="risk">El aviso promete que la oposición «queda registrada» y no hay tabla, ni columna, ni pantalla: termina en un <code>logger.info</code>.</div>
+      <div class="sev"><span class="pill c">2 críticos</span><span class="pill a">4 altos</span></div>
+    </div>
+
+    <div class="card" style="border-left-color:var(--warn)">
+      <div class="hd"><span class="name">Modelo de datos</span><span class="grade tabular">6</span></div>
+      <div class="meta"><span class="arrow" style="color:var(--down)">▼ 1</span><span>desde 7 · deuda que cobró factura</span></div>
+      <div class="risk">La 0036 solo impide un <code>INSERT</code> <i>después</i> de que la fila de liquidación existe; el <code>UPDATE</code>, el <code>DELETE</code> y los segundos del cuadre quedan fuera.</div>
+      <div class="sev"><span class="pill c">1 crítico</span><span class="pill a">2 altos</span><span class="pill">6 medios</span></div>
+    </div>
+
+    <div class="card" style="border-left-color:var(--warn)">
+      <div class="hd"><span class="name">Sistema agéntico</span><span class="grade tabular">5</span></div>
+      <div class="meta"><span class="arrow" style="color:var(--up)">▲ 2</span><span>desde 3 · se atacó y subió</span></div>
+      <div class="risk">AG-3 cerrado, AG-2 parcial. El ciclo se daba por terminado sin comprobar que el humano recibió algo. <b>Arreglado esta ronda.</b></div>
+      <div class="sev"><span class="pill c">1 crítico</span><span class="pill a">5 altos</span></div>
+    </div>
+
+    <div class="card" style="border-left-color:var(--warn)">
+      <div class="hd"><span class="name">Arquitectura</span><span class="grade tabular">5</span></div>
+      <div class="meta"><span class="arrow" style="color:var(--muted)">＝</span><span>desde 5 · dos fuerzas que se cancelan</span></div>
+      <div class="risk">Frontera fuera de <code>repo.ts</code>: <b>40</b> (serie 33→38→38→40). <code>formato.ts</code> sí es el único origen. Dos nombres de producto en la misma hoja. <b>Arreglado esta ronda.</b></div>
+      <div class="sev"><span class="pill c">1 crítico</span><span class="pill a">1 alto</span></div>
+    </div>
+
+    <div class="card" style="border-left-color:var(--warn)">
+      <div class="hd"><span class="name">Cumplimiento fiscal</span><span class="grade tabular">5</span></div>
+      <div class="meta"><span class="arrow" style="color:var(--muted)">＝</span><span>desde 5 · dos fuerzas que se cancelan</span></div>
+      <div class="risk">El RFC genérico quedó cerrado, pero el estímulo de peaje se cerró solo en el PDF: las dos pantallas y WhatsApp siguen imprimiéndolo sin las cuatro condiciones del LIF 20-A.</div>
+      <div class="sev"><span class="pill a">4 altos</span><span class="pill">2 medios</span></div>
+    </div>
+
+    <div class="card" style="border-left-color:var(--warn)">
+      <div class="hd"><span class="name">Pruebas</span><span class="grade tabular">6</span></div>
+      <div class="meta"><span class="arrow" style="color:var(--up)">▲ 1</span><span>desde 5 · se atacó y subió</span></div>
+      <div class="risk">Mutantes que sobreviven: <b>8 de 36 = 22%</b> (serie 57→83→19→22), con el doble de denominador. La escritura del dinero pasó de 6/6 a <b>0/4</b>. Quedan arreglos anclados por <code>grep</code> sobre el fuente, no por ejecución.</div>
+      <div class="sev"><span class="pill c">3 críticos</span><span class="pill a">3 altos</span></div>
+    </div>
+
+    <div class="card" style="border-left-color:var(--crit)">
+      <div class="hd"><span class="name">Backend y API</span><span class="grade tabular">4</span></div>
+      <div class="meta"><span class="arrow" style="color:var(--down)">▼ 2</span><span>desde 6 · mirada más profunda</span></div>
+      <div class="risk">El brazo del XML —que ninguna ronda había abierto y que no tenía una sola prueba— daba de alta un gasto nuevo cada vez que no sabía a cuál pegarlo. <b>Arreglado esta ronda.</b></div>
+      <div class="sev"><span class="pill c">2 críticos</span><span class="pill a">3 altos</span></div>
+    </div>
+
+    <div class="card" style="border-left-color:var(--crit)">
+      <div class="hd"><span class="name">Rendimiento y costo</span><span class="grade tabular">4</span></div>
+      <div class="meta"><span class="arrow" style="color:var(--down)">▼ 3</span><span>desde 7 · mirada más profunda</span></div>
+      <div class="risk">El peor caso suma <b>126.1 s</b> contra <code>maxDuration = 120</code>. La ronda 6 lo sumó con el costo <i>promedio</i>. El abort de los 40 s no corta la tool en vuelo.</div>
+      <div class="sev"><span class="pill c">2 críticos</span><span class="pill a">1 alto</span><span class="pill">3 medios</span></div>
+    </div>
+
+  </div>
+
+  <h2>Críticos y altos arreglados — con la prueba que los reproduce</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>ID</th><th>Qué era</th><th>Sha</th><th>Cómo se probó</th><th>Estado</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>ARQ-1</b></td>
+          <td>El PDF llevaba <code>Cuadra</code> de cabecera y <code>Generado por Likida</code> en el pie de la misma hoja</td>
+          <td><code>9edae2d</code></td>
+          <td>Lee el PDF renderizado (inflando flujos + hex). Rojo: <code>expected 'Cuadra' to be 'Likida'</code></td>
+          <td class="st fix">arreglado</td>
+        </tr>
+        <tr>
+          <td><b>BE-1</b></td>
+          <td>El XML ambiguo daba de alta un gasto nuevo: 4 gastos por 2 casetas, $2,000 sobre $1,000, estatus <code>cuadrada</code></td>
+          <td><code>e447f70</code></td>
+          <td>Brazo de DOCUMENTO, 4 pruebas con control. Rojo: <code>addGasto</code> llamado 1 vez</td>
+          <td class="st fix">arreglado</td>
+        </tr>
+        <tr>
+          <td><b>AG-1</b></td>
+          <td><code>sendDocument</code> devolvía <code>void</code> y el rechazo de Meta se veía igual que una entrega buena</td>
+          <td><code>8b621ea</code></td>
+          <td>Cliente real, solo la Graph API mockeada. Rojo: <code>pdf.no_entregado</code> nunca llamado</td>
+          <td class="st fix">arreglado</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Críticos que quedan pendientes — con la razón por la que no se arreglaron</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>ID</th><th>Qué es</th><th>Dónde</th><th>Estado</th></tr></thead>
+      <tbody>
+        <tr><td><b>LEG-1</b></td><td>El único camino de ARCO y oposición termina en un <code>logger.info</code>; el aviso dice «queda registrada»</td><td><code>processor.ts:114-121</code></td><td class="st pend">pendiente — pide tabla, columna y pantalla: no es un cambio quirúrgico</td></tr>
+        <tr><td><b>LEG-2</b></td><td>En una ráfaga de fotos, perder la reserva se lee como «ya consta» y la foto viaja al modelo sin aviso</td><td><code>processor.ts:169</code> · <code>0033:75-88</code></td><td class="st pend">pendiente — tope de 3 vueltas alcanzado</td></tr>
+        <tr><td><b>BE-2</b></td><td>El XML se aplica al viaje ABIERTO, no al del gasto: el mismo diésel se repone dos veces</td><td><code>processor.ts:539,569</code></td><td class="st pend">pendiente — el arreglo pide decidir rango y tolerancia de fecha: es diseño, no parche</td></tr>
+        <tr><td><b>REND-1</b></td><td>El peor caso suma 126.1 s contra <code>maxDuration = 120</code>, y el exceso mata el turno en silencio</td><td><code>presupuesto.ts</code> · <code>route.ts:90</code></td><td class="st pend">pendiente — tope de 3 vueltas alcanzado</td></tr>
+        <tr><td><b>REND-2</b></td><td>El abort de los 40 s no corta la tool en vuelo: <code>ToolContext.signal</code> no lo lee nadie</td><td><code>tool-executor.ts:18</code></td><td class="st pend">pendiente — tope de 3 vueltas alcanzado</td></tr>
+        <tr><td><b>DAT-1</b></td><td>La 0036 protege desde la fila de liquidación; las cifras se congelan segundos antes</td><td><code>0036:64-68</code> · <code>tools.ts:152</code></td><td class="st pend">pendiente — tope de 3 vueltas alcanzado</td></tr>
+        <tr><td><b>AG-2</b></td><td>Parcial: sin llamada a tools, <code>permitidas</code> sigue vacío y la cita sale rota («conforme al -A»)</td><td><code>fundamento.ts</code></td><td class="st prop">propuesto</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="foot">
+    <b>Descartados por falsos:</b> ninguno esta ronda — los hallazgos que verifiqué uno por uno abriendo el archivo se sostuvieron todos.
+    El auditor de arquitectura sí refutó uno propio antes de reportarlo (la ruta del PDF del operador ya tiene <code>ruta_pdf_sincronizada.test.ts</code>), y el de frontend descartó el seed apuntando a <code>likida.ai</code> como decisión documentada.<br>
+    <b>Las notas de esta tabla se escribieron ANTES de que los tres arreglos aterrizaran</b>, igual que en la ronda 7. Es una propiedad conocida del proceso: la ronda 9 es la primera que puede medirlos.
+  </p>
+</div>
