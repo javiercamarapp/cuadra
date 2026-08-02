@@ -189,15 +189,16 @@ un ahorro que casi nunca ocurre.
   medí su costo de extremo a extremo contra el presupuesto — es más un tema
   de correctitud (agéntico/datos) que de rendimiento puro, y así lo trata
   `MAPA.md`.
-  - **`round2()` duplicado en 4 archivos de dinero** (hallazgo abierto de la
+- **`round2()` duplicado en 4 archivos de dinero** (hallazgo abierto de la
   ronda 8, marcado explícitamente como "no atacado esta ronda"). No lo
   reverifiqué: es un hallazgo de arquitectura/correctitud numérica, no de
   presupuesto de tiempo o costo por operación, y el propio `MAPA.md` no lo
   asigna a este rubro.
 - **Costo real medido en producción de una liquidación completa.** El
   "$0.03–0.05/liquidación" de `models.ts` y el "$0.015/visión" de
-  `processor.ts` son estimaciones en el código, no until de facturación real
-  de OpenRouter contrastada — no tuve acceso a esa cuenta para confirmar.
+  `processor.ts` son estimaciones escritas en el código, no un dato de
+  facturación real de OpenRouter contrastado — no tuve acceso a esa cuenta
+  para confirmarlo.
 - **Presupuesto de la ruta de XML del CFDI** (`processor.ts:858-972`, "hasta
   30s" según su propio comentario) contra el reloj compartido — lo leí de
   paso pero no le hice la suma a mano como sí hice con la foto.
