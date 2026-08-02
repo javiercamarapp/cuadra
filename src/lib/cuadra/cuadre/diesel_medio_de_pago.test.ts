@@ -32,7 +32,13 @@ import type { Gasto } from '@/types/cuadra';
 
 const politica: PoliticaGasto[] = [{ concepto: 'diesel', topeMonto: 50000 }];
 
-const estimulos = { clavesDieselIeps: ['15101505'], precioDieselPorDefecto: 27.0 };
+const estimulos = {
+  peajeFactor: 0.5,
+  viaticosTopeFiscalDiarioMxn: 750,
+  efectivoTopeMxn: 2000,
+  clavesDieselIeps: ['15101505'],
+  precioDieselPorDefecto: 27.0,
+};
 
 // $5,400 / 200 L = $27.00 por litro, justo el precio de referencia: la
 // verificación de la auditoría 8 (0.5×–2×) no se dispara y no contamina el caso.
