@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Likida — Auditoría 10</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --line:#262d36; --ink:#e6edf3; --muted:#8b949e;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff; --dim:#6e7681;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       padding:32px 28px 48px}
+  h1{font-size:24px;margin:0 0 4px;letter-spacing:-.02em}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+     margin:34px 0 12px;font-weight:600}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 22px}
+  .wrap{max-width:1120px;margin:0 auto}
+  .row{display:flex;gap:16px;flex-wrap:wrap}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+  .kpi{flex:1;min-width:170px}
+  .kpi .lbl{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .kpi .val{font-size:32px;font-weight:650;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .kpi .note{font-size:11px;color:var(--muted);margin-top:5px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;
+     color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line)}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .num{text-align:center;font-variant-numeric:tabular-nums;font-weight:650;width:62px}
+  .aud{background:rgba(88,166,255,.06)}
+  .tag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:20px;
+       border:1px solid var(--line);color:var(--muted);letter-spacing:.03em}
+  .tag.on{border-color:var(--accent);color:var(--accent)}
+  .down{color:var(--bad);font-weight:650}
+  .same{color:var(--dim)}
+  .sev{display:inline-block;min-width:20px;text-align:center;font-size:11px;font-weight:700;
+       padding:2px 8px;border-radius:5px;margin-right:5px}
+  .crit{background:rgba(248,81,73,.16);color:var(--bad)}
+  .alto{background:rgba(210,153,34,.16);color:var(--warn)}
+  .med{background:rgba(88,166,255,.13);color:var(--accent)}
+  .baj{background:rgba(139,148,158,.14);color:var(--muted)}
+  .gate{display:flex;gap:10px;flex-wrap:wrap;margin-top:2px}
+  .g{font-size:12px;padding:7px 13px;border-radius:7px;border:1px solid var(--line);
+     background:rgba(63,185,80,.08);color:var(--ok);font-variant-numeric:tabular-nums}
+  .g.off{background:rgba(139,148,158,.08);color:var(--muted)}
+  .fixed{color:var(--ok);font-weight:600}
+  .prop{color:var(--muted)}
+  ul{margin:8px 0 0;padding-left:18px;color:var(--muted);font-size:13px}
+  li{margin:5px 0}
+  .lede{background:rgba(248,81,73,.07);border-left:3px solid var(--bad);
+        padding:13px 16px;border-radius:0 8px 8px 0;font-size:14px;margin:0 0 8px}
+  .foot{color:var(--muted);font-size:11.5px;margin-top:30px;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Likida — Auditoría 10</h1>
+  <p class="sub">2-ago-2026 · ronda <strong>LIGERA</strong>, 3 rubros rotados · desatendida, en la nube ·
+     demo con Transportes Innovativos en <strong>4 días</strong></p>
+
+  <div class="lede">
+    Cero commits de código desde la ronda 9: el árbol es el mismo. Esta ronda no buscó regresiones,
+    <strong>auditó una calificación</strong> — la propia síntesis de la ronda 9 dejó dicho que su salto
+    de 6.5 a 7.7 fue una estimación del orquestador y no una re-corrida con contexto fresco.
+    Los tres rubros mirados de nuevo bajaron los tres.
+  </div>
+
+  <div class="row">
+    <div class="card kpi">
+      <div class="lbl">Nota global</div>
+      <div class="val">7.3 <span class="down" style="font-size:17px">▼ 0.4</span></div>
+      <div class="note">antes 7.7 · promedio de los 12 rubros</div>
+    </div>
+    <div class="card kpi">
+      <div class="lbl">Rubros auditados</div>
+      <div class="val">3 <span style="font-size:15px;color:var(--muted)">/ 12</span></div>
+      <div class="note">bajaron 3 · subieron 0 · 9 conservan nota</div>
+    </div>
+    <div class="card kpi">
+      <div class="lbl">Hallazgos verificados</div>
+      <div class="val">27</div>
+      <div class="note">1 crítico · 3 altos · 14 medios · 9 bajos · 0 falsos</div>
+    </div>
+    <div class="card kpi">
+      <div class="lbl">Cerrados con arreglo</div>
+      <div class="val" style="color:var(--ok)">3</div>
+      <div class="note">el crítico y los 2 altos fiscales · 3 vueltas, el tope</div>
+    </div>
+  </div>
+
+  <h2>Los doce rubros</h2>
+  <div class="card" style="padding:6px 8px">
+  <table>
+    <tr><th>Rubro</th><th class="num">A9</th><th class="num">A10</th><th style="width:52px"></th>
+        <th>Razón del movimiento</th><th style="width:96px">Estado</th></tr>
+
+    <tr class="aud"><td><strong>Frontend</strong></td><td class="num">7</td>
+      <td class="num" style="color:var(--bad)">5</td><td class="down">▼▼</td>
+      <td>Mirada más profunda — el código no cambió, la nota anterior estaba inflada.
+          Nadie había <em>ejecutado</em> el panel: la tarjeta más grande imprime <code>0 L</code>
+          en las rutas que el demo puede tomar.</td>
+      <td><span class="tag on">auditado</span></td></tr>
+
+    <tr class="aud"><td><strong>Cumplimiento fiscal</strong></td><td class="num">7</td>
+      <td class="num" style="color:var(--warn)">6</td><td class="down">▼</td>
+      <td>Mirada más profunda — el código no cambió, la nota anterior estaba inflada.
+          3 de los 4 altos de la ronda 9 anclaron de verdad; el cuarto cerró el falso
+          positivo y abrió el falso negativo.</td>
+      <td><span class="tag on">auditado</span></td></tr>
+
+    <tr class="aud"><td><strong>Tool calling</strong></td><td class="num">8</td>
+      <td class="num" style="color:var(--warn)">7</td><td class="down">▼</td>
+      <td>Mirada más profunda — el código no cambió, la nota anterior estaba inflada.
+          El ancla de 8 es doble y solo se cumple la primera mitad: de 3 caminos con
+          fallback, 1 tiene prueba que lo ejecute.</td>
+      <td><span class="tag on">auditado</span></td></tr>
+
+    <tr><td>Pruebas</td><td class="num">9</td><td class="num same">9</td><td class="same">=</td>
+      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
+    <tr><td>Sistema agéntico</td><td class="num">8</td><td class="num same">8</td><td class="same">=</td>
+      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
+    <tr><td>Backend y API</td><td class="num">8</td><td class="num same">8</td><td class="same">=</td>
+      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
+    <tr><td>Modelo de datos</td><td class="num">8</td><td class="num same">8</td><td class="same">=</td>
+      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
+    <tr><td>Rendimiento y costo</td><td class="num">8</td><td class="num same">8</td><td class="same">=</td>
+      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
+    <tr><td>Seguridad</td><td class="num">8</td><td class="num same">8</td><td class="same">=</td>
+      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
+    <tr><td>Cumplimiento legal</td><td class="num">7</td><td class="num same">7</td><td class="same">=</td>
+      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
+    <tr><td>Operabilidad y DX</td><td class="num">7</td><td class="num same">7</td><td class="same">=</td>
+      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
+    <tr><td>Arquitectura</td><td class="num">7</td><td class="num same">7</td><td class="same">=</td>
+      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
+  </table>
+  </div>
+
+  <h2>Serie histórica de la nota global</h2>
+  <div class="card">
+    <svg viewBox="0 0 1040 210" width="100%" height="210" role="img"
+         aria-label="Serie de la nota global de la auditoría 2 a la 10">
+      <line x1="52" y1="20"  x2="1020" y2="20"  stroke="#262d36" stroke-width="1"/>
+      <line x1="52" y1="68"  x2="1020" y2="68"  stroke="#262d36" stroke-width="1"/>
+      <line x1="52" y1="116" x2="1020" y2="116" stroke="#262d36" stroke-width="1"/>
+      <line x1="52" y1="164" x2="1020" y2="164" stroke="#262d36" stroke-width="1"/>
+      <text x="40" y="24"  fill="#8b949e" font-size="11" text-anchor="end">8</text>
+      <text x="40" y="72"  fill="#8b949e" font-size="11" text-anchor="end">7</text>
+      <text x="40" y="120" fill="#8b949e" font-size="11" text-anchor="end">6</text>
+      <text x="40" y="168" fill="#8b949e" font-size="11" text-anchor="end">5</text>
+      <!-- y = 20 + (8 - nota)*48 ; x = 92 + (n-2)*116 -->
+      <polyline fill="none" stroke="#58a6ff" stroke-width="2.5" stroke-linejoin="round"
+        points="92,106 208,106 324,120 440,154 556,150 672,140 788,92 904,34 1020,53"/>
+      <g fill="#58a6ff">
+        <circle cx="92"  cy="106" r="4.5"/><circle cx="208" cy="106" r="4.5"/>
+        <circle cx="324" cy="120" r="4.5"/><circle cx="440" cy="154" r="4.5"/>
+        <circle cx="556" cy="150" r="4.5"/><circle cx="672" cy="140" r="4.5"/>
+        <circle cx="788" cy="92"  r="4.5"/><circle cx="904" cy="34"  r="4.5"/>
+      </g>
+      <circle cx="1020" cy="53" r="6.5" fill="#f85149"/>
+      <g font-size="12" fill="#e6edf3" text-anchor="middle" font-weight="600">
+        <text x="92"  y="96">6.2</text><text x="208" y="96">6.2</text>
+        <text x="324" y="110">5.9</text><text x="440" y="144">5.2</text>
+        <text x="556" y="140">5.3</text><text x="672" y="130">5.5</text>
+        <text x="788" y="82">6.5</text><text x="904" y="24">7.7</text>
+        <text x="1020" y="40" fill="#f85149">7.3</text>
+      </g>
+      <g font-size="11" fill="#8b949e" text-anchor="middle">
+        <text x="92"  y="192">Aud. 2</text><text x="208" y="192">Aud. 3</text>
+        <text x="324" y="192">Aud. 4</text><text x="440" y="192">Aud. 5</text>
+        <text x="556" y="192">Aud. 6</text><text x="672" y="192">Aud. 7</text>
+        <text x="788" y="192">Aud. 8</text><text x="904" y="192">Aud. 9</text>
+        <text x="1020" y="192" fill="#f85149" font-weight="600">Aud. 10</text>
+      </g>
+    </svg>
+    <p style="color:var(--muted);font-size:12px;margin:4px 0 0">
+      La bajada es el resultado, no el accidente: los tres rubros que se volvieron a mirar con
+      contexto fresco bajaron los tres, y ninguno porque el código empeorara.
+    </p>
+  </div>
+
+  <h2>Hallazgos por severidad</h2>
+  <div class="row">
+    <div class="card" style="flex:1;min-width:300px">
+      <div style="margin-bottom:10px"><span class="sev crit">1 CRÍTICO</span><span class="sev alto">3 ALTOS</span></div>
+      <ul style="list-style:none;padding:0">
+        <li><span class="fixed">✔ cerrado</span> — <strong>FE-1</strong> · la tarjeta del panel imprime
+            <code>0 L</code> donde el guion manda narrar el dato que el contador multiplica <em>(frontend, CRÍTICO)</em></li>
+        <li><span class="fixed">✔ cerrado</span> — <strong>FISCAL-1</strong> · un CFDI que el SAT marcó salía
+            «Deducible para ISR» en verde con su IVA acreditable <em>(fiscal, ALTO)</em></li>
+        <li><span class="fixed">✔ cerrado</span> — <strong>FISCAL-2</strong> · los litros del estímulo de diésel
+            contaban con cualquier forma de pago que no fuera efectivo <em>(fiscal, ALTO)</em></li>
+        <li><span class="prop">▸ propuesto</span> — <strong>FE-2</strong> · el simulador afirma «CFDI validado por
+            QR ✅» y dos burbujas después se desdice <em>(frontend, ALTO)</em></li>
+      </ul>
+    </div>
+    <div class="card" style="flex:1;min-width:300px">
+      <div style="margin-bottom:10px"><span class="sev med">14 MEDIOS</span><span class="sev baj">9 BAJOS</span></div>
+      <ul>
+        <li>Fiscal: 5 medios + 2 bajos — 4 reincidentes de la ronda 9.</li>
+        <li>Frontend: 4 medios + 1 bajo — todos nuevos, ninguno mirado antes.</li>
+        <li>Tool calling: 5 medios + 6 bajos — los 7 reincidentes siguen los 7,
+            más 4 nuevos. Ninguna ronda desde la 6 lo había tocado.</li>
+        <li>Quedan <strong>propuestos</strong> por alcance de la skill (autofix solo
+            críticos y altos), no olvidados.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>La compuerta, sobre el árbol final</h2>
+  <div class="gate">
+    <span class="g">npx vitest run &nbsp;·&nbsp; 166 archivos · 1583 pruebas · 1 saltada · exit 0</span>
+    <span class="g">npx tsc --noEmit &nbsp;·&nbsp; exit 0</span>
+    <span class="g">npm run lint &nbsp;·&nbsp; exit 0</span>
+    <span class="g off">npm run build &nbsp;·&nbsp; no se corre en la nube (pide credenciales)</span>
+  </div>
+  <p style="color:var(--muted);font-size:12px;margin-top:10px">
+    Línea base al abrir la ronda: 163 archivos / 1570 pruebas. Las 13 pruebas nuevas son las
+    tres que reproducen los hallazgos cerrados. Cada arreglo se verificó por mutación:
+    reintroducir el bug pone la prueba en rojo.
+  </p>
+
+  <p class="foot">
+    Ronda LIGERA por rotación: sin commits de código desde la ronda 9, se auditan 3 rubros en vez de 12.
+    Los 9 restantes conservan su nota y están marcados «no auditado esta ronda» — no se re-califican solos.
+    Las notas de esta tabla son las que pusieron los tres auditores con contexto fresco, ANTES de los arreglos:
+    no se suben por los tres cierres de hoy, porque subir una nota por un arreglo que nadie volvió a auditar
+    es exactamente lo que esta ronda vino a corregir.
+  </p>
+
+</div>
+</body>
+</html>

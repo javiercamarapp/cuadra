@@ -71,3 +71,44 @@ Idéntica a la evidencia declarada por la ronda 9. Verde y reproducible.
 
 - Los 3 lanzados en un solo mensaje, en paralelo, con contexto fresco.
   Ninguno murió al arrancar → no hay fallo de INFRA en el despacho.
+
+## Arreglos (tope: 3 vueltas — se usaron las 3)
+
+| # | Hallazgo | Sev. | Prueba roja antes | Sha |
+|---|---|---|---|---|
+| 1 | FISCAL-1 · un CFDI marcado por el SAT salía "Deducible para ISR" en verde | ALTO | `efos_indeterminado_no_es_deducible.test.ts` (11600/1600 → 0/0) | `65b90eb` |
+| 2 | FE-1 · la tarjeta del panel afirma `0 L` donde nunca midió litros | CRÍTICO | `acred_sin_litros.test.tsx` (3 de 5 rojas con el mutante) | `5365ca0` |
+| 3 | FISCAL-2 · los litros del estímulo contaban con cualquier forma de pago ≠ efectivo | ALTO | `diesel_medio_de_pago.test.ts` (99 → 200 L) | `0d1fe65` |
+
+- Suite completa verde después de cada uno. Ninguno se revirtió.
+- Los tres verificados por MUTACIÓN: reintroducir el bug pone la prueba en rojo.
+- `de4b945` — corrección de tipo en el fixture de la vuelta 3. Se detectó porque
+  el comando del commit anterior leía el exit code de `tail` y no el de `tsc`:
+  vitest pasaba en verde con `tsc --noEmit` en rojo (TS2739). La compuerta se
+  corre ahora sin pipe.
+
+## Trampa evitada, vale anotarla
+
+La primera versión de la prueba de FISCAL-1 pasaba **antes** del arreglo: el
+fixture llevaba `empresaRfc: 'REC010101AA1'`, cuyo dígito verificador no cuadra,
+y eso disparaba `rfc_receptor_no_verificable` — que YA está en `POR_CONFIRMAR`.
+La prueba medía otra regla. Lo delató el caso de control, que también falló.
+Sin control, se habría commiteado una prueba que no probaba nada.
+
+## No arreglado, y por qué
+
+- **FE-2 (ALTO)** · el simulador `/demo` afirma "CFDI validado por QR ✅" y dos
+  burbujas después se desdice. Verificado contra `demo/page.tsx:38` y
+  `api/demo/route.ts:33-40`. **Razón: tope de 3 vueltas agotado.** Primer
+  candidato de la ronda 11.
+- **La causa de datos de FE-1** · el XML del seed trae `Cantidad="113.00"` y el
+  parser nunca la lee. El arreglo escribe en Supabase y aquí no hay base para
+  ejercer ese camino. Propuesto, no intentado a ciegas.
+
+## Cierre
+
+- `tablero.html` capturado en `tablero.png` y **mirado**: 12 rubros contados,
+  88/12 = 7.3 verificado contra el encabezado, cifras de la compuerta cotejadas
+  con la corrida real. La primera captura traía los conteos de severidad mal
+  (25 = 1+2+15+7); corregidos a 27 = 1+3+14+9 y recapturado.
+- `00-SINTESIS.md` y `RESULTADO.md` escritos.
