@@ -942,7 +942,31 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
       // Los litros los lee el OCR del ticket y viven en `ocrExtra` (el XML del
       // CFDI no siempre trae la cantidad desglosada por concepto).
       const litros = Number((g.ocrExtra as Record<string, unknown> | undefined)?.litros ?? 0);
-      const pagoElectronico = !!g.formaPago && g.formaPago !== '01';
+      // AUDITORÍA 10, ALTO (fiscal): esto era `!!g.formaPago && g.formaPago !==
+      // '01'` —la negación del efectivo—, que acepta los 30 códigos restantes
+      // del catálogo `c_FormaPago` cuando el comentario de arriba enumera una
+      // lista CERRADA de cuatro. El caso que importa no es exótico: `99` (Por
+      // definir) es el valor obligatorio en todo CFDI con `MetodoPago = PPD`, y
+      // una flota que compra diésel a crédito en la estación factura así.
+      // También entraban `12` (dación en pago), `17` (compensación), `23`
+      // (novación) y `30` (aplicación de anticipos) — ninguno es un medio de
+      // pago del 4º párrafo, y el contador multiplicaba esos litros por la
+      // cuota del DOF.
+      //
+      // OJO CON LA PROCEDENCIA: ninguna ficha de `normas/` transcribe ese 4º
+      // párrafo, así que esta lista sale del comentario de este archivo y no de
+      // una fuente que el repo pueda citar. Por eso se eligió el lado
+      // conservador —contar de menos, nunca de más— y por eso queda un hallazgo
+      // abierto para transcribir el párrafo en `lif-2026-20-A.yaml`.
+      const MEDIOS_LIF_20A: readonly string[] = [
+        '02', // cheque nominativo
+        '03', // transferencia electrónica de fondos
+        '04', // tarjeta de crédito
+        '05', // monedero electrónico
+        '28', // tarjeta de débito
+        '29', // tarjeta de servicios
+      ];
+      const pagoElectronico = !!g.formaPago && MEDIOS_LIF_20A.includes(g.formaPago);
       if (pagoElectronico && Number.isFinite(litros) && litros > 0) {
         // AUDITORÍA 8, CRÍTICO: los litros salen del OCR y nada los cotejaba —
         // ni contra el XML (no siempre trae la cantidad desglosada), ni contra
