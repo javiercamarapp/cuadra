@@ -609,7 +609,14 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
       : `${gastosSinPermisoCre.length} CFDI de combustible (${mxn(total)})`;
     diferencias.push({
       tipo: 'permiso_cre_no_verificable', concepto: 'diesel', monto: 0,
-      nota: `${sujeto} de combustible: LISR 27-III y RFA 2026 regla 2.9 exigen que conste el permiso CRE vigente del proveedor. El sistema todavía no lo valida — confírmalo con tu contador contra el CFDI.`,
+      // `sujeto` YA nombra el combustible en las dos ramas —«El CFDI de
+      // Combustible» y «2 CFDI de combustible ($8,000.00)»— y el predicado lo
+      // repetía: «El CFDI de Combustible DE COMBUSTIBLE: LISR 27-III…»
+      // (auditoría 10, MEDIO reincidente de frontend, verificado ejecutando el
+      // motor). La cadena nace aquí y viaja igual al panel, al PDF y a
+      // WhatsApp, así que arreglarla en la vista habría dejado las otras dos
+      // rotas y una cuarta copia de la frase.
+      nota: `${sujeto}: LISR 27-III y RFA 2026 regla 2.9 exigen que conste el permiso CRE vigente del proveedor. El sistema todavía no lo valida — confírmalo con tu contador contra el CFDI.`,
       gastoId: gastosSinPermisoCre.length === 1 ? gastosSinPermisoCre[0].id : undefined,
     });
   }
