@@ -1069,3 +1069,44 @@ begin
   raise exception E'OPERADOR_RLS_RESTO  terminal=%  operador=%  politica=%  conversacion=%  subio-su-tope=%   (esperado 0 / 0 / 0 / 0 / 0 — cualquier otra cosa es la fuga)',
     n_term, n_oper, n_pol, n_conv, n_upd;
 end $$;
+
+-- ── 28. Las policies del chofer filtran por tenant (mig. 0047) ───────────────
+--
+-- La 0045 escribió `using (operador_id = get_user_operador_id())` sin
+-- `tenant_id`. Este bloque monta exactamente el estado que ese hueco permitía:
+-- un viaje de la flota A apuntando a un chofer de la flota B —lo que
+-- `reasignarOperador` podía escribir antes de que validara la pertenencia— y
+-- comprueba que el chofer de B NO lo ve.
+--
+-- Esperado 0/0/0. Con la 0045 sola, daba 1/1/1.
+--
+-- ⚠️  NO SE HA CORRIDO. La 0047 se escribió sin base contra la cual ejercerla.
+do $$
+declare
+  v_ta uuid; v_tb uuid; v_ob uuid; v_v uuid; v_ub uuid := gen_random_uuid();
+  n_viaje int; n_gasto int; n_liq int;
+begin
+  insert into tenant (nombre) values ('ZZZ VERIF FLOTA A') returning id into v_ta;
+  insert into tenant (nombre) values ('ZZZ VERIF FLOTA B') returning id into v_tb;
+  insert into operador (tenant_id, nombre, telefono) values (v_tb, 'Chofer de B', '520000009050') returning id into v_ob;
+
+  -- El estado imposible: viaje de A apuntando al chofer de B.
+  insert into viaje (tenant_id, operador_id) values (v_ta, v_ob) returning id into v_v;
+  insert into gasto (tenant_id, viaje_id, concepto, monto) values (v_ta, v_v, 'diesel', 5000);
+  insert into liquidacion (tenant_id, viaje_id) values (v_ta, v_v);
+
+  insert into app_user (id, tenant_id, email, rol, operador_id)
+    values (v_ub, v_tb, 'zzz-verif-chofer-b@likida.test', 'operador', v_ob);
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_ub)::text, true);
+
+  select count(*) into n_viaje from viaje       where id = v_v;
+  select count(*) into n_gasto from gasto       where viaje_id = v_v;
+  select count(*) into n_liq   from liquidacion where viaje_id = v_v;
+
+  reset role;
+
+  raise exception E'OPERADOR_RLS_TENANT  viaje-ajeno=%  gastos-ajenos=%  liquidacion-ajena=%   (esperado 0 / 0 / 0 — con la 0045 sola daba 1/1/1)',
+    n_viaje, n_gasto, n_liq;
+end $$;
