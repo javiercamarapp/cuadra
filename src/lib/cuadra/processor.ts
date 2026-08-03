@@ -1067,7 +1067,31 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
             // ofrecer— y no un comprobante marcado como puesto que no está.
             const puestos: string[] = [];
             const tarde: string[] = [];
-            for (const h of ofrecidos) {
+            // EL BUCLE MIRA EL RELOJ (auditoría 10, MEDIO). `getHuerfanos` trae
+            // hasta 50 (`repo.ts:281`, `.limit(50)`) y aquí se emitían los 50
+            // `INSERT` en serie sin consultar el presupuesto ni una vez: techo
+            // teórico 50 × 9 500 = 475 000 ms, 3.96× la invocación completa. Con
+            // Supabase degradado a 2 s por insert son 100 s + lo previo, y Vercel
+            // corta a los 120 con los comprobantes a medio adjuntar y
+            // `resolverHuerfanos` SIN EJECUTAR: el operador dijo «sí», no recibió
+            // respuesta, y no sabe si sus comprobantes entraron.
+            //
+            // Parar a tiempo cambia eso por un turno que SÍ termina: los que
+            // entraron quedan resueltos, los que no siguen pendientes —se le
+            // vuelven a ofrecer, y `uq_gasto_img_hash` impide el duplicado— y se
+            // le dice cuántos faltaron. `presupuesto.ts:92-95` justifica el tope
+            // de consulta diciendo que la invocación sobrevive a TRES colgadas;
+            // aquí se podían emitir cincuenta.
+            let faltaron = 0;
+            for (const [i, h] of ofrecidos.entries()) {
+              if (!hayPresupuestoPara(reloj, techoPasoSupabaseMs(), 'addGasto de huérfano')) {
+                faltaron = ofrecidos.length - i;
+                logger.warn('huerfano.sin_presupuesto', {
+                  viaje: viajeId, tenant: op.tenantId,
+                  puestos: puestos.length, faltaron, de: ofrecidos.length,
+                });
+                break;
+              }
               try {
                 await addGasto(op.tenantId, viajeId, h.gasto);
                 puestos.push(h.id);
@@ -1111,6 +1135,12 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
             await say(ok.length
               ? mensajeAdjuntados(comoLista(ok), neto)
               : 'No pude agregarlos ⚙️. Siguen guardados: contéstame *sí* otra vez y lo intento.');
+            // Se le dice, en vez de dejarlo adivinando: los que faltaron NO se
+            // perdieron —siguen pendientes y se vuelven a ofrecer—, pero eso solo
+            // lo sabe él si alguien se lo cuenta.
+            if (faltaron > 0) {
+              await say(`Me faltaron *${faltaron} ${faltaron === 1 ? 'comprobante' : 'comprobantes'}* por agregar: se me acabó el tiempo de este turno ⏱️. No se perdieron — contéstame *sí* otra vez y sigo con esos.`);
+            }
             return;
           } finally {
             await releaseViajeLock(viajeId);
