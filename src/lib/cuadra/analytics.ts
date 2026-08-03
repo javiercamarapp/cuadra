@@ -40,7 +40,12 @@ const PAGINA = 1_000;
  *  en SQL, no más vueltas: se corta y se dice, en vez de colgar el turno. */
 const MAX_PAGINAS = 100;
 
-async function traerTodo<T>(
+/**
+ * Exportada desde la auditoría 10 (ALTO de backend): el export a CSV la
+ * necesita. Era privada, y por eso el único camino de datos hacia el ERP del
+ * cliente seguía pidiendo `.limit(5000)` contra un techo de servidor de 1,000.
+ */
+export async function traerTodo<T>(
   construir: (desde: number, hasta: number) => PromiseLike<RespuestaPg<T[]>>,
   consulta: string,
 ): Promise<T[]> {

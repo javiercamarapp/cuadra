@@ -57,6 +57,10 @@ function clienteFalso() {
   const q: Record<string, unknown> = {};
   q.select = () => q; q.eq = () => q; q.order = () => q;
   q.limit = () => Promise.resolve(csv);
+  // El CSV pagina con `range` desde el arreglo del recorte silencioso de
+  // PostgREST: la primera página trae la fila, la segunda viene vacía y cierra.
+  let pagina = 0;
+  q.range = () => Promise.resolve(pagina++ === 0 ? csv : { data: [], error: null });
   q.maybeSingle = () => Promise.resolve(pdf);
   return {
     from: () => q,
