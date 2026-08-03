@@ -12,7 +12,7 @@
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { logger } from '@/lib/logger';
-import { generateStructured, StructuredError, TruncatedError } from '@/lib/llm/openrouter';
+import { generateStructured, StructuredError, TruncatedError, type UsoPorModelo } from '@/lib/llm/openrouter';
 import { decodeCodigosFromImage, bufferFromDataUrl, esRfcValido, esUuidValido, rfcChecksumOk } from './cfdi';
 import { normalizarFecha } from './fecha';
 import { sanitizarFolio, sanitizarTexto, sanitizarProducto } from './sanitizar';
@@ -205,6 +205,20 @@ export interface ExtraerResultado {
   motivo?: MotivoFallo;
   // Costo de la llamada de visión (para el contador por liquidación).
   costo: { modelo: string; tokensIn: number; tokensOut: number; costoUsd: number };
+  /**
+   * EL DESGLOSE REAL, no solo el acumulado (auditoría 10 — consumo de la
+   * atribución de costo).
+   *
+   * `costo.modelo` es UN modelo, y una extracción puede haber corrido en dos:
+   * el gateway cae al `FALLBACK` cuando el primero falla, y cobra cada intento
+   * al precio del modelo que respondió. Con un solo campo, el gasto del
+   * fallback se facturaba al slug equivocado en `/admin`.
+   *
+   * Opcional: vacío o ausente cuando el gateway no lo emitió (o cuando una
+   * prueba arma el resultado a mano), y el escritor cae entonces a `costo`, que
+   * es el comportamiento de siempre.
+   */
+  porModelo?: UsoPorModelo[];
 }
 
 /**
@@ -277,6 +291,13 @@ export async function extraerComprobante(
       gasto: { id: randomUUID(), concepto: 'otro', monto: 0, ocrConfianza: 0 },
       legible: false,
       motivo: 'fallo_tecnico',
+      // `'ocr'` era el último recurso cuando el error no traía modelo. Ya no
+      // hace falta casi nunca: `StructuredError.usage` carga `model` Y
+      // `porModelo`, así que la llamada que se cobró aunque no sirviera se
+      // atribuye al proveedor que la cobró. `'ocr'` no es un slug: es el nombre
+      // de la FASE, y colarlo en la columna `modelo` lo pintaba en «Costo por
+      // modelo» de `/admin` como si fuera un proveedor.
+      porModelo: u?.porModelo ?? [],
       costo: {
         modelo: u?.model ?? 'ocr',
         tokensIn: u?.tokensIn ?? 0,
@@ -467,6 +488,7 @@ export async function extraerComprobante(
     // dijo qué clase de documento es, mientras que `solo_codigo` solo observa
     // que el cuerpo no dio monto, que es lo que le pasa a un voucher.
     motivo: legible ? undefined : soloPago ? 'solo_pago' : soloCodigo ? 'solo_codigo' : 'ilegible',
+    porModelo: res.porModelo ?? [],
     costo: { modelo: res.model, tokensIn: res.tokensIn, tokensOut: res.tokensOut, costoUsd: res.cost },
   };
 }

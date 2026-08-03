@@ -46,7 +46,7 @@ import {
   acquireViajeLock, releaseViajeLock, releaseMessageClaim,
   intakeDelta, esperarIntake, ConsultaFallida, OperadorAmbiguo, type ConvTurn,
 } from '@/lib/cuadra/conv';
-import { registrarCosto, registrarCostoWhatsApp, faseDeModelo, vincularCostosALiquidacion } from '@/lib/cuadra/costos';
+import { registrarCostoDesglosado, registrarCostoWhatsApp, vincularCostosALiquidacion } from '@/lib/cuadra/costos';
 import { sendText, sendDocument, downloadMediaAsDataUrl, downloadMediaAsText } from '@/lib/meta/client';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
@@ -328,7 +328,7 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
           const imgHash = await hashImagen(dataUrl);
           const ruta = await subirComprobante(op.tenantId, 'sin-viaje', imgHash, dataUrl);
           const ex = await extraerComprobante(dataUrl, reloj.senal(TECHO_OCR_MS));
-          await registrarCosto({ tenantId: op.tenantId, viajeId: null, fase: 'ocr', modelo: ex.costo.modelo, tokensIn: ex.costo.tokensIn, tokensOut: ex.costo.tokensOut, costoUsd: ex.costo.costoUsd });
+          await registrarCostoDesglosado({ tenantId: op.tenantId, viajeId: null, fase: 'ocr' }, { model: ex.costo.modelo, tokensIn: ex.costo.tokensIn, tokensOut: ex.costo.tokensOut, cost: ex.costo.costoUsd, porModelo: ex.porModelo });
           // Ilegible: se le pide otra ANTES de guardar algo que no se puede usar.
           if (!ex.legible && ex.motivo !== 'solo_codigo' && ex.motivo !== 'solo_pago') {
             await sendText(msg.from, 'Esa foto salió difícil de leer 🔍. ¿Me la reenvías con buena luz y completo el ticket?');
@@ -527,7 +527,7 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
         // pagar su propia visión, como antes de la auditoría 8.
         const extraccion = await extraerComprobante(dataUrl, reloj.senal(TECHO_OCR_MS));
         const { gasto, costo } = extraccion;
-        await registrarCosto({ tenantId: op.tenantId, viajeId, fase: 'ocr', modelo: costo.modelo, tokensIn: costo.tokensIn, tokensOut: costo.tokensOut, costoUsd: costo.costoUsd });
+        await registrarCostoDesglosado({ tenantId: op.tenantId, viajeId, fase: 'ocr' }, { model: costo.modelo, tokensIn: costo.tokensIn, tokensOut: costo.tokensOut, cost: costo.costoUsd, porModelo: extraccion.porModelo });
 
         // Los gastos ya registrados se leen para EMPAREJAR: el acercamiento del
         // protocolo de dos fotos y el voucher de la terminal — y, desde el
@@ -1292,7 +1292,7 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
       // aquí deja además al operador sin resumen y sin PDF sobre una liquidación
       // ya cerrada, que es peor y no se puede reparar por reintento.
       if (hayPresupuestoPara(reloj, techoPasoSupabaseMs(), 'registrarCosto del turno')) {
-        await registrarCosto({ tenantId: op.tenantId, viajeId, fase: faseDeModelo(res.model, 'cuadre'), modelo: res.model, tokensIn: res.tokensIn, tokensOut: res.tokensOut, costoUsd: res.costUsd });
+        await registrarCostoDesglosado({ tenantId: op.tenantId, viajeId, fase: 'cuadre' }, { model: res.model, tokensIn: res.tokensIn, tokensOut: res.tokensOut, cost: res.costUsd, porModelo: res.porModelo });
       }
       if (closed) {
         const call = res.toolCalls.find((t) => t.toolName === 'guardar_liquidacion' && !t.error);
@@ -1322,10 +1322,16 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
       // cierre no se pueda recuperar: el dinero se fue de todos modos.
       if (e instanceof PartialExecutionError && (e.tokensIn > 0 || e.tokensOut > 0)) {
         try {
-          await registrarCosto({
-            tenantId: op.tenantId, viajeId, fase: faseDeModelo('', 'cuadre'),
-            modelo: 'parcial', tokensIn: e.tokensIn, tokensOut: e.tokensOut, costoUsd: e.cost,
-          });
+          // `modelo: 'parcial'` era una constante que ningún proveedor facturó
+          // nunca, escrita en la rama que MÁS tokens consume y agrupada en
+          // `/admin` junto a los slugs reales bajo «Costo por modelo».
+          // `PartialExecutionError` carga `model` y `porModelo` desde la ronda
+          // 10 del gateway: lo que se gastó antes de caerse se atribuye a quien
+          // lo cobró.
+          await registrarCostoDesglosado(
+            { tenantId: op.tenantId, viajeId, fase: 'cuadre' },
+            { model: e.model, tokensIn: e.tokensIn, tokensOut: e.tokensOut, cost: e.cost, porModelo: e.porModelo },
+          );
         } catch (err2) {
           logger.error('agent.costo_parcial_no_registrado', { viaje: viajeId, err: err2 instanceof Error ? err2.message : String(err2) });
         }

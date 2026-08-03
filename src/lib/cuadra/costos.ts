@@ -145,6 +145,46 @@ export async function registrarCosto(c: CostoLLM): Promise<void> {
 }
 
 /**
+ * UNA FILA POR MODELO QUE DE VERDAD CORRIÓ. (auditoría 10 — consumo de la
+ * atribución de costo)
+ *
+ * El gateway ya emite `porModelo` (`UsoPorModelo[]`, con `Σ porModelo == total`)
+ * porque un solo turno puede haber corrido en DOS modelos: el ciclo de tools
+ * cambia de proveedor cuando el primero falla (`FALLBACK` en openrouter.ts), y
+ * el costo de cada ronda se calcula al precio del modelo que respondió ESA
+ * ronda. Quien escribía la fila cogía solo el acumulado y lo etiquetaba con UN
+ * modelo —el último—, así que en `/admin` el gasto del fallback aparecía
+ * facturado al slug equivocado. Sonnet 5 y GPT-5.6-terra no cuestan lo mismo, y
+ * la pantalla de la que sale el precio del producto es esa.
+ *
+ * Si no hay desglose se escribe una sola fila con el modelo del acumulado — el
+ * comportamiento de siempre, para los caminos que aún no lo emiten.
+ *
+ * La FASE se deriva por fila (`faseDeModelo`), no una vez para todas: si una
+ * ronda escaló a un modelo más caro, esa fila es la que tiene que decirlo.
+ */
+export async function registrarCostoDesglosado(
+  base: { tenantId: string; viajeId?: string | null; liquidacionId?: string | null; fase: FaseCosto },
+  uso: {
+    model?: string;
+    tokensIn: number; tokensOut: number; cost: number;
+    porModelo?: ReadonlyArray<{ model: string; tokensIn: number; tokensOut: number; cost: number }>;
+  },
+): Promise<void> {
+  const desglose = uso.porModelo?.length
+    ? uso.porModelo
+    : [{ model: uso.model ?? '', tokensIn: uso.tokensIn, tokensOut: uso.tokensOut, cost: uso.cost }];
+  for (const u of desglose) {
+    await registrarCosto({
+      ...base,
+      fase: faseDeModelo(u.model, base.fase),
+      modelo: u.model,
+      tokensIn: u.tokensIn, tokensOut: u.tokensOut, costoUsd: u.cost,
+    });
+  }
+}
+
+/**
  * La línea del costo perdido. Lleva tenant, viaje, fase, modelo y monto porque
  * sin ellos solo se sabe que "algo" no se registró: no cuánto se dejó de contar
  * ni de qué flota, que es lo único con lo que se puede corregir la cifra a mano.

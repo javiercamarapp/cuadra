@@ -56,7 +56,7 @@ vi.mock('@/lib/cuadra/repo', () => ({
   getAcumuladoCombustible: vi.fn(async () => { throw new Error('sin base en pruebas'); }),
 }));
 vi.mock('@/lib/cuadra/costos', () => ({
-  registrarCosto: vi.fn(), registrarCostoWhatsApp: vi.fn(),
+  registrarCosto: vi.fn(), registrarCostoDesglosado: vi.fn(), registrarCostoWhatsApp: vi.fn(),
   faseDeModelo: vi.fn(() => 'cuadre'), vincularCostosALiquidacion: vi.fn(),
 }));
 vi.mock('@/lib/meta/client', async (original) => ({
