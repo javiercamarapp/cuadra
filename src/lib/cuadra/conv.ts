@@ -289,7 +289,19 @@ export async function acquireViajeLock(viajeId: string, opts?: { ttlMs?: number;
   let delay = 150;
   let ultimoError: { code?: string; message?: string } | null = null;
   for (;;) {
-    const { data, error } = await admin.rpc('try_lock_viaje', { p_viaje: viajeId, p_ttl_ms: ttlMs });
+    // CADA VUELTA LLEVA TECHO, no solo la construcción del cliente (auditoría 10,
+    // ALTO reincidente). `admin` se hoistea fuera del bucle, así que este `rpc`
+    // no aparecía en el conteo de `await supabaseAdmin()` que la ronda 9 usó para
+    // declarar cerrado el ALTO de la 8: un solo sitio contado alimentaba un
+    // número ilimitado de llamadas sin acotar, y sin acotar el techo es el
+    // default de undici, 300 000 ms contra un `maxDuration` de 120 000.
+    //
+    // Con `acotada` el peor caso del mutex pasa a ser `maxWaitMs` + un intento:
+    // 12 000 + (TOPE_CONSULTA_MS 8 000 + GRACIA 1 500) = 21 500 ms. El
+    // vencimiento se sigue comprobando DESPUÉS del `await` —un intento en vuelo
+    // no se puede cancelar a media ventana— pero ese "después" ya no es
+    // ilimitado.
+    const { data, error } = await acotada(admin.rpc('try_lock_viaje', { p_viaje: viajeId, p_ttl_ms: ttlMs }), 'acquireViajeLock');
     if (!error && data === true) return true;
     if (error) {
       ultimoError = error;
