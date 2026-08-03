@@ -40,6 +40,24 @@ import { huellaId, redactarTexto } from '@/lib/logger';
 import { traerTodo } from '@/lib/cuadra/analytics';
 import { acotada } from '@/lib/cuadra/presupuesto';
 
+/**
+ * ¿Ese valor de `llm_costo.modelo` es un modelo o una etiqueta nuestra?
+ *
+ * La columna guarda las dos cosas. Los modelos entran como slug de OpenRouter,
+ * `proveedor/modelo` — es la misma llave con la que `openrouter.ts` indexa
+ * `PRICES` y `FALLBACK`, así que la barra no es una convención de esta pantalla:
+ * es la forma que ya tiene el dato en todo el repo. Lo que no la lleva es
+ * nuestro (`whatsapp-utility`).
+ *
+ * Se clasifica por FORMA y no por lista blanca a propósito: una lista se queda
+ * vieja el día que se enchufa un proveedor nuevo, y ese día el modelo nuevo
+ * desaparecería de la pantalla sin que nada fallara — que es exactamente el modo
+ * de fallo que este archivo ya pagó una vez con el recorte silencioso.
+ */
+function esSlugDeProveedor(modelo: string): boolean {
+  return modelo.includes('/');
+}
+
 export interface ResumenNegocio {
   tenants: number;
   flotas: Array<{ id: string; nombre: string; plan: string; viajes: number; costoIaUsd: number }>;
@@ -48,7 +66,14 @@ export interface ResumenNegocio {
   tokensIn: number;
   tokensOut: number;
   porFase: Array<{ fase: string; n: number; costoUsd: number }>;
+  /** SOLO slugs de proveedor (`proveedor/modelo`). Ver `esSlugDeProveedor`. */
   porModelo: Array<{ modelo: string; n: number; costoUsd: number }>;
+  /**
+   * Lo que `llm_costo.modelo` guarda y NO es un modelo: etiquetas internas
+   * nuestras. Hoy solo `whatsapp-utility` —el precio por mensaje saliente de
+   * Meta (`costos.ts:87`)—, que no es una llamada a ningún LLM.
+   */
+  porServicio: Array<{ servicio: string; n: number; costoUsd: number }>;
   porDia: Array<{ dia: string; costoUsd: number; tokens: number }>;
   /** Facturas (filas de `gasto` — cada una es un comprobante que pasó por
    *  OCR/CFDI) procesadas por día, últimos 7 días — siempre las 7 fechas,
@@ -95,6 +120,7 @@ export async function getResumenNegocio(hoy: string = new Date().toISOString().s
   ]);
   const porFaseMap = new Map<string, { n: number; costoUsd: number }>();
   const porModeloMap = new Map<string, { n: number; costoUsd: number }>();
+  const porServicioMap = new Map<string, { n: number; costoUsd: number }>();
   const porDiaMap = new Map<string, { costoUsd: number; tokens: number }>();
   const costoPorTenant = new Map<string, number>();
   let costoIaUsd = 0, tokensIn = 0, tokensOut = 0;
@@ -110,9 +136,15 @@ export async function getResumenNegocio(hoy: string = new Date().toISOString().s
     fase.n += 1; fase.costoUsd += costo;
     porFaseMap.set(f.fase, fase);
 
-    const modelo = porModeloMap.get(f.modelo) ?? { n: 0, costoUsd: 0 };
+    // UN SLUG DE PROVEEDOR NO ES UNA ETIQUETA INTERNA. `llm_costo.modelo`
+    // guarda las dos cosas, y agruparlas en crudo ponía `whatsapp-utility`
+    // —el precio por mensaje de Meta— bajo «Costo por modelo» de `/admin`, con
+    // icono de proveedor, y bajo «Proveedores de modelos (LLM)» de
+    // `/admin/integraciones`. Meta no vende modelos.
+    const destino = esSlugDeProveedor(f.modelo) ? porModeloMap : porServicioMap;
+    const modelo = destino.get(f.modelo) ?? { n: 0, costoUsd: 0 };
     modelo.n += 1; modelo.costoUsd += costo;
-    porModeloMap.set(f.modelo, modelo);
+    destino.set(f.modelo, modelo);
 
     // `created_at` es UTC; el corte por día aquí es aproximado a propósito
     // (no es un dato fiscal, es una gráfica de tendencia) — el mismo criterio
@@ -128,6 +160,9 @@ export async function getResumenNegocio(hoy: string = new Date().toISOString().s
     .sort((a, b) => b.costoUsd - a.costoUsd);
   const porModelo = [...porModeloMap.entries()]
     .map(([modelo, v]) => ({ modelo, n: v.n, costoUsd: round2(v.costoUsd) }))
+    .sort((a, b) => b.costoUsd - a.costoUsd);
+  const porServicio = [...porServicioMap.entries()]
+    .map(([servicio, v]) => ({ servicio, n: v.n, costoUsd: round2(v.costoUsd) }))
     .sort((a, b) => b.costoUsd - a.costoUsd);
   const porDia = [...porDiaMap.entries()]
     .map(([dia, v]) => ({ dia, costoUsd: round2(v.costoUsd), tokens: v.tokens }))
@@ -182,6 +217,7 @@ export async function getResumenNegocio(hoy: string = new Date().toISOString().s
     tokensOut,
     porFase,
     porModelo,
+    porServicio,
     porDia,
     facturasPorDia,
     facturasTotal: gastos.length,
@@ -207,6 +243,10 @@ export async function getCostoPorFaseModelo(): Promise<CostoPorFaseModelo[]> {
     'getCostoPorFaseModelo');
   const map = new Map<string, { fase: string; modelo: string; n: number; costoUsd: number }>();
   for (const f of data) {
+    // Mismo criterio que `getResumenNegocio`: esto alimenta Model Ops y Agente
+    // OCR, dos pantallas que preguntan «¿qué MODELO corrió dentro de esta
+    // fase?». `whatsapp-utility` no responde esa pregunta.
+    if (!esSlugDeProveedor(f.modelo)) continue;
     const key = `${f.fase}::${f.modelo}`;
     const cur = map.get(key) ?? { fase: f.fase, modelo: f.modelo, n: 0, costoUsd: 0 };
     cur.n += 1;

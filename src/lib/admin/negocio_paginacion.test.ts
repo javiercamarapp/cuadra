@@ -144,3 +144,65 @@ describe('y ninguna de esas consultas se queda sin techo', () => {
     expect(acotadas, `${clientes} supabaseAdmin() y solo ${acotadas} acotada(`).toBeGreaterThanOrEqual(clientes);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// «COSTO POR MODELO» AGRUPABA `llm_costo.modelo` EN CRUDO, Y ESA COLUMNA GUARDA
+// DOS COSAS DISTINTAS. (auditoría 10 — consumo de la atribución de costo)
+//
+// Unas filas traen un SLUG DE PROVEEDOR (`google/gemini-3.6-flash`,
+// `anthropic/claude-sonnet-5`) y otras una ETIQUETA INTERNA que ningún
+// proveedor de modelos facturó nunca: `whatsapp-utility` es el precio por
+// mensaje saliente de Meta (`costos.ts:87`), no una llamada a un LLM.
+//
+// `/admin` las pintaba juntas bajo «Costo por modelo», con icono de proveedor y
+// en fuente monoespaciada, y `/admin/integraciones` bajo «Proveedores de modelos
+// (LLM) — los modelos reales que corrieron OCR y Cuadre». En la pantalla desde
+// la que se fija el precio del producto, Meta aparecía como proveedor de LLM.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('un slug de proveedor no es lo mismo que una etiqueta interna', () => {
+  beforeEach(() => { tablas.clear(); rangos.clear(); conSenal.clear(); });
+
+  const fila = (modelo: string, fase: string, costo: number) => ({
+    tenant_id: 't1', fase, modelo, tokens_in: 10, tokens_out: 2,
+    costo_usd: costo, created_at: '2026-08-01T10:00:00Z',
+  });
+
+  it('«Costo por modelo» solo lista modelos de verdad', async () => {
+    tablas.set('llm_costo', [
+      fila('google/gemini-3.6-flash', 'ocr', 0.015),
+      fila('whatsapp-utility', 'whatsapp', 0.008),
+      fila('whatsapp-utility', 'whatsapp', 0.008),
+    ]);
+    const r = await getResumenNegocio('2026-08-02');
+    expect(r.porModelo.map((m) => m.modelo)).toEqual(['google/gemini-3.6-flash']);
+  });
+
+  it('y la etiqueta interna no se pierde: se agrupa aparte', async () => {
+    tablas.set('llm_costo', [
+      fila('google/gemini-3.6-flash', 'ocr', 0.015),
+      fila('whatsapp-utility', 'whatsapp', 0.008),
+      fila('whatsapp-utility', 'whatsapp', 0.008),
+    ]);
+    const r = await getResumenNegocio('2026-08-02');
+    expect(r.porServicio).toEqual([{ servicio: 'whatsapp-utility', n: 2, costoUsd: 0.02 }]);
+  });
+
+  it('los totales no se tocan: lo que cambia es el agrupado, no la suma', async () => {
+    tablas.set('llm_costo', [
+      fila('google/gemini-3.6-flash', 'ocr', 0.015),
+      fila('whatsapp-utility', 'whatsapp', 0.008),
+    ]);
+    const r = await getResumenNegocio('2026-08-02');
+    expect(r.costoIaUsd).toBe(0.02);
+    expect(r.porFase.map((f) => f.fase).sort()).toEqual(['ocr', 'whatsapp']);
+  });
+
+  it('`getCostoPorFaseModelo` (Model Ops / Agente OCR) aplica el mismo criterio', async () => {
+    tablas.set('llm_costo', [
+      { fase: 'ocr', modelo: 'google/gemini-3.6-flash', costo_usd: 0.015 },
+      { fase: 'whatsapp', modelo: 'whatsapp-utility', costo_usd: 0.008 },
+    ]);
+    const r = await getCostoPorFaseModelo();
+    expect(r.map((x) => x.modelo)).toEqual(['google/gemini-3.6-flash']);
+  });
+});

@@ -87,7 +87,10 @@ describe('getResumenNegocio', () => {
     const r = await getResumenNegocio('2026-08-02');
     expect(r).toEqual({
       tenants: 0, flotas: [], viajesProcesados: 0, costoIaUsd: 0, tokensIn: 0, tokensOut: 0,
-      porFase: [], porModelo: [], porDia: [],
+      // `porServicio` desde la auditoría 10: `llm_costo.modelo` guarda slugs de
+      // proveedor Y etiquetas internas nuestras, y agruparlas juntas ponía
+      // `whatsapp-utility` bajo «Costo por modelo».
+      porFase: [], porModelo: [], porServicio: [], porDia: [],
       facturasPorDia: [
         { dia: '2026-07-27', n: 0 }, { dia: '2026-07-28', n: 0 }, { dia: '2026-07-29', n: 0 },
         { dia: '2026-07-30', n: 0 }, { dia: '2026-07-31', n: 0 },
