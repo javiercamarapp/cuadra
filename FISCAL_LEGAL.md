@@ -139,10 +139,32 @@ la persona titular."*
 Los gastos, los comprobantes y los datos fiscales de la flota son patrimoniales.
 No basta el consentimiento tácito: hace falta un acto afirmativo.
 
-### 2.3 Mandar la foto a un modelo de IA es una transferencia
+### 2.3 Mandar la foto a un modelo de IA no es una transferencia, pero sí es una subcontratación
 
 Likida manda la imagen del comprobante a OpenRouter/Gemini. Eso es tratamiento
 por un tercero y hay que declararlo en el aviso de privacidad.
+
+Lo que **no** es: el **art. 2 fr. XX** define transferencia como la comunicación
+de datos a persona *"distinta de la titular, del responsable o de la **persona
+encargada** del tratamiento"*, así que mandarle datos a quien los trata por
+cuenta del responsable queda excluido por la propia definición legal. El
+**art. 35** lo confirma al hablar de terceros *"distintos de la persona
+encargada"*. La cadena real: la FLOTA es responsable, LIKIDA es persona
+encargada, OPENROUTER es a quien Likida contrata, y Google/Anthropic/OpenAI
+están debajo de OpenRouter.
+
+Consecuencia práctica: **no hace falta el consentimiento del titular por esta
+vía**, ni la cláusula de transferencias del art. 35 para estos proveedores. Lo
+que sí hace falta es el pendiente contractual — que el contrato con la flota
+autorice la subcontratación, y que el de OpenRouter cubra su propia cadena.
+
+> Fuente de verdad de este párrafo: `normas/lfpdppp-2-XII-XX.yaml`, verificada
+> contra el texto vigente en diputados.gob.mx. Esa ficha **corrige** el análisis
+> que antes encabezaba esta sección —que calificaba el envío de transferencia— y
+> también la vía por la que se sostenía: la figura de *remisión* no aparece ni
+> una vez en la ley vigente. Venía del Reglamento de la ley abrogada, y citarla
+> ante un cliente es citar derecho derogado. Ojo con el término: la ley vigente
+> dice "persona encargada", no "encargado".
 
 El **art. 52 del Reglamento** pone condiciones para usar cómputo en la nube. El
 proveedor debe, al menos:
