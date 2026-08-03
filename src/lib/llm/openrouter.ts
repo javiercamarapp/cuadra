@@ -59,6 +59,19 @@ const FALLBACK: Record<string, string> = {
 };
 
 export function isTransientError(err: unknown): boolean {
+  // ESTO CLASIFICA FALLOS DEL TRANSPORTE, Y HAY DOS QUE NUNCA LO SON.
+  //
+  // `StructuredError` (y su hija `TruncatedError`) las fabricamos NOSOTROS
+  // DESPUÉS de que el proveedor respondió bien, y `SyntaxError` sale de nuestro
+  // `JSON.parse`. Clasificarlos por texto era un falso positivo real: el mensaje
+  // del `SyntaxError` lleva el offset ("Unterminated string in JSON at position
+  // 536"), la regex de tres dígitos lo leía como código de estado, y cualquier
+  // JSON de OCR roto en un offset de 500-599 —o 408, 429, 502-504— disparaba una
+  // llamada de visión completa contra el fallback, que iba a fallar por lo
+  // mismo. Un ticket produce ~500 bytes de JSON: la ventana no es exótica. Y
+  // dejaba en el log un `llm.fallback` diciendo "proveedor caído" con el
+  // proveedor sano.
+  if (err instanceof StructuredError || err instanceof SyntaxError) return false;
   // POR TIPO ANTES QUE POR TEXTO. El SDK de OpenAI aplasta CUALQUIER fallo de
   // conexión —DNS, TCP rechazado, TLS, `fetch failed` de undici— en un
   // `APIConnectionError` con el mensaje literal "Connection error."; el detalle
