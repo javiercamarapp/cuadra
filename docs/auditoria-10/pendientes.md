@@ -31,38 +31,68 @@ Línea base al arrancar la ronda: 173 archivos / 1629 pruebas.
 el código antes de tocar nada, y los siete reportaron lo mismo. En la auditoría
 2, uno resultó falso: esa era la vara.
 
-## LO QUE HAY QUE HACER ANTES DEL 6-AGO
+## EL SQL YA SE CORRIÓ — 3-ago-2026
 
-Esto no lo cierra ninguna prueba de este repo.
+`./scripts/verificar-sql.sh` arma un PostgreSQL 16 local con
+`supabase/andamiaje_local.sql` (los roles de PostgREST, `auth.uid()`,
+`auth.users`, `storage.buckets` — lo que la plataforma pone y el repo no),
+aplica las 53 migraciones y corre los 34 bloques.
 
-### 1. Correr los bloques de `supabase/verificaciones.sql`
+**Las 53 migraciones aplican limpias, incluidas las 8 escritas a ciegas
+(`0046`–`0053`).** **28 de 34 bloques dan veredicto.**
 
-**Ocho migraciones nuevas (`0046`–`0053`) están escritas y NUNCA ejercidas.**
-Aquí no hay base de datos. Sus arneses de TypeScript comprueban propiedades
-**estructurales del SQL** —y cada uno lo declara en su cabecera—, no que la
-policy funcione.
+### Las tres migraciones de RLS quedan VERIFICADAS
 
-De los 34 bloques del archivo, **solo 9 tienen salida real copiada. 24 están
-escritos y nunca se han corrido**, entre ellos:
+| Bloque | Migración | Salida real | Esperado |
+|:--:|---|---|:--:|
+| 26 | `0045` | `viajes=1 gastos=1 liquidaciones=1 viaje-ajeno=0` | ✅ |
+| 27 | `0046` | `terminal=0 operador=0 politica=0 conversacion=0 subio-su-tope=0` | ✅ |
+| 29 | `0048` | `ve=1 actualizo=0 borro=0` | ✅ |
 
-- **26** — el chofer no ve el dinero de toda la flota
-- **29** — el contador lee y no escribe
-- **31** — la cuenta del chofer no puede apuntar a otra flota
+El chofer no puede subirse su propio tope de gasto y el contador no puede
+borrar una liquidación. Eso ya no es una promesa: es una medición.
 
-La `0053` además toca el esquema `auth`: **puede responder `42501` y quedarse
-sin aplicar** en mitad de un `db push`.
+### ⚠️ HALLAZGO NUEVO, salido de correrlo
 
-### 2. Ejecutar lo que no admite prueba automática
-- `scripts/crear-superadmin.mjs` (sus dos guardas y la sintaxis sí se
-  verificaron; el camino feliz no).
-- El procedimiento del runbook contra el proyecto real de Supabase.
+**`try_lock_viaje` y `unlock_viaje` son ejecutables por `anon`.** Los bloques
+16 y 18 lo dicen por separado:
 
-### 3. Decidir lo que es del responsable, no de Likida
-- **Ampliar el aviso para cubrir el correo del chofer**, o quitar el rol
-  `operador` del alta. El texto exacto de las tres líneas está en `legal.md`.
-- **Si Likida ve transcripciones de WhatsApp** siendo persona encargada. Ya no
-  identifican al operador (`5b43fd8`); el resto es decisión de producto y de
-  aviso.
+```
+16  PERMISOS  anon-lock=t  anon-unlock=t   (esperado f / f)
+18  AISLAMIENTO  rpc-abiertas-a-anon=try_lock_viaje, unlock_viaje
+```
+
+PostgREST expone las funciones de `public` en `/rest/v1/rpc/…`. Con la anon key
+—que viaja en el navegador— cualquiera puede tomar o soltar el mutex de
+CUALQUIER viaje. Tomarlo bloquea el cierre de esa liquidación; soltarlo abre la
+puerta a la doble liquidación que la 0005 existe para cerrar. **No requiere
+sesión.** Los dos bloques lo declaraban esperado en `f` y nadie los había
+corrido.
+
+### Los 3 bloques que aún no llegan a medir
+
+- **28** — `[23503] viaje_operador_tenant_fkey`. El bloque monta un viaje de la
+  flota A apuntando a un chofer de la B, y **la FK compuesta de la 0028 ya lo
+  impide**. Es decir: el escenario del ALTO de backend era **imposible a nivel
+  de base** desde antes. La mitad del hallazgo que sí era real —el `UPDATE` sin
+  mirar filas afectadas— quedó cerrada en `d6ba851`; la migración `0047` es
+  defensa en profundidad sobre una puerta ya cerrada, no el cierre.
+- **31** — `[23514] app_user_operador_id_coherente`. El CHECK de la 0051 salta
+  durante el ARMADO del bloque. Hay que reescribirlo con manejador de excepción.
+- **23** — `[42P01] relation "_res" does not exist`. El bloque usa una CTE entre
+  sentencias, que no sobrevive.
+- **32** dio `completo=0` donde esperaba `1`: revisar si es la migración o el
+  armado del bloque.
+
+## LO QUE SIGUE SIN PODERSE HACER AQUÍ
+
+- **Correr esto contra Supabase de verdad.** El andamiaje no es GoTrue ni
+  PostgREST. Los bloques que tocan `auth` o `storage` hay que repetirlos allá.
+- **Ejecutar `scripts/crear-superadmin.mjs`** y el procedimiento del runbook
+  contra el proyecto real.
+- **Decidir lo que es del responsable, no de Likida**: ampliar el aviso para
+  cubrir el correo del chofer (o quitar el rol `operador` del alta), y si Likida
+  ve transcripciones de WhatsApp siendo persona encargada.
 
 ## Lo que se descartó a propósito, con razón escrita
 
