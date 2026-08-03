@@ -8,17 +8,17 @@ subió (frontend, 5 → 6).
 105 hallazgos verificados: 13 CRÍTICOS (10 distintos por causa raíz) · 30 ALTOS
 · 38 MEDIOS · 27 BAJOS. CERO FALSOS.
 
-CERRADOS CON PRUEBA QUE LOS REPRODUCE: 48.
+CERRADOS CON PRUEBA QUE LOS REPRODUCE: 50, en 49 commits de arreglo.
 - 8 de los 10 críticos distintos (2 a medias, con razón)
-- 19 de 30 altos · 13 de 38 medios · 8 de 27 bajos
+- 17 de 30 altos · 14 de 38 medios · 11 de 27 bajos
 
 Se trabajó en tres tandas: los 3 críticos de la corrida desatendida, los 7
 restantes a mano, y CINCO AGENTES EXPERTOS EN PARALELO sobre los no críticos,
-uno por dominio de archivos disjunto. Los cinco reportaron cero falsos.
+uno por dominio de archivos disjunto. Los cinco reportaron cero falsos. Tool calling cerró 13 de 13.
 
-Compuerta sobre el árbol final: vitest 200 archivos / 1836 pruebas / 1 saltada
+Compuerta sobre el árbol final: vitest 205 archivos / 1854 pruebas / 1 saltada
 / exit 0 · tsc exit 0 · lint exit 0 · árbol limpio. Sin `npm run build` (nube).
-Línea base al arrancar: 173 archivos / 1629 pruebas. +27 archivos, +207 pruebas.
+Línea base al arrancar: 173 archivos / 1629 pruebas. +32 archivos, +225 pruebas.
 
 REQUIERE ACCIÓN HUMANA ANTES DEL 6-AGO:
 1. Correr los bloques 27, 28 y 29 de supabase/verificaciones.sql. Las

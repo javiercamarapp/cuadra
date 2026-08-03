@@ -172,9 +172,9 @@
       <thead><tr><th>Severidad</th><th class="num">Halladas</th><th class="num">Cerradas</th><th class="num">Falsas</th><th>Lo que queda</th></tr></thead>
       <tbody>
         <tr><td><span class="sev crit">CRÍTICO</span></td><td class="num">13<br><span style="font-size:10px;font-weight:400;color:var(--muted)">10 distintos</span></td><td class="num up">8<br><span style="font-size:10px;font-weight:400;color:var(--muted)">de 10</span></td><td class="num">0</td><td>2 a medias: 1 decisión de producto · 1 migración sin verificar contra base. Los 13 que levantaron los auditores consolidan en 10 por causa raíz — el mismo hueco visto desde varios rubros</td></tr>
-        <tr><td><span class="sev alto">ALTO</span></td><td class="num">30</td><td class="num up">19</td><td class="num">0</td><td>decisión del responsable, o migración pendiente de correr</td></tr>
-        <tr><td><span class="sev med">MEDIO</span></td><td class="num">38</td><td class="num up">13</td><td class="num">0</td><td>2 descartados a propósito, con razón escrita</td></tr>
-        <tr><td><span class="sev baj">BAJO</span></td><td class="num">27</td><td class="num up">8</td><td class="num">0</td><td>deuda anotada, no tocada</td></tr>
+        <tr><td><span class="sev alto">ALTO</span></td><td class="num">30</td><td class="num up">17</td><td class="num">0</td><td>decisión del responsable, o migración pendiente de correr</td></tr>
+        <tr><td><span class="sev med">MEDIO</span></td><td class="num">38</td><td class="num up">14</td><td class="num">0</td><td>2 descartados a propósito, con razón escrita</td></tr>
+        <tr><td><span class="sev baj">BAJO</span></td><td class="num">27</td><td class="num up">11</td><td class="num">0</td><td>deuda anotada, no tocada</td></tr>
       </tbody>
     </table>
     <p class="sub" style="margin:14px 0 0">
@@ -223,14 +223,13 @@
   <h2>La compuerta, sobre el árbol final</h2>
   <div class="card">
     <div class="gate">
-      <span class="g">npm test → exit 0 · 200 archivos · 1836 pruebas · 1 saltada</span>
+      <span class="g">npm test → exit 0 · 205 archivos · 1854 pruebas · 1 saltada</span>
       <span class="g">npx tsc --noEmit → exit 0</span>
       <span class="g">npm run lint → exit 0</span>
       <span class="g off">npm run build → no se corre en la nube (pide credenciales)</span>
     </div>
     <p class="sub" style="margin:14px 0 0">
-      Línea base al arrancar la continuación: 173 archivos / 1629 pruebas. Los 48 arreglos de hoy
-      sumaron <strong>+27 archivos y +207 pruebas</strong>, cada una con su caso rojo verificado
+      Línea base al arrancar la continuación: 173 archivos / 1629 pruebas. Los 50 hallazgos cerrados (49 commits) sumaron <strong>+32 archivos y +225 pruebas</strong>, cada una con su caso rojo verificado
       antes del arreglo. Contra los 49 commits de código que entraron desde el 2-ago
       (+5,743 líneas en 82 archivos) el repo había sumado 10 archivos de prueba y 59 pruebas.
       <strong>Verde no es lo mismo que cubierto:</strong> de 7 mutaciones que el auditor de

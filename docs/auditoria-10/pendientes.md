@@ -8,21 +8,21 @@ críticos restantes a mano, y **cinco agentes expertos en paralelo** sobre los
 ## Compuerta sobre el árbol final
 
 ```
-$ npm test          → exit 0 · 200 archivos · 1836 pruebas · 1 saltada
+$ npm test          → exit 0 · 205 archivos · 1854 pruebas · 1 saltada
 $ npx tsc --noEmit  → exit 0
 $ npm run lint      → exit 0
 $ git status        → limpio
 ```
 
 Línea base al arrancar la ronda: 173 archivos / 1629 pruebas.
-**+27 archivos de prueba, +207 pruebas.**
+**+32 archivos de prueba, +225 pruebas.**
 
 ## La cuenta
 
 | | Críticos | Altos | Medios | Bajos | Total |
 |---|:--:|:--:|:--:|:--:|:--:|
 | Encontrados | 10 | 30 | 38 | 27 | 105 |
-| **Cerrados con prueba** | **8** | **19** | **13** | **8** | **48** |
+| **Cerrados con prueba** | **8** | **17** | **14** | **11** | **50** |
 | Cerrados a medias | 2 | — | — | — | 2 |
 | Falsos | **0** | **0** | **0** | **0** | **0** |
 
