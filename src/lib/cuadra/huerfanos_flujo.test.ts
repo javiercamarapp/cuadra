@@ -23,6 +23,9 @@ const getGastos = vi.fn();
 const extraerComprobante = vi.fn();
 const subirComprobante = vi.fn();
 const runAgent = vi.fn();
+const intakeDelta = vi.fn();
+const acquireViajeLock = vi.fn();
+const releaseViajeLock = vi.fn();
 
 vi.mock('@/lib/agents/run', () => ({ runAgent: (...a: unknown[]) => runAgent(...a) }));
 vi.mock('@/lib/cuadra/intake/ocr', () => ({
@@ -41,9 +44,10 @@ vi.mock('@/lib/cuadra/conv', async (original) => ({
   getTenantContext: vi.fn(async () => ({ nombre: 'Flota' })),
   loadConversation: vi.fn(async () => ({ id: 'c1', turns: [] })),
   saveConversation: vi.fn(), claimMessage: vi.fn(async () => 'nuevo' as const),
-  acquireViajeLock: vi.fn(async () => true), releaseViajeLock: vi.fn(),
+  acquireViajeLock: (...a: unknown[]) => acquireViajeLock(...a),
+  releaseViajeLock: (...a: unknown[]) => releaseViajeLock(...a),
   releaseMessageClaim: vi.fn(),
-  intakeDelta: vi.fn(async () => 1), esperarIntake: vi.fn(async () => true),
+  intakeDelta: (...a: unknown[]) => intakeDelta(...a), esperarIntake: vi.fn(async () => true),
 }));
 vi.mock('@/lib/cuadra/repo', () => ({
   ubicarGastoPorHash: vi.fn(async () => null),
@@ -112,7 +116,11 @@ describe('el chofer que manda fotos sin viaje abierto', () => {
   beforeEach(() => {
     salientes.length = 0;
     for (const m of [addGasto, guardarHuerfano, getHuerfanos, resolverHuerfanos,
-                     marcarHuerfanosOfrecidos, getOpenViaje, extraerComprobante, subirComprobante, runAgent, getGastos]) m.mockReset();
+                     marcarHuerfanosOfrecidos, getOpenViaje, extraerComprobante, subirComprobante, runAgent, getGastos,
+                     intakeDelta, acquireViajeLock, releaseViajeLock]) m.mockReset();
+    intakeDelta.mockResolvedValue(1);
+    acquireViajeLock.mockResolvedValue(true);
+    releaseViajeLock.mockResolvedValue(undefined);
     vi.stubGlobal('fetch', fetchSpy); fetchSpy.mockClear();
     process.env.WHATSAPP_ACCESS_TOKEN = 'tok'; process.env.WHATSAPP_PHONE_NUMBER_ID = '123';
     getOpenViaje.mockResolvedValue(null);          // ← SIN viaje
@@ -177,7 +185,11 @@ describe('cuando por fin hay viaje, se pregunta antes de adjuntar', () => {
   beforeEach(() => {
     salientes.length = 0;
     for (const m of [addGasto, guardarHuerfano, getHuerfanos, resolverHuerfanos,
-                     marcarHuerfanosOfrecidos, getOpenViaje, extraerComprobante, subirComprobante, runAgent, getGastos]) m.mockReset();
+                     marcarHuerfanosOfrecidos, getOpenViaje, extraerComprobante, subirComprobante, runAgent, getGastos,
+                     intakeDelta, acquireViajeLock, releaseViajeLock]) m.mockReset();
+    intakeDelta.mockResolvedValue(1);
+    acquireViajeLock.mockResolvedValue(true);
+    releaseViajeLock.mockResolvedValue(undefined);
     vi.stubGlobal('fetch', fetchSpy); fetchSpy.mockClear();
     process.env.WHATSAPP_ACCESS_TOKEN = 'tok'; process.env.WHATSAPP_PHONE_NUMBER_ID = '123';
     getOpenViaje.mockResolvedValue('v1');          // ← CON viaje
@@ -267,6 +279,49 @@ describe('cuando por fin hay viaje, se pregunta antes de adjuntar', () => {
     addGasto.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('boom'));
     await processInbound(texto('sí'));
     expect(resolverHuerfanos).toHaveBeenCalledWith('t1', ['a'], 'adjuntado', 'v1');
+  });
+
+  // ── MEDIO de la auditoría 10 (agéntico) ──────────────────────────────────
+  //
+  // Éste era el único camino que INSERTA gastos sin barrera ni mutex: la foto
+  // tiene el contador de intake, el XML tiene contador y mutex, y la sala de
+  // espera no tenía ninguno de los dos. Con el «sí» y un «listo» tres segundos
+  // después corriendo en paralelo (`route.ts`, `Promise.all`), el «listo» veía
+  // el contador en 0, pasaba la barrera, tomaba el mutex y cerraba; los
+  // `addGasto` que aún no habían corrido chocaban con el trigger de la 0036.
+  it('el «sí» toma la barrera y el mutex, como los otros dos brazos que escriben gastos', async () => {
+    getHuerfanos.mockResolvedValue([HUERFANO('a', 2890, true)]);
+    await processInbound(texto('sí'));
+    expect(intakeDelta, 'sin +1 el «listo» concurrente no espera a nadie').toHaveBeenCalledWith('v1', 1);
+    expect(acquireViajeLock).toHaveBeenCalled();
+    expect(intakeDelta, 'y el contador se libera pase lo que pase').toHaveBeenCalledWith('v1', -1);
+    expect(releaseViajeLock).toHaveBeenCalledWith('v1');
+  });
+
+  it('si el mutex está ocupado NO escribe: se le pide que reintente, no se procede sin exclusividad', async () => {
+    getHuerfanos.mockResolvedValue([HUERFANO('a', 2890, true)]);
+    acquireViajeLock.mockResolvedValue(false);
+    await processInbound(texto('sí'));
+    expect(addGasto).not.toHaveBeenCalled();
+    expect(resolverHuerfanos).not.toHaveBeenCalled();
+    expect(intakeDelta).toHaveBeenCalledWith('v1', -1);
+  });
+
+  // El `catch` reconocía `uq_gasto_img_hash` y `uq_gasto_cfdi_uuid` y nada más,
+  // así que `CU001` —la liquidación de este viaje YA se emitió (mig. 0036)—
+  // caía al `logger.error` genérico, la fila no entraba en `puestos` y el
+  // chofer recibía «No pude agregarlos ⚙️. Siguen guardados; lo intento otra
+  // vez en un momento.» Ese reintento NO EXISTE: no hay cron, no hay job. Los
+  // otros dos brazos traducen CU001 a la verdad; éste no.
+  it('si llegaron DESPUÉS del cierre se lo dice, y no promete un reintento que no existe', async () => {
+    getHuerfanos.mockResolvedValue([HUERFANO('a', 8412, true), HUERFANO('b', 312, true)]);
+    addGasto.mockRejectedValue(Object.assign(new Error('gasto tras liquidación'), { code: 'CU001' }));
+    await processInbound(texto('sí'));
+    const m = salientes.join(' ');
+    expect(m, 'el reintento inventado era lo único que el chofer tenía').not.toMatch(/lo intento otra vez/i);
+    expect(m, 'la verdad es que su liquidación ya cerró').toMatch(/cerr[ée]/i);
+    expect(resolverHuerfanos, 'no entraron: no se pueden marcar como adjuntados')
+      .not.toHaveBeenCalledWith('t1', expect.arrayContaining(['a']), 'adjuntado', 'v1');
   });
 
   it('con un «no» los descarta sin tocar el viaje', async () => {

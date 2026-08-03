@@ -21,7 +21,7 @@ import { hashImagen } from '@/lib/cuadra/intake/hash';
 import { subirComprobante } from '@/lib/cuadra/intake/almacen';
 import {
   mensajeGuardadoSinViaje, mensajeGuardadoTrasLiquidar, mensajeOfrecer,
-  mensajeAdjuntados, esAfirmacion, esNegacion,
+  mensajeAdjuntados, mensajeAdjuntarTrasCierre, esAfirmacion, esNegacion,
 } from '@/lib/cuadra/intake/huerfanos';
 import { decidirFoto } from '@/lib/cuadra/intake/decidir';
 import { avisoSimplificado, versionAviso, pideAtencionPrivacidad, respuestaPrivacidad } from '@/lib/cuadra/privacidad';
@@ -1008,40 +1008,94 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
       }));
 
       if (ofrecidos.length && esAfirmacion(msg.text)) {
-        // Se marcan DESPUÉS de insertar, no antes: si un `addGasto` falla a
-        // medias, lo que queda es una fila todavía pendiente —que se vuelve a
-        // ofrecer— y no un comprobante marcado como puesto que no está.
-        const puestos: string[] = [];
-        for (const h of ofrecidos) {
-          try {
-            await addGasto(op.tenantId, viajeId, h.gasto);
-            puestos.push(h.id);
-          } catch (e) {
-            // Un duplicado benigno también cuenta como resuelto: el comprobante
-            // YA está en el viaje, que es lo que el operador pidió.
-            if (violaIndice(e, 'uq_gasto_img_hash') || violaIndice(e, 'uq_gasto_cfdi_uuid')) { puestos.push(h.id); continue; }
-            logger.error('huerfano.adjuntar_error', { err: e instanceof Error ? e.message : String(e) });
-          }
+        // BARRERA Y MUTEX — AUDITORÍA 10, MEDIO agéntico.
+        //
+        // Esto es una ESCRITURA AL CAMINO DEL DINERO, no un turno de charla, y
+        // era el único brazo que insertaba gastos sin ninguna de las dos
+        // protecciones: la foto lleva el contador de intake, el XML lleva
+        // contador Y mutex, la sala de espera no llevaba nada.
+        //
+        // Escenario medido: el chofer contesta «sí» a la oferta de 17 huérfanos
+        // ($28,041.15) y tres segundos después escribe «listo». Meta los entrega
+        // juntos y `route.ts` los corre con `Promise.all`. El «listo» veía el
+        // contador de intake en 0 —los huérfanos no lo tocaban—, pasaba la
+        // barrera, tomaba el mutex y cerraba; los `addGasto` que aún no habían
+        // corrido chocaban con el trigger de la 0036 y sus comprobantes se
+        // quedaban fuera de una liquidación ya emitida.
+        //
+        // Mismo contrato fail-closed que el XML: sin el +1 confirmado no se
+        // inserta nada, y sin exclusividad se le pide que reintente en vez de
+        // proceder —proceder es exactamente la carrera que esto cierra—.
+        const incrementado = await intakeDelta(viajeId, 1);
+        if (incrementado == null) {
+          logger.error('huerfano.intake_incremento_fallido', { viaje: viajeId, tenant: op.tenantId });
+          await say('No pude agregarlos en el orden correcto 😕. Siguen guardados: contéstame *sí* otra vez en un momento.');
+          return;
         }
-        await resolverHuerfanos(op.tenantId, puestos, 'adjuntado', viajeId);
-        const ok = ofrecidos.filter((h) => puestos.includes(h.id));
-        logger.info('huerfano.adjuntados', { viaje: viajeId, cuantos: ok.length, de: ofrecidos.length });
-        // EL NETO, con el MISMO `copiasDeComprobante` que usan el motor y el PDF.
-        // Un segundo cálculo aquí se separaría del cuadre en silencio, que es el
-        // error que este repo ya ha pagado tres veces.
-        const neto = await (async () => {
+        try {
+          const lockHuerfanos = await acquireViajeLock(viajeId, { maxWaitMs: reloj.acotar(12_000) });
+          if (!lockHuerfanos) {
+            logger.warn('huerfano.lock_ocupado', { viaje: viajeId, tenant: op.tenantId });
+            await say('Estoy terminando de procesar otra cosa de tu viaje 🙏. Contéstame *sí* en un momento y los agrego.');
+            return;
+          }
           try {
-            const todos = await getGastos(viajeId, op.tenantId);
-            const copias = copiasDeComprobante(todos);
-            const comprobado = todos.reduce(
-              (s, g) => (copias.has(g.id) || !(g.monto > 0) ? s : s + g.monto), 0);
-            return { copias: copias.size, comprobado };
-          } catch { return undefined; } // sin neto se calla, no se arriesga la cifra
-        })();
-        await say(ok.length
-          ? mensajeAdjuntados(comoLista(ok), neto)
-          : 'No pude agregarlos ⚙️. Siguen guardados; lo intento otra vez en un momento.');
-        return;
+            // Se marcan DESPUÉS de insertar, no antes: si un `addGasto` falla a
+            // medias, lo que queda es una fila todavía pendiente —que se vuelve a
+            // ofrecer— y no un comprobante marcado como puesto que no está.
+            const puestos: string[] = [];
+            const tarde: string[] = [];
+            for (const h of ofrecidos) {
+              try {
+                await addGasto(op.tenantId, viajeId, h.gasto);
+                puestos.push(h.id);
+              } catch (e) {
+                // Un duplicado benigno también cuenta como resuelto: el comprobante
+                // YA está en el viaje, que es lo que el operador pidió.
+                if (violaIndice(e, 'uq_gasto_img_hash') || violaIndice(e, 'uq_gasto_cfdi_uuid')) { puestos.push(h.id); continue; }
+                // LLEGÓ TARDE (mig. 0036): la liquidación de este viaje ya se
+                // emitió. No es benigno y no es un fallo técnico: el comprobante
+                // no está en ningún lado y el operador tiene que enterarse. Los
+                // otros dos brazos ya lo traducían; éste lo mandaba al error
+                // genérico y contestaba «lo intento otra vez en un momento» —un
+                // reintento que NO EXISTE: no hay cron y no hay job.
+                if (llegoTarde(e)) { tarde.push(h.id); continue; }
+                logger.error('huerfano.adjuntar_error', { err: e instanceof Error ? e.message : String(e) });
+              }
+            }
+            await resolverHuerfanos(op.tenantId, puestos, 'adjuntado', viajeId);
+            const ok = ofrecidos.filter((h) => puestos.includes(h.id));
+            logger.info('huerfano.adjuntados', { viaje: viajeId, cuantos: ok.length, de: ofrecidos.length });
+            // NINGUNO ENTRÓ PORQUE EL VIAJE YA CERRÓ. Con el mutex tomado el
+            // estado de la liquidación no cambia a media vuelta, así que o
+            // fallan todos o no falla ninguno: no hay mezcla que narrar.
+            if (!ok.length && tarde.length) {
+              logger.warn('huerfano.llego_tarde', { viaje: viajeId, cuantos: tarde.length });
+              await say(mensajeAdjuntarTrasCierre(tarde.length));
+              return;
+            }
+            // EL NETO, con el MISMO `copiasDeComprobante` que usan el motor y el PDF.
+            // Un segundo cálculo aquí se separaría del cuadre en silencio, que es el
+            // error que este repo ya ha pagado tres veces.
+            const neto = await (async () => {
+              try {
+                const todos = await getGastos(viajeId, op.tenantId);
+                const copias = copiasDeComprobante(todos);
+                const comprobado = todos.reduce(
+                  (s, g) => (copias.has(g.id) || !(g.monto > 0) ? s : s + g.monto), 0);
+                return { copias: copias.size, comprobado };
+              } catch { return undefined; } // sin neto se calla, no se arriesga la cifra
+            })();
+            await say(ok.length
+              ? mensajeAdjuntados(comoLista(ok), neto)
+              : 'No pude agregarlos ⚙️. Siguen guardados: contéstame *sí* otra vez y lo intento.');
+            return;
+          } finally {
+            await releaseViajeLock(viajeId);
+          }
+        } finally {
+          await intakeDelta(viajeId, -1); // libera el contador pase lo que pase
+        }
       }
 
       if (ofrecidos.length && esNegacion(msg.text)) {
