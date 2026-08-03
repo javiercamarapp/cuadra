@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { destinoSeguro } from '@/lib/auth/destino';
 import { supabaseServer } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/ratelimit';
 import { logger } from '@/lib/logger';
@@ -46,12 +47,11 @@ export default async function Login({
   searchParams: Promise<{ next?: string; enviado?: string; error?: string }>;
 }) {
   const sp = await searchParams;
-  const next = sp?.next && sp.next.startsWith('/dashboard') ? sp.next : '/dashboard';
+  const next = destinoSeguro(sp?.next);
 
   async function entrarConGoogle(formData: FormData) {
     'use server';
-    const rawNext = String(formData.get('next') ?? '/dashboard');
-    const dest = rawNext.startsWith('/dashboard') ? rawNext : '/dashboard';
+    const dest = destinoSeguro(String(formData.get('next') ?? ''));
     if (!(await dentroDelLimite('login:google'))) {
       redirect(`/login?next=${encodeURIComponent(dest)}&error=1`);
     }
@@ -66,8 +66,7 @@ export default async function Login({
 
   async function entrarConEmail(formData: FormData) {
     'use server';
-    const rawNext = String(formData.get('next') ?? '/dashboard');
-    const dest = rawNext.startsWith('/dashboard') ? rawNext : '/dashboard';
+    const dest = destinoSeguro(String(formData.get('next') ?? ''));
     // Al exceder el límite se responde el error GENÉRICO, no "vas muy rápido":
     // la diferencia le diría a quien prueba correos cuándo dejó de contar.
     if (!(await dentroDelLimite('login:email'))) {

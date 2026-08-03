@@ -7,11 +7,14 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
 import { getSessionTenant } from '@/lib/auth/session';
 import { logger } from '@/lib/logger';
+import { destinoSeguro } from '@/lib/auth/destino';
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
   const next = req.nextUrl.searchParams.get('next');
-  const destinoExplicito = next && next.startsWith('/dashboard') ? next : null;
+  // `null` cuando no vino un `next` utilizable: el superadmin sin destino
+  // explícito aterriza en SU consola, no en el panel del tenant demo.
+  const destinoExplicito = next && destinoSeguro(next) === next ? next : null;
 
   if (code) {
     try {
