@@ -95,11 +95,60 @@ cuatro que hay que revisar a mano porque **si faltan el sistema arranca igual**:
 | Variable | Qué pasa si falta |
 |---|---|
 | `SENTRY_DSN` | No hay alerta de nada. Los errores mueren en el runtime log. |
-| `DASHBOARD_SECRET` | El HMAC de la cookie se deriva del passcode: crackeable offline. |
-| `DASHBOARD_PASSCODE` | `proxy.ts` **no bloquea** `/dashboard`: el panel queda abierto. |
 | `DEMO_TENANT_ID` | El panel consulta el tenant del seed y pinta **cero liquidaciones**, sin log. |
+| `NEXT_PUBLIC_APP_URL` | El login arma el magic link y el retorno de Google contra el fallback del código, `https://likida.ai`, que **no es** el dominio desplegado (`https://likidaai.vercel.app`). El correo llega, el link abre, y la sesión se completa en otro sitio: nadie entra y no hay un solo error. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `createServerClient` lanza `supabaseKey is required` dentro del middleware: **cada** petición a `/dashboard`, `/admin` y `/mis-viajes` se vuelve un 500. |
+| `DASHBOARD_SECRET` | El HMAC de la cookie de `/acceso` se deriva del passcode: crackeable offline. |
 
 Para listarlas: `vercel env ls production`.
+
+`DASHBOARD_PASSCODE` **ya no gatea el panel** y esta tabla decía que sí. Desde
+que el gate es la sesión de Supabase (`src/proxy.ts:44-77`), sus únicos
+lectores son `src/app/acceso/page.tsx` y `src/lib/auth/passcode.ts`; ninguno
+protege `/dashboard`. Quitarla no abre nada.
+
+---
+
+## Lo que el login necesita del lado de Supabase
+
+Nada de esto vive en el repo, y la mitad de los fallos del login vienen de
+aquí. Proyecto de Supabase → **Authentication**:
+
+1. **URL Configuration → Site URL**: `https://likidaai.vercel.app`. Es a donde
+   GoTrue manda al usuario cuando **rechaza** el `emailRedirectTo` que pide el
+   código. Por default es `http://localhost:3000`, así que dejarla mal no da
+   error: manda el correo, el contralor abre el link, y el navegador va a
+   localhost. **Likida nunca recibe esa petición**, así que no hay ningún log
+   que pueda existir.
+
+2. **URL Configuration → Redirect URLs**: tiene que estar
+   `https://likidaai.vercel.app/auth/callback` (y, para trabajar en local,
+   `http://localhost:3000/auth/callback`). El código arma
+   `${NEXT_PUBLIC_APP_URL}/auth/callback?next=...`
+   (`src/app/login/page.tsx:10,79`): si ese origen no está en la lista, GoTrue
+   lo ignora y cae en la Site URL del punto anterior.
+
+3. **Providers → Email**: encendido. **Providers → Google**: encendido, con el
+   Client ID/Secret de la consola de Google, y en la consola de Google el
+   *Authorized redirect URI* que Supabase indica
+   (`https://<proyecto>.supabase.co/auth/v1/callback`).
+
+4. **Emails → SMTP Settings**: el remitente. Hoy es el **sandbox de Resend**
+   (`onboarding@resend.dev`), que **solo entrega a
+   `javiercamaraportepetit@gmail.com` y responde 403 a cualquier otra
+   dirección** (`docs/superpowers/plans/2026-08-02-roles-flota.md:96-103`). Ese
+   403 llega a GoTrue, que contesta 500 `unexpected_failure` («Error sending
+   magic link email»). En el log eso sale como `login.otp_error` con `code` y
+   `status`; en la pantalla, como «Algo falló. Intenta otra vez.». **Antes del
+   demo hay que poner un remitente con dominio verificado** o el único correo
+   que puede entrar al panel es el de Javier.
+
+Cómo se verifica que quedó, sin adivinar: pide el magic link desde el mismo
+navegador donde vas a abrirlo (el `code_verifier` del PKCE vive en su cookie) y
+mira el log. `login.otp_error` = no salió el correo;
+`auth.callback_intercambio` = el correo salió y el intercambio falló (link
+caducado, otro dispositivo, callback fuera de la lista blanca); ninguna de las
+dos = entró.
 
 ---
 
