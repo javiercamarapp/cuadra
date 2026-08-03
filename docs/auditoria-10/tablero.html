@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Likida — Auditoría 10</title>
+<title>Likida — Auditoría 10 (continuación 3-ago-2026)</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#161b22; --line:#262d36; --ink:#e6edf3; --muted:#8b949e;
@@ -24,17 +24,15 @@
   .kpi .lbl{font-size:12px;color:var(--muted);margin-bottom:6px}
   .kpi .val{font-size:32px;font-weight:650;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
   .kpi .note{font-size:11px;color:var(--muted);margin-top:5px}
-  table{width:100%;border-collapse:collapse;font-size:14px}
+  .scroll{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:14px;min-width:640px}
   th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;
      color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line)}
   td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
   tr:last-child td{border-bottom:none}
   .num{text-align:center;font-variant-numeric:tabular-nums;font-weight:650;width:62px}
-  .aud{background:rgba(88,166,255,.06)}
-  .tag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:20px;
-       border:1px solid var(--line);color:var(--muted);letter-spacing:.03em}
-  .tag.on{border-color:var(--accent);color:var(--accent)}
   .down{color:var(--bad);font-weight:650}
+  .up{color:var(--ok);font-weight:650}
   .same{color:var(--dim)}
   .sev{display:inline-block;min-width:20px;text-align:center;font-size:11px;font-weight:700;
        padding:2px 8px;border-radius:5px;margin-right:5px}
@@ -48,189 +46,172 @@
   .g.off{background:rgba(139,148,158,.08);color:var(--muted)}
   .fixed{color:var(--ok);font-weight:600}
   .prop{color:var(--muted)}
-  ul{margin:8px 0 0;padding-left:18px;color:var(--muted);font-size:13px}
-  li{margin:5px 0}
-  .lede{background:rgba(248,81,73,.07);border-left:3px solid var(--bad);
-        padding:13px 16px;border-radius:0 8px 8px 0;font-size:14px;margin:0 0 8px}
-  .foot{color:var(--muted);font-size:11.5px;margin-top:30px;border-top:1px solid var(--line);padding-top:14px}
+  .serie{display:flex;align-items:flex-end;gap:14px;height:150px;padding:10px 4px 0}
+  .bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%}
+  .bar .b{width:100%;border-radius:4px 4px 0 0;background:linear-gradient(180deg,var(--accent),rgba(88,166,255,.35))}
+  .bar.now .b{background:linear-gradient(180deg,var(--bad),rgba(248,81,73,.35))}
+  .bar .n{font-size:12px;font-weight:650;margin-bottom:5px;font-variant-numeric:tabular-nums}
+  .bar .x{font-size:10px;color:var(--muted);margin-top:6px;text-align:center;line-height:1.25}
+  .lead{font-size:14px;color:var(--ink);background:var(--panel);border:1px solid var(--line);
+        border-left:3px solid var(--bad);border-radius:8px;padding:14px 16px;margin:0 0 4px}
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <h1>Likida — Auditoría 10</h1>
-  <p class="sub">2-ago-2026 · ronda <strong>LIGERA</strong>, 3 rubros rotados · desatendida, en la nube ·
-     demo con Transportes Innovativos en <strong>4 días</strong></p>
+  <h1>Likida — Auditoría 10 · continuación</h1>
+  <p class="sub">3-ago-2026 · desatendida, en la nube · rama <code>claude/auditoria-10</code>, PR #7 ·
+     demo con Transportes Innovativos en <strong>3 días</strong></p>
 
-  <div class="lede">
-    Cero commits de código desde la ronda 9: el árbol es el mismo. Esta ronda no buscó regresiones,
-    <strong>auditó una calificación</strong> — la propia síntesis de la ronda 9 dejó dicho que su salto
-    de 6.5 a 7.7 fue una estimación del orquestador y no una re-corrida con contexto fresco.
-    Los tres rubros mirados de nuevo bajaron los tres.
-  </div>
+  <p class="lead">
+    Los doce rubros se auditaron sobre un árbol con <strong>5,743 líneas nuevas</strong> que
+    nadie había mirado: autenticación real por sesión de Supabase con cinco roles, RLS del
+    chofer, y la consola <code>/admin</code>. <strong>Once de doce rubros bajaron.</strong>
+    La caída no es una relectura del mismo código — ocho de los once movimientos son
+    <em>deuda que cobró factura</em>: decisiones viejas que eran inofensivas mientras todos los
+    usuarios del panel eran iguales, y que dejaron de serlo cuando entró un rol cuyo valor
+    entero es <em>ver menos</em>.
+  </p>
 
+  <h2>Resumen</h2>
   <div class="row">
     <div class="card kpi">
       <div class="lbl">Nota global</div>
-      <div class="val">7.3 <span class="down" style="font-size:17px">▼ 0.4</span></div>
-      <div class="note">antes 7.7 · promedio de los 12 rubros</div>
+      <div class="val down">4.9 <span style="font-size:15px">▼2.4</span></div>
+      <div class="note">antes 7.3 (2-ago) · 59/12</div>
     </div>
     <div class="card kpi">
       <div class="lbl">Rubros auditados</div>
-      <div class="val">3 <span style="font-size:15px;color:var(--muted)">/ 12</span></div>
-      <div class="note">bajaron 3 · subieron 0 · 9 conservan nota</div>
+      <div class="val">12<span style="font-size:15px;color:var(--muted)">/12</span></div>
+      <div class="note">11 bajaron · 1 subió · 0 sin cubrir</div>
     </div>
     <div class="card kpi">
       <div class="lbl">Hallazgos verificados</div>
-      <div class="val">27</div>
-      <div class="note">1 crítico · 3 altos · 14 medios · 9 bajos · 0 falsos</div>
+      <div class="val">108</div>
+      <div class="note">
+        <span class="sev crit">13 C</span><span class="sev alto">30 A</span>
+        <span class="sev med">38 M</span><span class="sev baj">27 B</span>
+      </div>
     </div>
     <div class="card kpi">
-      <div class="lbl">Cerrados con arreglo</div>
-      <div class="val" style="color:var(--ok)">3</div>
-      <div class="note">el crítico y los 2 altos fiscales · 3 vueltas, el tope</div>
+      <div class="lbl">Críticos distintos</div>
+      <div class="val">10</div>
+      <div class="note"><span class="fixed">3 cerrados</span> · 7 propuestos (tope de 3 vueltas)</div>
     </div>
   </div>
 
   <h2>Los doce rubros</h2>
-  <div class="card" style="padding:6px 8px">
-  <table>
-    <tr><th>Rubro</th><th class="num">A9</th><th class="num">A10</th><th style="width:52px"></th>
-        <th>Razón del movimiento</th><th style="width:96px">Estado</th></tr>
-
-    <tr class="aud"><td><strong>Frontend</strong></td><td class="num">7</td>
-      <td class="num" style="color:var(--bad)">5</td><td class="down">▼▼</td>
-      <td>Mirada más profunda — el código no cambió, la nota anterior estaba inflada.
-          Nadie había <em>ejecutado</em> el panel: la tarjeta más grande imprime <code>0 L</code>
-          en las rutas que el demo puede tomar.</td>
-      <td><span class="tag on">auditado</span></td></tr>
-
-    <tr class="aud"><td><strong>Cumplimiento fiscal</strong></td><td class="num">7</td>
-      <td class="num" style="color:var(--warn)">6</td><td class="down">▼</td>
-      <td>Mirada más profunda — el código no cambió, la nota anterior estaba inflada.
-          3 de los 4 altos de la ronda 9 anclaron de verdad; el cuarto cerró el falso
-          positivo y abrió el falso negativo.</td>
-      <td><span class="tag on">auditado</span></td></tr>
-
-    <tr class="aud"><td><strong>Tool calling</strong></td><td class="num">8</td>
-      <td class="num" style="color:var(--warn)">7</td><td class="down">▼</td>
-      <td>Mirada más profunda — el código no cambió, la nota anterior estaba inflada.
-          El ancla de 8 es doble y solo se cumple la primera mitad: de 3 caminos con
-          fallback, 1 tiene prueba que lo ejecute.</td>
-      <td><span class="tag on">auditado</span></td></tr>
-
-    <tr><td>Pruebas</td><td class="num">9</td><td class="num same">9</td><td class="same">=</td>
-      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
-    <tr><td>Sistema agéntico</td><td class="num">8</td><td class="num same">8</td><td class="same">=</td>
-      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
-    <tr><td>Backend y API</td><td class="num">8</td><td class="num same">8</td><td class="same">=</td>
-      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
-    <tr><td>Modelo de datos</td><td class="num">8</td><td class="num same">8</td><td class="same">=</td>
-      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
-    <tr><td>Rendimiento y costo</td><td class="num">8</td><td class="num same">8</td><td class="same">=</td>
-      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
-    <tr><td>Seguridad</td><td class="num">8</td><td class="num same">8</td><td class="same">=</td>
-      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
-    <tr><td>Cumplimiento legal</td><td class="num">7</td><td class="num same">7</td><td class="same">=</td>
-      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
-    <tr><td>Operabilidad y DX</td><td class="num">7</td><td class="num same">7</td><td class="same">=</td>
-      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
-    <tr><td>Arquitectura</td><td class="num">7</td><td class="num same">7</td><td class="same">=</td>
-      <td class="prop">Conserva nota.</td><td><span class="tag">no auditado</span></td></tr>
-  </table>
+  <div class="card scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Rubro</th><th class="num">Antes</th><th class="num">Hoy</th><th class="num">Δ</th>
+          <th>Hallazgos</th><th>Razón del movimiento</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Sistema agéntico</strong></td><td class="num">8</td><td class="num down">3</td><td class="num down">▼5</td>
+            <td><span class="sev crit">1</span><span class="sev alto">2</span><span class="sev med">3</span></td>
+            <td>Mirada más profunda — el código del ciclo no cambió; la ronda 9 metió la sala de espera de comprobantes en el camino del dinero y no la auditó</td></tr>
+        <tr><td><strong>Rendimiento y costo</strong></td><td class="num">8</td><td class="num down">4</td><td class="num down">▼4</td>
+            <td><span class="sev alto">4</span><span class="sev med">4</span><span class="sev baj">1</span></td>
+            <td>Mirada más profunda — el 8 se sostenía en hallazgos que quedaron sin objeto al revertir <code>foto_pendiente</code>; sumado el peor caso, no cabe en su límite</td></tr>
+        <tr><td><strong>Cumplimiento legal</strong></td><td class="num">7</td><td class="num down">4</td><td class="num down">▼3</td>
+            <td><span class="sev crit">1</span><span class="sev alto">2</span><span class="sev med">2</span><span class="sev baj">1</span></td>
+            <td>Deuda que cobró factura — entraron 5,743 líneas que tratan datos personales y <code>privacidad.ts</code> no se tocó</td></tr>
+        <tr><td><strong>Backend y API</strong></td><td class="num">8</td><td class="num down">5</td><td class="num down">▼3</td>
+            <td><span class="sev crit">2</span><span class="sev alto">3</span><span class="sev med">2</span></td>
+            <td>Deuda que cobró factura — quién ve el dinero de la flota se decidió solo en la capa que pinta botones</td></tr>
+        <tr><td><strong>Seguridad</strong></td><td class="num">8</td><td class="num down">5</td><td class="num down">▼3</td>
+            <td><span class="sev crit">2</span><span class="sev alto">2</span><span class="sev med">1</span><span class="sev baj">4</span></td>
+            <td>Deuda que cobró factura — el aislamiento entre flotas aguanta; el que se rompió es entre roles dentro de una flota</td></tr>
+        <tr><td><strong>Modelo de datos</strong></td><td class="num">8</td><td class="num down">5</td><td class="num down">▼3</td>
+            <td><span class="sev crit">2</span><span class="sev alto">2</span><span class="sev med">2</span><span class="sev baj">2</span></td>
+            <td>Deuda que cobró factura — la RLS de la 0045 no gobierna los caminos que leen con service-role, y nada sonda que esté aplicada</td></tr>
+        <tr><td><strong>Operabilidad y DX</strong></td><td class="num">7</td><td class="num down">5</td><td class="num down">▼2</td>
+            <td><span class="sev crit">2</span><span class="sev alto">4</span><span class="sev med">2</span></td>
+            <td>Deuda que cobró factura — el login nuevo falla sin dejar una sola línea</td></tr>
+        <tr><td><strong>Cumplimiento fiscal</strong></td><td class="num">6</td><td class="num down">5</td><td class="num down">▼1</td>
+            <td><span class="sev crit">1</span><span class="sev alto">2</span><span class="sev med">4</span><span class="sev baj">4</span></td>
+            <td>Mirada más profunda — los dos altos del 2-ago sí anclaron; al abrir el mismo eje una capa más adentro salieron dos cosas que ya estaban</td></tr>
+        <tr><td><strong>Tool calling</strong></td><td class="num">7</td><td class="num down">6</td><td class="num down">▼1</td>
+            <td><span class="sev alto">1</span><span class="sev med">5</span><span class="sev baj">7</span></td>
+            <td>Deuda que cobró factura — el código del rubro es byte-idéntico; llegó el consumidor: <code>/admin</code> pinta la atribución de costo como hecho en 7 pantallas</td></tr>
+        <tr><td><strong>Arquitectura</strong></td><td class="num">7</td><td class="num down">6</td><td class="num down">▼1</td>
+            <td><span class="sev crit">1</span><span class="sev alto">2</span><span class="sev med">2</span><span class="sev baj">3</span></td>
+            <td>Deuda que cobró factura — la tabla de permisos dice gobernar la API y ningún endpoint la consultaba</td></tr>
+        <tr><td><strong>Frontend</strong></td><td class="num">5</td><td class="num up">6</td><td class="num up">▲1</td>
+            <td><span class="sev alto">3</span><span class="sev med">7</span><span class="sev baj">3</span></td>
+            <td>Se atacó y subió — el crítico del 2-ago cerró de verdad y quedó fijado <em>renderizando</em> el componente, no leyendo su fuente</td></tr>
+        <tr><td><strong>Pruebas</strong></td><td class="num">9</td><td class="num down">5</td><td class="num down">▼4</td>
+            <td><span class="sev crit">1</span><span class="sev alto">3</span><span class="sev med">4</span><span class="sev baj">2</span></td>
+            <td>Deuda que cobró factura — 7 mutaciones sobre el código nuevo, <strong>5 sobrevivieron</strong>. Los 3 controles murieron como debían: el motor del dinero sigue armado</td></tr>
+      </tbody>
+    </table>
   </div>
 
   <h2>Serie histórica de la nota global</h2>
   <div class="card">
-    <svg viewBox="0 0 1040 210" width="100%" height="210" role="img"
-         aria-label="Serie de la nota global de la auditoría 2 a la 10">
-      <line x1="52" y1="20"  x2="1020" y2="20"  stroke="#262d36" stroke-width="1"/>
-      <line x1="52" y1="68"  x2="1020" y2="68"  stroke="#262d36" stroke-width="1"/>
-      <line x1="52" y1="116" x2="1020" y2="116" stroke="#262d36" stroke-width="1"/>
-      <line x1="52" y1="164" x2="1020" y2="164" stroke="#262d36" stroke-width="1"/>
-      <text x="40" y="24"  fill="#8b949e" font-size="11" text-anchor="end">8</text>
-      <text x="40" y="72"  fill="#8b949e" font-size="11" text-anchor="end">7</text>
-      <text x="40" y="120" fill="#8b949e" font-size="11" text-anchor="end">6</text>
-      <text x="40" y="168" fill="#8b949e" font-size="11" text-anchor="end">5</text>
-      <!-- y = 20 + (8 - nota)*48 ; x = 92 + (n-2)*116 -->
-      <polyline fill="none" stroke="#58a6ff" stroke-width="2.5" stroke-linejoin="round"
-        points="92,106 208,106 324,120 440,154 556,150 672,140 788,92 904,34 1020,53"/>
-      <g fill="#58a6ff">
-        <circle cx="92"  cy="106" r="4.5"/><circle cx="208" cy="106" r="4.5"/>
-        <circle cx="324" cy="120" r="4.5"/><circle cx="440" cy="154" r="4.5"/>
-        <circle cx="556" cy="150" r="4.5"/><circle cx="672" cy="140" r="4.5"/>
-        <circle cx="788" cy="92"  r="4.5"/><circle cx="904" cy="34"  r="4.5"/>
-      </g>
-      <circle cx="1020" cy="53" r="6.5" fill="#f85149"/>
-      <g font-size="12" fill="#e6edf3" text-anchor="middle" font-weight="600">
-        <text x="92"  y="96">6.2</text><text x="208" y="96">6.2</text>
-        <text x="324" y="110">5.9</text><text x="440" y="144">5.2</text>
-        <text x="556" y="140">5.3</text><text x="672" y="130">5.5</text>
-        <text x="788" y="82">6.5</text><text x="904" y="24">7.7</text>
-        <text x="1020" y="40" fill="#f85149">7.3</text>
-      </g>
-      <g font-size="11" fill="#8b949e" text-anchor="middle">
-        <text x="92"  y="192">Aud. 2</text><text x="208" y="192">Aud. 3</text>
-        <text x="324" y="192">Aud. 4</text><text x="440" y="192">Aud. 5</text>
-        <text x="556" y="192">Aud. 6</text><text x="672" y="192">Aud. 7</text>
-        <text x="788" y="192">Aud. 8</text><text x="904" y="192">Aud. 9</text>
-        <text x="1020" y="192" fill="#f85149" font-weight="600">Aud. 10</text>
-      </g>
-    </svg>
-    <p style="color:var(--muted);font-size:12px;margin:4px 0 0">
-      La bajada es el resultado, no el accidente: los tres rubros que se volvieron a mirar con
-      contexto fresco bajaron los tres, y ninguno porque el código empeorara.
-    </p>
+    <div class="serie">
+      <div class="bar"><div class="n">6.2</div><div class="b" style="height:62%"></div><div class="x">aud 2<br>28-jul</div></div>
+      <div class="bar"><div class="n">6.2</div><div class="b" style="height:62%"></div><div class="x">aud 3</div></div>
+      <div class="bar"><div class="n">5.9</div><div class="b" style="height:59%"></div><div class="x">aud 4</div></div>
+      <div class="bar"><div class="n">5.2</div><div class="b" style="height:52%"></div><div class="x">aud 5</div></div>
+      <div class="bar"><div class="n">5.3</div><div class="b" style="height:53%"></div><div class="x">aud 6</div></div>
+      <div class="bar"><div class="n">5.5</div><div class="b" style="height:55%"></div><div class="x">aud 7</div></div>
+      <div class="bar"><div class="n">6.5</div><div class="b" style="height:65%"></div><div class="x">aud 8</div></div>
+      <div class="bar"><div class="n">7.7</div><div class="b" style="height:77%"></div><div class="x">aud 9<br>1-ago</div></div>
+      <div class="bar"><div class="n">7.3</div><div class="b" style="height:73%"></div><div class="x">aud 10<br>2-ago</div></div>
+      <div class="bar now"><div class="n">4.9</div><div class="b" style="height:49%"></div><div class="x">aud 10 cont.<br>3-ago</div></div>
+    </div>
   </div>
 
-  <h2>Hallazgos por severidad</h2>
-  <div class="row">
-    <div class="card" style="flex:1;min-width:300px">
-      <div style="margin-bottom:10px"><span class="sev crit">1 CRÍTICO</span><span class="sev alto">3 ALTOS</span></div>
-      <ul style="list-style:none;padding:0">
-        <li><span class="fixed">✔ cerrado</span> — <strong>FE-1</strong> · la tarjeta del panel imprime
-            <code>0 L</code> donde el guion manda narrar el dato que el contador multiplica <em>(frontend, CRÍTICO)</em></li>
-        <li><span class="fixed">✔ cerrado</span> — <strong>FISCAL-1</strong> · un CFDI que el SAT marcó salía
-            «Deducible para ISR» en verde con su IVA acreditable <em>(fiscal, ALTO)</em></li>
-        <li><span class="fixed">✔ cerrado</span> — <strong>FISCAL-2</strong> · los litros del estímulo de diésel
-            contaban con cualquier forma de pago que no fuera efectivo <em>(fiscal, ALTO)</em></li>
-        <li><span class="prop">▸ propuesto</span> — <strong>FE-2</strong> · el simulador afirma «CFDI validado por
-            QR ✅» y dos burbujas después se desdice <em>(frontend, ALTO)</em></li>
-      </ul>
-    </div>
-    <div class="card" style="flex:1;min-width:300px">
-      <div style="margin-bottom:10px"><span class="sev med">14 MEDIOS</span><span class="sev baj">9 BAJOS</span></div>
-      <ul>
-        <li>Fiscal: 5 medios + 2 bajos — 4 reincidentes de la ronda 9.</li>
-        <li>Frontend: 4 medios + 1 bajo — todos nuevos, ninguno mirado antes.</li>
-        <li>Tool calling: 5 medios + 6 bajos — los 7 reincidentes siguen los 7,
-            más 4 nuevos. Ninguna ronda desde la 6 lo había tocado.</li>
-        <li>Quedan <strong>propuestos</strong> por alcance de la skill (autofix solo
-            críticos y altos), no olvidados.</li>
-      </ul>
-    </div>
+  <h2>Los diez críticos distintos</h2>
+  <div class="card scroll">
+    <table>
+      <thead><tr><th>#</th><th>Crítico</th><th>Quién lo halló</th><th>Estado</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>El chofer con cuenta entra a <code>/dashboard</code> y ve KPIs, las 20 liquidaciones más recientes de sus compañeros y el panel de anomalías de toda la flota</td>
+            <td>backend · seguridad · frontend</td><td class="fixed">CERRADO <code>d081176</code></td></tr>
+        <tr><td>2</td><td>Las dos rutas de export autentican pero no autorizan: cualquier sesión del tenant baja el CSV de la flota y firma la URL de cualquier PDF</td>
+            <td>backend · seguridad · arquitectura · datos</td><td class="fixed">CERRADO <code>8fb74d4</code></td></tr>
+        <tr><td>3</td><td>El RFC del tenant de demo reprueba nuestro propio dígito verificador: el 6-ago la liquidación imprime <code>Deducible para ISR $0.00</code>, la sección ACREDITABLE desaparece del PDF y el único pie que sale es falso</td>
+            <td>fiscal</td><td class="fixed">CERRADO <code>d08db8a</code></td></tr>
+        <tr><td>4</td><td>«listo» con la sala de espera llena cierra la liquidación en $0 y los comprobantes nunca se ofrecen — se irán al viaje siguiente, que es lo que la 0040 existe para impedir</td>
+            <td>agéntico</td><td class="prop">PROPUESTO — tope de 3 vueltas</td></tr>
+        <tr><td>5</td><td>La RLS del chofer cubre 3 de las 7 tablas: <code>operador</code>, <code>terminal</code>, <code>politica_gasto</code> y <code>wa_conversacion</code> le siguen dando lectura <strong>y escritura</strong></td>
+            <td>seguridad</td><td class="prop">PROPUESTO — no reproducible sin base</td></tr>
+        <tr><td>6</td><td>Nada sonda la <code>0045</code>: si no está aplicada, el <code>select</code> de <code>operador_id</code> deja a todos fuera del panel —incluido el superadmin— con <code>startup: ok:true</code></td>
+            <td>datos</td><td class="prop">PROPUESTO — no reproducible sin base</td></tr>
+        <tr><td>7</td><td><code>/admin</code> enseña la conversación íntegra y el teléfono de operadores identificables, para una finalidad de Likida que el aviso de la flota no cubre</td>
+            <td>legal</td><td class="prop">PROPUESTO — requiere decisión de producto</td></tr>
+        <tr><td>8</td><td><code>/auth/callback</code> no escribe una sola línea cuando el login falla, y su <code>catch</code> vacío impide que <code>onRequestError</code> lo vea</td>
+            <td>operabilidad</td><td class="prop">PROPUESTO — tope de 3 vueltas</td></tr>
+        <tr><td>9</td><td>El login solo registra el caso benigno: los fallos reales de envío del magic link salen sin log, y el SMTP de hoy es un sandbox que ya se sabe que rebota</td>
+            <td>operabilidad</td><td class="prop">PROPUESTO — tope de 3 vueltas</td></tr>
+        <tr><td>10</td><td><code>/admin</code>: 3,839 líneas y 28 páginas con cero archivos de prueba, y sus <strong>dos</strong> capas de autorización sin ancla — las dos mutaciones (<code>admin/layout.tsx:27</code> y <code>proxy.ts:44</code>) dejan la suite verde</td>
+            <td>pruebas</td><td class="prop">PROPUESTO — tope de 3 vueltas</td></tr>
+      </tbody>
+    </table>
   </div>
 
   <h2>La compuerta, sobre el árbol final</h2>
-  <div class="gate">
-    <span class="g">npx vitest run &nbsp;·&nbsp; 166 archivos · 1583 pruebas · 1 saltada · exit 0</span>
-    <span class="g">npx tsc --noEmit &nbsp;·&nbsp; exit 0</span>
-    <span class="g">npm run lint &nbsp;·&nbsp; exit 0</span>
-    <span class="g off">npm run build &nbsp;·&nbsp; no se corre en la nube (pide credenciales)</span>
+  <div class="card">
+    <div class="gate">
+      <span class="g">npm test → exit 0 · 175 archivos · 1638 pruebas · 1 saltada</span>
+      <span class="g">npx tsc --noEmit → exit 0</span>
+      <span class="g">npm run lint → exit 0</span>
+      <span class="g off">npm run build → no se corre en la nube (pide credenciales)</span>
+    </div>
+    <p class="sub" style="margin:14px 0 0">
+      Línea base al arrancar la continuación: 173 archivos / 1629 pruebas. Los tres arreglos de
+      hoy sumaron <strong>+2 archivos y +9 pruebas</strong>, cada una con su caso rojo verificado
+      antes del arreglo. Contra los 49 commits de código que entraron desde el 2-ago
+      (+5,743 líneas en 82 archivos) el repo había sumado 10 archivos de prueba y 59 pruebas.
+      <strong>Verde no es lo mismo que cubierto:</strong> de 7 mutaciones que el auditor de
+      pruebas metió sobre el código nuevo, 5 dejaron la suite en verde.
+    </p>
   </div>
-  <p style="color:var(--muted);font-size:12px;margin-top:10px">
-    Línea base al abrir la ronda: 163 archivos / 1570 pruebas. Las 13 pruebas nuevas son las
-    tres que reproducen los hallazgos cerrados. Cada arreglo se verificó por mutación:
-    reintroducir el bug pone la prueba en rojo.
-  </p>
-
-  <p class="foot">
-    Ronda LIGERA por rotación: sin commits de código desde la ronda 9, se auditan 3 rubros en vez de 12.
-    Los 9 restantes conservan su nota y están marcados «no auditado esta ronda» — no se re-califican solos.
-    Las notas de esta tabla son las que pusieron los tres auditores con contexto fresco, ANTES de los arreglos:
-    no se suben por los tres cierres de hoy, porque subir una nota por un arreglo que nadie volvió a auditar
-    es exactamente lo que esta ronda vino a corregir.
-  </p>
 
 </div>
 </body>
