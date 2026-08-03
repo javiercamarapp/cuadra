@@ -1,11 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // PERMISOS DE NIVEL APLICACIÓN — separados de RLS a propósito.
 //
-// RLS (0001_init.sql) es por TENANT, no por rol: cualquier app_user de un
-// tenant tiene lectura+escritura completa sobre las 7 tablas de negocio vía
-// la policy `tenant_data`. Eso es correcto para flota_admin/encargado/
-// contador — los tres viven del mismo panel, mismos datos — y estas
-// funciones deciden qué ACCIÓN se les ofrece encima de esos mismos datos:
+// RLS ya NO es solo por tenant. Esta cabecera decía que «cualquier app_user de
+// un tenant tiene lectura+escritura completa sobre las 7 tablas» y que eso era
+// «correcto para flota_admin/encargado/contador». Lo segundo era falso y costó
+// un ALTO: la consola ofrece el rol como «Contador — solo lectura y exportar»,
+// y la base le daba DELETE. Hoy el reparto en la base es:
+//   · superadmin / flota_admin / encargado → lectura + escritura (tenant_data)
+//   · contador                             → SOLO lectura (0048, contador_lee)
+//   · operador (chofer)                    → SOLO sus propios viajes (0045+0047)
+// Estas funciones deciden qué ACCIÓN se ofrece encima de esos datos:
 // qué botón se pinta y qué endpoint acepta la petición. Un rol desconocido
 // nunca puede: fail closed, no fail open.
 //

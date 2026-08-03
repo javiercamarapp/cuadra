@@ -1110,3 +1110,43 @@ begin
   raise exception E'OPERADOR_RLS_TENANT  viaje-ajeno=%  gastos-ajenos=%  liquidacion-ajena=%   (esperado 0 / 0 / 0 — con la 0045 sola daba 1/1/1)',
     n_viaje, n_gasto, n_liq;
 end $$;
+
+-- ── 29. El contador lee y no escribe (mig. 0048) ─────────────────────────────
+--
+-- La consola ofrece «Contador — solo lectura y exportar». Antes de la 0048 eso
+-- era cierto SOLO en la etiqueta del <select>: `tenant_data` era `for all` para
+-- todo rol que no fuera `operador`, así que un DELETE por REST con el token del
+-- propio contador devolvía 204 y la liquidación desaparecía del panel, del CSV
+-- y del PDF (auditoría 10, ALTO de seguridad).
+--
+-- Esperado: ve=1 (sigue teniendo panel) · borro=0 · actualizo=0.
+--
+-- ⚠️  NO SE HA CORRIDO. La 0048 se escribió sin base contra la cual ejercerla.
+do $$
+declare
+  v_t uuid; v_o uuid; v_v uuid; v_l uuid; v_u uuid := gen_random_uuid();
+  n_ve int; n_borro int; n_actualizo int;
+begin
+  insert into tenant (nombre) values ('ZZZ VERIF CONTADOR') returning id into v_t;
+  insert into operador (tenant_id, nombre, telefono) values (v_t, 'Chofer', '520000009060') returning id into v_o;
+  insert into viaje (tenant_id, operador_id) values (v_t, v_o) returning id into v_v;
+  insert into liquidacion (tenant_id, viaje_id) values (v_t, v_v) returning id into v_l;
+  insert into app_user (id, tenant_id, email, rol)
+    values (v_u, v_t, 'zzz-verif-contador@likida.test', 'contador');
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_u)::text, true);
+
+  select count(*) into n_ve from liquidacion where tenant_id = v_t;
+
+  with u as (update liquidacion set total_comprobado = 99999 where id = v_l returning 1)
+  select count(*) into n_actualizo from u;
+
+  with d as (delete from liquidacion where id = v_l returning 1)
+  select count(*) into n_borro from d;
+
+  reset role;
+
+  raise exception E'CONTADOR_RLS  ve=%  actualizo=%  borro=%   (esperado 1 / 0 / 0 — antes de la 0048 daba 1 / 1 / 1)',
+    n_ve, n_actualizo, n_borro;
+end $$;

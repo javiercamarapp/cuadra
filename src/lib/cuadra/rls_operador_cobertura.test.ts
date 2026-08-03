@@ -84,3 +84,40 @@ describe('la RLS del chofer cubre las SIETE tablas de tenant_data', () => {
     expect(m0046).not.toMatch(/create policy \w+ on public\.(viaje|gasto|liquidacion) for all/);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ALTO de la auditoría 10 (seguridad) — «Contador — solo lectura y exportar»
+// era cierto solo en la etiqueta del <select>.
+//
+// Misma advertencia que arriba: esto NO ejerce una policy. Comprueba que la
+// exclusión esté escrita para las siete tablas y que el contador tenga su
+// policy de solo SELECT. Quien lo demuestra es el bloque 29 de
+// `supabase/verificaciones.sql`, contra la base.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('el contador lee y no escribe', () => {
+  const m0048 = readFileSync(join(DIR, '0048_rls_contador_solo_lectura.sql'), 'utf8');
+
+  it('ninguna de las siete le deja `tenant_data` abierto al contador', () => {
+    const bloques = SQL.split('do $$').filter((b) => b.includes('not is_contador()'));
+    const cubiertas = new Set<string>();
+    for (const b of bloques) {
+      const lista = b.match(/array\[([^\]]+)\]/)?.[1] ?? '';
+      for (const t of lista.split(',')) {
+        const n = t.trim().replace(/^'|'$/g, '');
+        if (n) cubiertas.add(n);
+      }
+    }
+    const abiertas = TABLAS.filter((t) => !cubiertas.has(t));
+    expect(abiertas, `estas tablas le siguen dando escritura al contador: ${abiertas.join(', ')}`).toEqual([]);
+  });
+
+  it('y sí le deja LEER: sin esto el arreglo lo dejaría sin panel', () => {
+    expect(m0048).toContain('contador_lee');
+    expect(m0048).toMatch(/create policy contador_lee on %I for select/);
+    expect(m0048, 'nunca `for all`').not.toMatch(/create policy contador_lee on %I for all/);
+  });
+
+  it('la exclusión del chofer sobrevive a esta migración — no se deshace la 0045/0046', () => {
+    expect(m0048).toContain('not is_operador()');
+  });
+});
