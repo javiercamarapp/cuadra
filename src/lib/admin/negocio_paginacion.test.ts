@@ -184,7 +184,10 @@ describe('un slug de proveedor no es lo mismo que una etiqueta interna', () => {
       fila('whatsapp-utility', 'whatsapp', 0.008),
     ]);
     const r = await getResumenNegocio('2026-08-02');
-    expect(r.porServicio).toEqual([{ servicio: 'whatsapp-utility', n: 2, costoUsd: 0.02 }]);
+    // 2 × USD 0.008 = 0.016, y así se reporta. Con el `round2` que esta
+    // pantalla tenía salía $0.02: un 25% de más en la línea de WhatsApp de la
+    // pantalla desde la que se fija el precio (auditoría 10, BAJO).
+    expect(r.porServicio).toEqual([{ servicio: 'whatsapp-utility', n: 2, costoUsd: 0.016 }]);
   });
 
   it('los totales no se tocan: lo que cambia es el agrupado, no la suma', async () => {
@@ -193,7 +196,8 @@ describe('un slug de proveedor no es lo mismo que una etiqueta interna', () => {
       fila('whatsapp-utility', 'whatsapp', 0.008),
     ]);
     const r = await getResumenNegocio('2026-08-02');
-    expect(r.costoIaUsd).toBe(0.02);
+    // 0.015 + 0.008 = 0.023, sin redondear a centavos (ver arriba).
+    expect(r.costoIaUsd).toBe(0.023);
     expect(r.porFase.map((f) => f.fase).sort()).toEqual(['ocr', 'whatsapp']);
   });
 

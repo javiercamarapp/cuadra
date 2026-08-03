@@ -323,16 +323,16 @@ export async function getResumenCosto(tenantId: string): Promise<ResumenCosto> {
   };
   const totalUsd = filas.reduce((s, r) => s + numero(r.costo_usd), 0);
   const viajes = new Set(filas.map((r) => r.viaje_id).filter(Boolean));
-  const porFase: Record<string, number> = {};
-  for (const r of filas) porFase[r.fase as string] = round6((porFase[r.fase as string] ?? 0) + numero(r.costo_usd));
+  // La MISMA agregación que usa la consola de superadmin — ver `agregarPorFase`.
+  const porFase = Object.fromEntries(agregarPorFase(filas).map((f) => [f.fase, f.costoUsd]));
   return {
     estado: 'medido',
-    totalUsd: round6(totalUsd),
+    totalUsd: redondearUsd(totalUsd),
     liquidaciones: viajes.size,
     // Dividir entre cero viajes daba 0, y un promedio de $0 por liquidación se
     // lee como "cada liquidación sale gratis". Si no hay denominador, no hay
     // promedio.
-    costoPromedioPorLiquidacion: viajes.size ? round6(totalUsd / viajes.size) : null,
+    costoPromedioPorLiquidacion: viajes.size ? redondearUsd(totalUsd / viajes.size) : null,
     tokensIn: filas.reduce((s, r) => s + numero(r.tokens_in), 0),
     tokensOut: filas.reduce((s, r) => s + numero(r.tokens_out), 0),
     registros: filas.length,
@@ -348,6 +348,69 @@ function ilegible(tenantId: string, err: string): ResumenCosto {
   return { estado: 'no_medido', err };
 }
 
-function round6(n: number): number {
+/**
+ * LA regla de redondeo del costo de modelo, para todo el repo.
+ *
+ * Seis decimales y no dos: una llamada de OCR cuesta fracciones de centavo y un
+ * mensaje de WhatsApp USD 0.008. `round2` sobre estas cifras convierte en $0.00
+ * casi todo lo que no sea un agregado grande — y el número que sale de aquí es
+ * con el que se fija el precio del producto.
+ *
+ * NO es `round2` con otro exponente por casualidad: son dos monedas distintas.
+ * `round2` (`formato.ts`) redondea PESOS a centavos, que es la unidad más chica
+ * que existe en un CFDI. Aquí no hay unidad más chica: hay un precio por token.
+ */
+export function redondearUsd(n: number): number {
   return Math.round(n * 1e6) / 1e6;
+}
+
+export interface CostoPorFase {
+  fase: string;
+  /** Cuántas filas de `llm_costo` cayeron en esa fase. */
+  n: number;
+  costoUsd: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CÓMO SE SUMA `llm_costo` POR FASE. UNA SOLA VEZ.
+//
+// BAJO de la auditoría 10 (arquitectura). Había DOS agregadores de la misma
+// tabla, con semántica distinta y sin que nada los atara:
+//
+//   costos.ts     `getResumenCosto` — por fase, `round6`, unión discriminada de
+//                 tres estados para que no se pueda pintar un 0 que nadie midió.
+//                 Consumidores fuera de su propio archivo y sus pruebas: CERO.
+//   negocio.ts:50 la misma agregación sobre la misma tabla, con `round2` y sin
+//                 la distinción. Es la que alimenta la ÚNICA pantalla que hoy
+//                 enseña costo.
+//
+// Es decir: `costos.ts` parecía la capa de costo y no lo era para nadie. El
+// cambio que lo hacía estallar está escrito en el roadmap del propio archivo
+// («para el panel: margen real»): el día que la flota vea su costo habría dos
+// funciones sumando `llm_costo` por fase, con distinto redondeo y distinto
+// contrato de error. Y si cambia la atribución —p. ej. usar `liquidacion_id`
+// en vez de `viaje_id`, que `vincularCostosALiquidacion` ya escribe— se
+// arreglaría en el archivo que se llama `costos.ts` y `/admin` seguiría con su
+// copia: dos cifras distintas para «cuánto costó esto».
+//
+// Ahora las dos pasan por aquí. El agregador es PURO —recibe filas, no
+// consulta— para que cada llamador siga trayéndolas como le toca: el del tenant
+// con `.eq('tenant_id', …)`, el de la consola cruzando todos los tenants.
+// ═══════════════════════════════════════════════════════════════════════════
+export function agregarPorFase(filas: Array<{ fase?: unknown; costo_usd?: unknown }>): CostoPorFase[] {
+  const acc = new Map<string, { n: number; costoUsd: number }>();
+  for (const f of filas) {
+    const fase = String(f.fase ?? '');
+    const n = Number(f.costo_usd);
+    const cur = acc.get(fase) ?? { n: 0, costoUsd: 0 };
+    cur.n += 1;
+    // Un NaN no se suma pero la fila SÍ se cuenta: `registrarCosto` ya se niega
+    // a escribirlos, y si uno llegó, esconder la llamada además de su costo
+    // convierte un dato roto en un dato ausente.
+    cur.costoUsd += Number.isFinite(n) ? n : 0;
+    acc.set(fase, cur);
+  }
+  return [...acc.entries()]
+    .map(([fase, v]) => ({ fase, n: v.n, costoUsd: redondearUsd(v.costoUsd) }))
+    .sort((a, b) => b.costoUsd - a.costoUsd);
 }

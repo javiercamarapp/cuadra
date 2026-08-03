@@ -49,22 +49,27 @@ describe('getResumenNegocio', () => {
     });
     const r = await getResumenNegocio('2026-08-02');
     expect(r.tenants).toBe(1);
-    expect(r.flotas).toEqual([{ id: 't1', nombre: 'Transportes Innovativos', plan: 'demo', viajes: 2, costoIaUsd: 1.93 }]);
+    // AUDITORÍA 10, BAJO (arquitectura) — ESTOS NÚMEROS CAMBIARON, Y ES EL
+    // ARREGLO. `/admin` redondeaba DÓLARES a dos decimales, con su propia copia
+    // de la agregación; ahora usa `agregarPorFase`/`redondearUsd` de
+    // `costos.ts`, que corta en la millonésima. `round2` es para PESOS —la
+    // unidad más chica de un CFDI—; aquí la unidad es un precio por token.
+    expect(r.flotas).toEqual([{ id: 't1', nombre: 'Transportes Innovativos', plan: 'demo', viajes: 2, costoIaUsd: 1.9322 }]);
     expect(r.viajesProcesados).toBe(2);
-    expect(r.costoIaUsd).toBe(1.93);
+    expect(r.costoIaUsd).toBe(1.9322);
     expect(r.tokensIn).toBe(1800);
     expect(r.tokensOut).toBe(350);
     expect(r.porFase).toEqual([
-      { fase: 'ocr', n: 2, costoUsd: 1.51 },
-      { fase: 'cuadre', n: 1, costoUsd: 0.43 },
+      { fase: 'ocr', n: 2, costoUsd: 1.505 },
+      { fase: 'cuadre', n: 1, costoUsd: 0.4272 },
     ]);
     expect(r.porModelo).toEqual([
-      { modelo: 'google/gemini-3.6-flash', n: 2, costoUsd: 1.51 },
-      { modelo: 'anthropic/claude-5-sonnet', n: 1, costoUsd: 0.43 },
+      { modelo: 'google/gemini-3.6-flash', n: 2, costoUsd: 1.505 },
+      { modelo: 'anthropic/claude-5-sonnet', n: 1, costoUsd: 0.4272 },
     ]);
     expect(r.porDia).toEqual([
-      { dia: '2026-08-01', costoUsd: 1.51, tokens: 1800 },
-      { dia: '2026-08-02', costoUsd: 0.43, tokens: 350 },
+      { dia: '2026-08-01', costoUsd: 1.505, tokens: 1800 },
+      { dia: '2026-08-02', costoUsd: 0.4272, tokens: 350 },
     ]);
     // Facturas por día: SIEMPRE las 7 fechas (0 donde no hubo actividad),
     // no solo las que tuvieron gasto — si no, la gráfica de barras

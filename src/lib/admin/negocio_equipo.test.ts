@@ -50,8 +50,13 @@ beforeEach(() => { respuestas.clear(); selects.clear(); });
 describe('getCostoPorFaseModelo — el eje es fase Y modelo, no fase a secas', () => {
   it('dos modelos dentro de la MISMA fase salen en dos renglones', async () => {
     // Es la pregunta para la que existe la pantalla. Con la llave mutada a
-    // solo `fase`, esto devuelve un renglón de $1.51 rotulado con el primer
+    // solo `fase`, esto devuelve un renglón de $1.505 rotulado con el primer
     // modelo que pasó — y es la cifra desde la que se fija el precio.
+    //
+    // Los importes ya NO se redondean a centavos (auditoría 10, BAJO de
+    // arquitectura): `redondearUsd` de `costos.ts` corta en la millonésima,
+    // porque en dólares de modelo no hay unidad más chica que un precio por
+    // token. `round2` es para pesos.
     respuestas.set('llm_costo', {
       data: [
         { fase: 'ocr', modelo: 'google/gemini-3.6-flash', costo_usd: 1.005 },
@@ -61,8 +66,8 @@ describe('getCostoPorFaseModelo — el eje es fase Y modelo, no fase a secas', (
       error: null,
     });
     expect(await getCostoPorFaseModelo()).toEqual([
-      { fase: 'ocr', modelo: 'google/gemini-3.6-flash', n: 2, costoUsd: 1.51 },
-      { fase: 'ocr', modelo: 'anthropic/claude-5-sonnet', n: 1, costoUsd: 0.43 },
+      { fase: 'ocr', modelo: 'google/gemini-3.6-flash', n: 2, costoUsd: 1.505 },
+      { fase: 'ocr', modelo: 'anthropic/claude-5-sonnet', n: 1, costoUsd: 0.4272 },
     ]);
   });
 

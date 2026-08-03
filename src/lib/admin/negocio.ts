@@ -36,6 +36,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { round2 } from '@/lib/formato';
+import { agregarPorFase, redondearUsd } from '@/lib/cuadra/costos';
 import { huellaId, redactarTexto } from '@/lib/logger';
 import { traerTodo } from '@/lib/cuadra/analytics';
 import { acotada } from '@/lib/cuadra/presupuesto';
@@ -118,7 +119,6 @@ export async function getResumenNegocio(hoy: string = new Date().toISOString().s
       (d, h) => acotada(admin.from('gasto').select('created_at').order('created_at').range(d, h), 'negocio/gasto'),
       'getResumenNegocio/gasto'),
   ]);
-  const porFaseMap = new Map<string, { n: number; costoUsd: number }>();
   const porModeloMap = new Map<string, { n: number; costoUsd: number }>();
   const porServicioMap = new Map<string, { n: number; costoUsd: number }>();
   const porDiaMap = new Map<string, { costoUsd: number; tokens: number }>();
@@ -131,10 +131,6 @@ export async function getResumenNegocio(hoy: string = new Date().toISOString().s
     costoIaUsd += costo;
     tokensIn += Number(f.tokens_in);
     tokensOut += Number(f.tokens_out);
-
-    const fase = porFaseMap.get(f.fase) ?? { n: 0, costoUsd: 0 };
-    fase.n += 1; fase.costoUsd += costo;
-    porFaseMap.set(f.fase, fase);
 
     // UN SLUG DE PROVEEDOR NO ES UNA ETIQUETA INTERNA. `llm_costo.modelo`
     // guarda las dos cosas, y agruparlas en crudo ponía `whatsapp-utility`
@@ -155,17 +151,18 @@ export async function getResumenNegocio(hoy: string = new Date().toISOString().s
     d.costoUsd += costo; d.tokens += tokens;
     porDiaMap.set(dia, d);
   }
-  const porFase = [...porFaseMap.entries()]
-    .map(([fase, v]) => ({ fase, n: v.n, costoUsd: round2(v.costoUsd) }))
-    .sort((a, b) => b.costoUsd - a.costoUsd);
+  // `agregarPorFase` de `costos.ts`: la MISMA suma que usa `getResumenCosto`,
+  // con el mismo redondeo. Esta pantalla tenía su propia copia, con `round2`
+  // sobre dólares — y es la única que hoy enseña costo (auditoría 10, BAJO).
+  const porFase = agregarPorFase(filas);
   const porModelo = [...porModeloMap.entries()]
-    .map(([modelo, v]) => ({ modelo, n: v.n, costoUsd: round2(v.costoUsd) }))
+    .map(([modelo, v]) => ({ modelo, n: v.n, costoUsd: redondearUsd(v.costoUsd) }))
     .sort((a, b) => b.costoUsd - a.costoUsd);
   const porServicio = [...porServicioMap.entries()]
-    .map(([servicio, v]) => ({ servicio, n: v.n, costoUsd: round2(v.costoUsd) }))
+    .map(([servicio, v]) => ({ servicio, n: v.n, costoUsd: redondearUsd(v.costoUsd) }))
     .sort((a, b) => b.costoUsd - a.costoUsd);
   const porDia = [...porDiaMap.entries()]
-    .map(([dia, v]) => ({ dia, costoUsd: round2(v.costoUsd), tokens: v.tokens }))
+    .map(([dia, v]) => ({ dia, costoUsd: redondearUsd(v.costoUsd), tokens: v.tokens }))
     .sort((a, b) => a.dia.localeCompare(b.dia));
 
   // Tendencia real, no de adorno: si la ventana ANTERIOR está vacía (Likida
@@ -183,6 +180,8 @@ export async function getResumenNegocio(hoy: string = new Date().toISOString().s
     const actual = sumaEnVentana(inicioActual, cortes(0), campo);
     const anterior = sumaEnVentana(inicioAnterior, inicioActual, campo);
     if (anterior === 0) return null;
+    // Un PORCENTAJE, no dólares: aquí sí `round2` — «+12.5%» con seis
+    // decimales no dice nada que «+12.5%» no diga.
     return round2(((actual - anterior) / anterior) * 100);
   };
 
@@ -206,13 +205,13 @@ export async function getResumenNegocio(hoy: string = new Date().toISOString().s
   const flotas = tenants.map((t) => ({
     ...t,
     viajes: viajesPorTenant.get(t.id) ?? 0,
-    costoIaUsd: round2(costoPorTenant.get(t.id) ?? 0),
+    costoIaUsd: redondearUsd(costoPorTenant.get(t.id) ?? 0),
   }));
   return {
     tenants: flotas.length,
     flotas,
     viajesProcesados: viajes.length,
-    costoIaUsd: round2(costoIaUsd),
+    costoIaUsd: redondearUsd(costoIaUsd),
     tokensIn,
     tokensOut,
     porFase,
@@ -254,7 +253,7 @@ export async function getCostoPorFaseModelo(): Promise<CostoPorFaseModelo[]> {
     map.set(key, cur);
   }
   return [...map.values()]
-    .map((v) => ({ ...v, costoUsd: round2(v.costoUsd) }))
+    .map((v) => ({ ...v, costoUsd: redondearUsd(v.costoUsd) }))
     .sort((a, b) => b.costoUsd - a.costoUsd);
 }
 
