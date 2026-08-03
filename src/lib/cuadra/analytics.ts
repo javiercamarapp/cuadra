@@ -9,7 +9,27 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { cuadrarDesdeDB } from './cuadre/desde_db';
 import { filasImprimibles } from './liquidacion/omitidos';
 import { round2 } from '@/lib/formato';
+import { acotada } from './presupuesto';
 
+// ── EL CAMINO DEL PANEL TAMBIÉN TIENE TECHO (auditoría 10, MEDIO) ───────────
+//
+// La ronda 9 verificó «toda consulta tiene techo» contando `supabaseAdmin()`
+// contra `acotada(` en `repo.ts`, `conv.ts`, `costos.ts` y `config.ts`. Este
+// archivo no estaba en esa lista, y daba 5 vs 0: el camino del WEBHOOK tenía
+// techo y el del PANEL ninguno.
+//
+// Sin `acotada` el techo es el default de undici, 300 000 ms, y ninguna página
+// de `src/app` declara `maxDuration`. `detectarAnomalias` encadena hasta 15
+// consultas secuenciales de 1 000 filas para una flota con un año de operación
+// (~14 400 gastos): basta que UNA se cuelgue para que el panel se quede en
+// blanco en vez de pintar el fallback que `safe()` (dashboard/page.tsx) fue
+// diseñado para pintar — `safe()` atrapa excepciones, no esperas.
+//
+// Con `acotada`, agotar el tope entra por el MISMO camino que un error de
+// Postgres (`{ data: null, error }`), que es exactamente lo que `exigir()` de
+// abajo convierte en excepción y `safe()` sabe atrapar. El techo no cambia la
+// semántica de nadie: la reutiliza.
+//
 // ── Los fallos de Supabase llegan POR VALOR, no lanzando ────────────────────
 // `shouldThrowOnError` es false por defecto en postgrest-js, así que un host
 // inalcanzable, un 500, una llave rotada o un `grant` que le cierre la tabla al
@@ -70,12 +90,12 @@ export interface DashboardKpis {
 
 export async function getKpis(tenantId: string): Promise<DashboardKpis> {
   const rows = await traerTodo<{ total_comprobado: unknown; diferencia: unknown; estatus: unknown; diferencias: unknown }>(
-    (desde, hasta) => supabaseAdmin()
+    (desde, hasta) => acotada(supabaseAdmin()
       .from('liquidacion')
       .select('total_comprobado, diferencia, estatus, diferencias')
       .eq('tenant_id', tenantId)
       .order('id')
-      .range(desde, hasta),
+      .range(desde, hasta), 'getKpis'),
     'getKpis',
   );
   const conDif = rows.filter((r) => r.estatus === 'con_diferencias').length;
@@ -108,15 +128,15 @@ export async function getStatsPorOperador(tenantId: string): Promise<OperadorSta
   const admin = supabaseAdmin();
   const [ops, gastos, viajes] = await Promise.all([
     traerTodo<{ id: unknown; nombre: unknown }>(
-      (desde, hasta) => admin.from('operador').select('id, nombre').eq('tenant_id', tenantId).order('id').range(desde, hasta),
+      (desde, hasta) => acotada(admin.from('operador').select('id, nombre').eq('tenant_id', tenantId).order('id').range(desde, hasta), 'getStatsPorOperador.operador'),
       'getStatsPorOperador.operador',
     ),
     traerTodo<{ viaje_id: unknown; concepto: unknown; monto: unknown }>(
-      (desde, hasta) => admin.from('gasto').select('viaje_id, concepto, monto').eq('tenant_id', tenantId).eq('concepto', 'diesel').order('id').range(desde, hasta),
+      (desde, hasta) => acotada(admin.from('gasto').select('viaje_id, concepto, monto').eq('tenant_id', tenantId).eq('concepto', 'diesel').order('id').range(desde, hasta), 'getStatsPorOperador.gasto'),
       'getStatsPorOperador.gasto',
     ),
     traerTodo<{ id: unknown; operador_id: unknown }>(
-      (desde, hasta) => admin.from('viaje').select('id, operador_id').eq('tenant_id', tenantId).order('id').range(desde, hasta),
+      (desde, hasta) => acotada(admin.from('viaje').select('id, operador_id').eq('tenant_id', tenantId).order('id').range(desde, hasta), 'getStatsPorOperador.viaje'),
       'getStatsPorOperador.viaje',
     ),
   ]);
@@ -153,12 +173,12 @@ export async function detectarAnomalias(tenantId: string): Promise<Anomalia[]> {
   // PostgREST se lee como "revisamos y todo está limpio", que es la
   // afirmación más cara que puede hacer este producto.
   const data = await traerTodo<{ viaje_id: unknown; concepto: unknown; monto: unknown; folio: unknown; cfdi_uuid: unknown }>(
-    (desde, hasta) => supabaseAdmin()
+    (desde, hasta) => acotada(supabaseAdmin()
       .from('gasto')
       .select('viaje_id, concepto, monto, folio, cfdi_uuid')
       .eq('tenant_id', tenantId)
       .order('id')
-      .range(desde, hasta),
+      .range(desde, hasta), 'detectarAnomalias'),
     'detectarAnomalias',
   );
   return detectarDuplicadosEntreViajes(
@@ -179,12 +199,12 @@ export interface Acreditables {
 /** Suma de estímulos acreditables del periodo (IEPS diésel + IVA + peaje 50%). */
 export async function getAcreditables(tenantId: string): Promise<Acreditables> {
   const rows = await traerTodo<{ ieps_acreditable: unknown; iva_acreditable: unknown; peaje_acreditable: unknown; litros_diesel_acreditables: unknown }>(
-    (desde, hasta) => supabaseAdmin()
+    (desde, hasta) => acotada(supabaseAdmin()
       .from('liquidacion')
       .select('ieps_acreditable, iva_acreditable, peaje_acreditable, litros_diesel_acreditables')
       .eq('tenant_id', tenantId)
       .order('id')
-      .range(desde, hasta),
+      .range(desde, hasta), 'getAcreditables'),
     'getAcreditables',
   );
   return {
@@ -230,12 +250,12 @@ export interface LiquidacionDetalle {
 /** Detalle de una liquidación (read-only) — para la vista de proyector. */
 export async function getLiquidacionDetalle(id: string, tenantId: string): Promise<LiquidacionDetalle | null> {
   const admin = supabaseAdmin();
-  const res = await admin
+  const res = await acotada(admin
     .from('liquidacion')
     .select('id, viaje_id, estatus, total_comprobado, total_anticipo, diferencia, diferencias, ieps_acreditable, litros_diesel_acreditables, iva_acreditable, peaje_acreditable, created_at, pdf_url, viaje:viaje_id(folio, operador_id, operador:operador_id(nombre))')
     .eq('id', id)
     .eq('tenant_id', tenantId)
-    .maybeSingle();
+    .maybeSingle(), 'getLiquidacionDetalle');
   // `null` significa AHORA una sola cosa: la liquidación no existe (y la página
   // responde notFound()). Antes también significaba "no se pudo leer", y el
   // contralor que hacía clic en una liquidación real leía "Esta página no
@@ -294,13 +314,13 @@ async function leerGastos(
   tenantId: string,
   viajeId: string,
 ): Promise<Array<{ concepto: string; monto: number; folio?: string; ocrExtra?: Record<string, unknown>; imagenUrl?: string }>> {
-  const res = await admin
+  const res = await acotada(admin
     .from('gasto')
     .select('id, concepto, monto, folio, ocr_extra, imagen_url')
     .eq('tenant_id', tenantId)
     .eq('viaje_id', viajeId)
     .order('fecha', { ascending: true, nullsFirst: false })
-    .order('id', { ascending: true });
+    .order('id', { ascending: true }), 'getLiquidacionDetalle/gastos');
   const filas = exigir(res, 'getLiquidacionDetalle/gastos') ?? [];
   return filas.map((g) => ({
     concepto: g.concepto as string,
