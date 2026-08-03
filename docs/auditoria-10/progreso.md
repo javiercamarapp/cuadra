@@ -112,3 +112,27 @@ Sin control, se habría commiteado una prueba que no probaba nada.
   con la corrida real. La primera captura traía los conteos de severidad mal
   (25 = 1+2+15+7); corregidos a 27 = 1+3+14+9 y recapturado.
 - `00-SINTESIS.md` y `RESULTADO.md` escritos.
+
+---
+
+# CONTINUACIÓN — 3-ago-2026 (desatendida, en la nube)
+
+La ronda 10 se reabre sobre su propio PR (#7), que seguía abierto. Regla de
+tamaño de ronda: hay PR de auditoría abierto → ronda de continuación sobre esa
+misma rama, sin abrir PR nuevo.
+
+- `git status` limpio al arrancar (HEAD desprendido de `master`) → **autofix habilitado**.
+- `origin/master` avanzó **58 commits (49 de código, 82 archivos, +5743/-215)**
+  mientras el PR esperaba. Mergeado a la rama: `6d4ea7a`. Un solo conflicto,
+  `src/app/dashboard/page.tsx` (bloque de imports), resuelto por unión:
+  `fechaMx` + `Acred` (del arreglo FE-1 de esta ronda) + `puedeExportar` (del
+  auth nuevo). `litros` se cayó porque ya no se usa en ese archivo.
+- Compuerta sobre el árbol mergeado, línea base de la continuación:
+  `npm test` exit 0 · 173 archivos / 1629 pruebas / 1 saltada · 31.40s.
+  `npx tsc --noEmit` exit 0. `npm run lint` exit 0. Sin `npm run build` (nube).
+- `MAPA.md` reescrito para la continuación: el delta real, los dos bloques
+  nuevos (auth por sesión de Supabase con 5 roles + RLS del chofer; consola
+  `/admin` de 39 archivos), y las notas vigentes de los 12.
+- Se relanzan **los 12 rubros**, no 3: nueve nunca se auditaron en esta ronda y
+  los tres del 2-ago (frontend, fiscal, tool calling) se escribieron contra un
+  árbol que ya no existe.
