@@ -83,7 +83,17 @@ const ES_VIATICO = ['alimentacion', 'hospedaje', 'transporte', 'viaticos'];
 export type Cubeta = 'deducible' | 'no_deducible' | 'por_confirmar';
 
 const NO_DEDUCIBLE_ISR: TipoDiferencia[] = ['rfc_receptor', 'cfdi_cancelado', 'cfdi_efos', 'cfdi_no_encontrado', 'complemento_hidrocarburos', 'efectivo_sobre_tope'];
-const POR_CONFIRMAR: TipoDiferencia[] = ['combustible_efectivo', 'rfc_receptor_no_verificable'];
+// AUDITORÍA 10, ALTO (fiscal): `cfdi_efos_indeterminado` vive aquí y no en
+// `NO_DEDUCIBLE_ISR` a propósito, y tampoco puede quedarse fuera de las dos
+// listas. La auditoría 9 quitó bien el falso positivo —`sat.ts` ya no afirma
+// `efos: true` sobre un código que no distingue el 69-B presunto del
+// definitivo—, pero con eso `g.efos === true` quedó inalcanzable y TODO EFOS
+// entra por el indeterminado. Estando fuera de las dos listas, el gasto caía
+// en la cubeta `deducible`: el papel imprimía "Deducible para ISR" en verde,
+// con su IVA acreditable, sobre un comprobante que el SAT sí marcó. Se había
+// pasado de "siempre duro" a "nunca duro". El tercer estado es el correcto:
+// ni fraude declarado, ni deducción afirmada.
+const POR_CONFIRMAR: TipoDiferencia[] = ['combustible_efectivo', 'rfc_receptor_no_verificable', 'cfdi_efos_indeterminado'];
 
 /**
  * LA ÚNICA definición de en qué cubeta cae un gasto. Vive aquí, exportada, para
@@ -863,7 +873,13 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
   // SÍ es deducible hasta el 15% (RFA 2026 regla 2.9), pero NO acredita IEPS —
   // la facilidad salva un beneficio, no los dos. Sacarlo de aquí acreditaría un
   // IEPS que la facilidad no concede.
-  const SIN_ACREDITAMIENTO: TipoDiferencia[] = ['rfc_receptor', 'rfc_receptor_no_verificable', 'cfdi_cancelado', 'cfdi_efos', 'cfdi_no_encontrado', 'complemento_hidrocarburos', 'combustible_efectivo', 'efectivo_sobre_tope', 'monto_invalido'];
+  // `cfdi_efos_indeterminado` entra aquí por LIVA 5-I, que no es un requisito
+  // aparte sino una DEFINICIÓN: "se consideran estrictamente indispensables las
+  // erogaciones... que sean deducibles para los fines del impuesto sobre la
+  // renta". Si la deducción para ISR quedó por confirmar, el acreditamiento del
+  // IVA está en la misma duda; afirmarlo en verde era prometer $1,600
+  // recuperables sobre un comprobante que el SAT marcó.
+  const SIN_ACREDITAMIENTO: TipoDiferencia[] = ['rfc_receptor', 'rfc_receptor_no_verificable', 'cfdi_cancelado', 'cfdi_efos', 'cfdi_efos_indeterminado', 'cfdi_no_encontrado', 'complemento_hidrocarburos', 'combustible_efectivo', 'efectivo_sobre_tope', 'monto_invalido'];
   const peajeFactor = input.estimulos?.peajeFactor ?? 0.5;
   // `iepsAcreditable` se queda en 0 a propósito y por eso es const: el estímulo
   // del LIF 20-A no es una cifra que este motor pueda calcular (necesita la cuota
@@ -926,7 +942,31 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
       // Los litros los lee el OCR del ticket y viven en `ocrExtra` (el XML del
       // CFDI no siempre trae la cantidad desglosada por concepto).
       const litros = Number((g.ocrExtra as Record<string, unknown> | undefined)?.litros ?? 0);
-      const pagoElectronico = !!g.formaPago && g.formaPago !== '01';
+      // AUDITORÍA 10, ALTO (fiscal): esto era `!!g.formaPago && g.formaPago !==
+      // '01'` —la negación del efectivo—, que acepta los 30 códigos restantes
+      // del catálogo `c_FormaPago` cuando el comentario de arriba enumera una
+      // lista CERRADA de cuatro. El caso que importa no es exótico: `99` (Por
+      // definir) es el valor obligatorio en todo CFDI con `MetodoPago = PPD`, y
+      // una flota que compra diésel a crédito en la estación factura así.
+      // También entraban `12` (dación en pago), `17` (compensación), `23`
+      // (novación) y `30` (aplicación de anticipos) — ninguno es un medio de
+      // pago del 4º párrafo, y el contador multiplicaba esos litros por la
+      // cuota del DOF.
+      //
+      // OJO CON LA PROCEDENCIA: ninguna ficha de `normas/` transcribe ese 4º
+      // párrafo, así que esta lista sale del comentario de este archivo y no de
+      // una fuente que el repo pueda citar. Por eso se eligió el lado
+      // conservador —contar de menos, nunca de más— y por eso queda un hallazgo
+      // abierto para transcribir el párrafo en `lif-2026-20-A.yaml`.
+      const MEDIOS_LIF_20A: readonly string[] = [
+        '02', // cheque nominativo
+        '03', // transferencia electrónica de fondos
+        '04', // tarjeta de crédito
+        '05', // monedero electrónico
+        '28', // tarjeta de débito
+        '29', // tarjeta de servicios
+      ];
+      const pagoElectronico = !!g.formaPago && MEDIOS_LIF_20A.includes(g.formaPago);
       if (pagoElectronico && Number.isFinite(litros) && litros > 0) {
         // AUDITORÍA 8, CRÍTICO: los litros salen del OCR y nada los cotejaba —
         // ni contra el XML (no siempre trae la cantidad desglosada), ni contra

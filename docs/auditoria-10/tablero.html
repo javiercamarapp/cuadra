@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Likida — Auditoría 10 (continuación 3-ago-2026)</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --line:#262d36; --ink:#e6edf3; --muted:#8b949e;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff; --dim:#6e7681;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       padding:32px 28px 48px}
+  h1{font-size:24px;margin:0 0 4px;letter-spacing:-.02em}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+     margin:34px 0 12px;font-weight:600}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 22px}
+  .wrap{max-width:1120px;margin:0 auto}
+  .row{display:flex;gap:16px;flex-wrap:wrap}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+  .kpi{flex:1;min-width:170px}
+  .kpi .lbl{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .kpi .val{font-size:32px;font-weight:650;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .kpi .note{font-size:11px;color:var(--muted);margin-top:5px}
+  .scroll{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:14px;min-width:640px}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;
+     color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line)}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .num{text-align:center;font-variant-numeric:tabular-nums;font-weight:650;width:62px}
+  .down{color:var(--bad);font-weight:650}
+  .up{color:var(--ok);font-weight:650}
+  .same{color:var(--dim)}
+  .sev{display:inline-block;min-width:20px;text-align:center;font-size:11px;font-weight:700;
+       padding:2px 8px;border-radius:5px;margin-right:5px}
+  .crit{background:rgba(248,81,73,.16);color:var(--bad)}
+  .alto{background:rgba(210,153,34,.16);color:var(--warn)}
+  .med{background:rgba(88,166,255,.13);color:var(--accent)}
+  .baj{background:rgba(139,148,158,.14);color:var(--muted)}
+  .gate{display:flex;gap:10px;flex-wrap:wrap;margin-top:2px}
+  .g{font-size:12px;padding:7px 13px;border-radius:7px;border:1px solid var(--line);
+     background:rgba(63,185,80,.08);color:var(--ok);font-variant-numeric:tabular-nums}
+  .g.off{background:rgba(139,148,158,.08);color:var(--muted)}
+  .fixed{color:var(--ok);font-weight:600}
+  .prop{color:var(--muted)}
+  .serie{display:flex;align-items:flex-end;gap:14px;height:150px;padding:10px 4px 0}
+  .bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%}
+  .bar .b{width:100%;border-radius:4px 4px 0 0;background:linear-gradient(180deg,var(--accent),rgba(88,166,255,.35))}
+  .bar.now .b{background:linear-gradient(180deg,var(--bad),rgba(248,81,73,.35))}
+  .bar .n{font-size:12px;font-weight:650;margin-bottom:5px;font-variant-numeric:tabular-nums}
+  .bar .x{font-size:10px;color:var(--muted);margin-top:6px;text-align:center;line-height:1.25}
+  .lead{font-size:14px;color:var(--ink);background:var(--panel);border:1px solid var(--line);
+        border-left:3px solid var(--bad);border-radius:8px;padding:14px 16px;margin:0 0 4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Likida — Auditoría 10 · continuación</h1>
+  <p class="sub">3-ago-2026 · desatendida, en la nube · rama <code>claude/auditoria-10</code>, PR #7 ·
+     demo con Transportes Innovativos en <strong>3 días</strong></p>
+
+  <p class="lead">
+    Los doce rubros se auditaron sobre un árbol con <strong>5,743 líneas nuevas</strong> que
+    nadie había mirado: autenticación real por sesión de Supabase con cinco roles, RLS del
+    chofer, y la consola <code>/admin</code>. <strong>Once de doce rubros bajaron.</strong>
+    La caída no es una relectura del mismo código — ocho de los once movimientos son
+    <em>deuda que cobró factura</em>: decisiones viejas que eran inofensivas mientras todos los
+    usuarios del panel eran iguales, y que dejaron de serlo cuando entró un rol cuyo valor
+    entero es <em>ver menos</em>.
+  </p>
+
+  <h2>Resumen</h2>
+  <div class="row">
+    <div class="card kpi">
+      <div class="lbl">Nota global</div>
+      <div class="val down">4.9 <span style="font-size:15px">▼2.4</span></div>
+      <div class="note">antes 7.3 (2-ago) · 59/12</div>
+    </div>
+    <div class="card kpi">
+      <div class="lbl">Rubros auditados</div>
+      <div class="val">12<span style="font-size:15px;color:var(--muted)">/12</span></div>
+      <div class="note">11 bajaron · 1 subió · 0 sin cubrir</div>
+    </div>
+    <div class="card kpi">
+      <div class="lbl">Hallazgos verificados</div>
+      <div class="val">108</div>
+      <div class="note">
+        <span class="sev crit">13 C</span><span class="sev alto">30 A</span>
+        <span class="sev med">38 M</span><span class="sev baj">27 B</span>
+      </div>
+    </div>
+    <div class="card kpi">
+      <div class="lbl">Críticos distintos</div>
+      <div class="val">10</div>
+      <div class="note"><span class="fixed">8 cerrados</span> · 1 a medias · 1 por verificar en base</div>
+    </div>
+  </div>
+
+  <h2>Los doce rubros</h2>
+  <div class="card scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Rubro</th><th class="num">Antes</th><th class="num">Hoy</th><th class="num">Δ</th>
+          <th>Hallazgos</th><th>Razón del movimiento</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Sistema agéntico</strong></td><td class="num">8</td><td class="num down">3</td><td class="num down">▼5</td>
+            <td><span class="sev crit">1</span><span class="sev alto">2</span><span class="sev med">3</span></td>
+            <td>Mirada más profunda — el código del ciclo no cambió; la ronda 9 metió la sala de espera de comprobantes en el camino del dinero y no la auditó</td></tr>
+        <tr><td><strong>Rendimiento y costo</strong></td><td class="num">8</td><td class="num down">4</td><td class="num down">▼4</td>
+            <td><span class="sev alto">4</span><span class="sev med">4</span><span class="sev baj">1</span></td>
+            <td>Mirada más profunda — el 8 se sostenía en hallazgos que quedaron sin objeto al revertir <code>foto_pendiente</code>; sumado el peor caso, no cabe en su límite</td></tr>
+        <tr><td><strong>Cumplimiento legal</strong></td><td class="num">7</td><td class="num down">4</td><td class="num down">▼3</td>
+            <td><span class="sev crit">1</span><span class="sev alto">2</span><span class="sev med">2</span><span class="sev baj">1</span></td>
+            <td>Deuda que cobró factura — entraron 5,743 líneas que tratan datos personales y <code>privacidad.ts</code> no se tocó</td></tr>
+        <tr><td><strong>Backend y API</strong></td><td class="num">8</td><td class="num down">5</td><td class="num down">▼3</td>
+            <td><span class="sev crit">2</span><span class="sev alto">3</span><span class="sev med">2</span></td>
+            <td>Deuda que cobró factura — quién ve el dinero de la flota se decidió solo en la capa que pinta botones</td></tr>
+        <tr><td><strong>Seguridad</strong></td><td class="num">8</td><td class="num down">5</td><td class="num down">▼3</td>
+            <td><span class="sev crit">2</span><span class="sev alto">2</span><span class="sev med">1</span><span class="sev baj">4</span></td>
+            <td>Deuda que cobró factura — el aislamiento entre flotas aguanta; el que se rompió es entre roles dentro de una flota</td></tr>
+        <tr><td><strong>Modelo de datos</strong></td><td class="num">8</td><td class="num down">5</td><td class="num down">▼3</td>
+            <td><span class="sev crit">2</span><span class="sev alto">2</span><span class="sev med">2</span><span class="sev baj">2</span></td>
+            <td>Deuda que cobró factura — la RLS de la 0045 no gobierna los caminos que leen con service-role, y nada sonda que esté aplicada</td></tr>
+        <tr><td><strong>Operabilidad y DX</strong></td><td class="num">7</td><td class="num down">5</td><td class="num down">▼2</td>
+            <td><span class="sev crit">2</span><span class="sev alto">4</span><span class="sev med">2</span></td>
+            <td>Deuda que cobró factura — el login nuevo falla sin dejar una sola línea</td></tr>
+        <tr><td><strong>Cumplimiento fiscal</strong></td><td class="num">6</td><td class="num down">5</td><td class="num down">▼1</td>
+            <td><span class="sev crit">1</span><span class="sev alto">2</span><span class="sev med">4</span><span class="sev baj">4</span></td>
+            <td>Mirada más profunda — los dos altos del 2-ago sí anclaron; al abrir el mismo eje una capa más adentro salieron dos cosas que ya estaban</td></tr>
+        <tr><td><strong>Tool calling</strong></td><td class="num">7</td><td class="num down">6</td><td class="num down">▼1</td>
+            <td><span class="sev alto">1</span><span class="sev med">5</span><span class="sev baj">7</span></td>
+            <td>Deuda que cobró factura — el código del rubro es byte-idéntico; llegó el consumidor: <code>/admin</code> pinta la atribución de costo como hecho en 7 pantallas</td></tr>
+        <tr><td><strong>Arquitectura</strong></td><td class="num">7</td><td class="num down">6</td><td class="num down">▼1</td>
+            <td><span class="sev crit">1</span><span class="sev alto">2</span><span class="sev med">2</span><span class="sev baj">3</span></td>
+            <td>Deuda que cobró factura — la tabla de permisos dice gobernar la API y ningún endpoint la consultaba</td></tr>
+        <tr><td><strong>Frontend</strong></td><td class="num">5</td><td class="num up">6</td><td class="num up">▲1</td>
+            <td><span class="sev alto">3</span><span class="sev med">7</span><span class="sev baj">3</span></td>
+            <td>Se atacó y subió — el crítico del 2-ago cerró de verdad y quedó fijado <em>renderizando</em> el componente, no leyendo su fuente</td></tr>
+        <tr><td><strong>Pruebas</strong></td><td class="num">9</td><td class="num down">5</td><td class="num down">▼4</td>
+            <td><span class="sev crit">1</span><span class="sev alto">3</span><span class="sev med">4</span><span class="sev baj">2</span></td>
+            <td>Deuda que cobró factura — 7 mutaciones sobre el código nuevo, <strong>5 sobrevivieron</strong>. Los 3 controles murieron como debían: el motor del dinero sigue armado</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Serie histórica de la nota global</h2>
+  <div class="card">
+    <div class="serie">
+      <div class="bar"><div class="n">6.2</div><div class="b" style="height:62%"></div><div class="x">aud 2<br>28-jul</div></div>
+      <div class="bar"><div class="n">6.2</div><div class="b" style="height:62%"></div><div class="x">aud 3</div></div>
+      <div class="bar"><div class="n">5.9</div><div class="b" style="height:59%"></div><div class="x">aud 4</div></div>
+      <div class="bar"><div class="n">5.2</div><div class="b" style="height:52%"></div><div class="x">aud 5</div></div>
+      <div class="bar"><div class="n">5.3</div><div class="b" style="height:53%"></div><div class="x">aud 6</div></div>
+      <div class="bar"><div class="n">5.5</div><div class="b" style="height:55%"></div><div class="x">aud 7</div></div>
+      <div class="bar"><div class="n">6.5</div><div class="b" style="height:65%"></div><div class="x">aud 8</div></div>
+      <div class="bar"><div class="n">7.7</div><div class="b" style="height:77%"></div><div class="x">aud 9<br>1-ago</div></div>
+      <div class="bar"><div class="n">7.3</div><div class="b" style="height:73%"></div><div class="x">aud 10<br>2-ago</div></div>
+      <div class="bar now"><div class="n">4.9</div><div class="b" style="height:49%"></div><div class="x">aud 10 cont.<br>3-ago</div></div>
+    </div>
+  </div>
+
+  <h2>Los diez críticos distintos</h2>
+  <p class="sub" style="margin:-6px 0 12px">
+    Los tres primeros se cerraron en la corrida desatendida; los otros siete, en una segunda
+    tanda a petición explícita del dueño — el tope de 3 vueltas es del modo desatendido y deja
+    de aplicar cuando hay alguien pidiendo. Cada uno: prueba roja verificada → arreglo → verde →
+    suite completa → commit atómico.
+  </p>
+  <div class="card scroll">
+    <table>
+      <thead><tr><th>#</th><th>Crítico</th><th>Quién lo halló</th><th>Estado</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>El chofer con cuenta entra a <code>/dashboard</code> y ve KPIs, las 20 liquidaciones más recientes de sus compañeros y el panel de anomalías de toda la flota</td>
+            <td>backend · seguridad · frontend</td><td class="fixed">CERRADO <code>d081176</code></td></tr>
+        <tr><td>2</td><td>Las dos rutas de export autentican pero no autorizan: cualquier sesión del tenant baja el CSV de la flota y firma la URL de cualquier PDF</td>
+            <td>backend · seguridad · arquitectura · datos</td><td class="fixed">CERRADO <code>8fb74d4</code></td></tr>
+        <tr><td>3</td><td>El RFC del tenant de demo reprueba nuestro propio dígito verificador: el 6-ago la liquidación imprime <code>Deducible para ISR $0.00</code>, la sección ACREDITABLE desaparece del PDF y el único pie que sale es falso</td>
+            <td>fiscal</td><td class="fixed">CERRADO <code>d08db8a</code></td></tr>
+        <tr><td>4</td><td>«listo» con la sala de espera llena cierra la liquidación en $0 y los comprobantes nunca se ofrecen — se irán al viaje siguiente, que es lo que la 0040 existe para impedir</td>
+            <td>agéntico</td><td class="fixed">CERRADO <code>8f615d4</code></td></tr>
+        <tr><td>5</td><td>La RLS del chofer cubre 3 de las 7 tablas: <code>operador</code>, <code>terminal</code>, <code>politica_gasto</code> y <code>wa_conversacion</code> le siguen dando lectura <strong>y escritura</strong></td>
+            <td>seguridad</td><td class="fixed">mig. <code>0046</code> <code>abbf9e8</code><br><span class="prop">falta correr el bloque 27</span></td></tr>
+        <tr><td>6</td><td>Nada sonda la <code>0045</code>: si no está aplicada, el <code>select</code> de <code>operador_id</code> deja a todos fuera del panel —incluido el superadmin— con <code>startup: ok:true</code></td>
+            <td>datos</td><td class="fixed">CERRADO <code>3a38488</code></td></tr>
+        <tr><td>7</td><td><code>/admin</code> enseña la conversación íntegra y el teléfono de operadores identificables, para una finalidad de Likida que el aviso de la flota no cubre</td>
+            <td>legal</td><td class="fixed">mitad cerrada <code>5b43fd8</code><br><span class="prop">el resto es decisión de producto</span></td></tr>
+        <tr><td>8</td><td><code>/auth/callback</code> no escribe una sola línea cuando el login falla, y su <code>catch</code> vacío impide que <code>onRequestError</code> lo vea</td>
+            <td>operabilidad</td><td class="fixed">CERRADO <code>31276b2</code></td></tr>
+        <tr><td>9</td><td>El login solo registra el caso benigno: los fallos reales de envío del magic link salen sin log, y el SMTP de hoy es un sandbox que ya se sabe que rebota</td>
+            <td>operabilidad</td><td class="fixed">CERRADO <code>31276b2</code></td></tr>
+        <tr><td>10</td><td><code>/admin</code>: 3,839 líneas y 28 páginas con cero archivos de prueba, y sus <strong>dos</strong> capas de autorización sin ancla — las dos mutaciones (<code>admin/layout.tsx:27</code> y <code>proxy.ts:44</code>) dejan la suite verde</td>
+            <td>pruebas</td><td class="fixed">CERRADO <code>4a1c2d9</code><br><span class="prop">verificado por mutación</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>La compuerta, sobre el árbol final</h2>
+  <div class="card">
+    <div class="gate">
+      <span class="g">npm test → exit 0 · 178 archivos · 1663 pruebas · 1 saltada</span>
+      <span class="g">npx tsc --noEmit → exit 0</span>
+      <span class="g">npm run lint → exit 0</span>
+      <span class="g off">npm run build → no se corre en la nube (pide credenciales)</span>
+    </div>
+    <p class="sub" style="margin:14px 0 0">
+      Línea base al arrancar la continuación: 173 archivos / 1629 pruebas. Los nueve arreglos de
+      hoy sumaron <strong>+5 archivos y +34 pruebas</strong>, cada una con su caso rojo verificado
+      antes del arreglo. Contra los 49 commits de código que entraron desde el 2-ago
+      (+5,743 líneas en 82 archivos) el repo había sumado 10 archivos de prueba y 59 pruebas.
+      <strong>Verde no es lo mismo que cubierto:</strong> de 7 mutaciones que el auditor de
+      pruebas metió sobre el código nuevo, 5 dejaron la suite en verde.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

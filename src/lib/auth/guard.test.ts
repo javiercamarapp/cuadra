@@ -38,6 +38,27 @@ describe('requireSessionTenant', () => {
     await expect(requireSessionTenant('/dashboard')).resolves.toEqual(s);
     expect(redirect).not.toHaveBeenCalled();
   });
+
+  // Auditoría 10 · CRÍTICO (backend y seguridad, hallado por separado): el
+  // chofer tiene sesión y tiene tenantId, así que esta puerta lo dejaba pasar
+  // al panel del contralor — y /dashboard lee con `supabaseAdmin()`
+  // (service-role), que SALTA la RLS de la 0045 escrita justo para impedirlo.
+  // No es un caso adversarial: /login fuerza `next` a '/dashboard'
+  // (login/page.tsx:49), así que era el destino por default de un chofer.
+  it('operador con tenant NO entra al panel del contralor — va a /mis-viajes, que es el suyo', async () => {
+    getSessionTenant.mockResolvedValue({ userId: 'u-4', tenantId: 't-1', rol: 'operador', nombre: 'Juan', operadorId: 'o-9' });
+    await expect(requireSessionTenant('/dashboard')).rejects.toThrow('NEXT_REDIRECT');
+    expect(redirect).toHaveBeenCalledWith('/mis-viajes');
+  });
+
+  // El rebote no depende de que la liga con `operador` esté completa: un alta a
+  // medias (operadorId null) tampoco puede ver la flota entera mientras tanto.
+  // De /mis-viajes lo manda `requireOperador` a /sin-acceso.
+  it('operador sin operador_id ligado tampoco entra al panel del contralor', async () => {
+    getSessionTenant.mockResolvedValue({ userId: 'u-5', tenantId: 't-1', rol: 'operador', nombre: 'Juan', operadorId: null });
+    await expect(requireSessionTenant('/dashboard/abc-123')).rejects.toThrow('NEXT_REDIRECT');
+    expect(redirect).toHaveBeenCalledWith('/mis-viajes');
+  });
 });
 
 // `requireOperador` es la puerta de /mis-viajes (Task 5 del plan de roles):

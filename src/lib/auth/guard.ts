@@ -29,6 +29,16 @@ export async function requireSessionTenant(
 ): Promise<SessionTenant & { tenantId: string }> {
   const s = await getSessionTenant();
   if (!s) redirect(`/login?next=${encodeURIComponent(destino)}`);
+  // El ROL se comprueba aquí, no en la base. Las páginas que cuelgan de esta
+  // puerta leen con `supabaseAdmin()` (service-role), que SALTA RLS: la policy
+  // `operador_ve_su_viaje` de la 0045 nunca llega a evaluarse en este camino,
+  // así que el chofer entraba al panel del contralor con la flota completa
+  // — KPIs, las 20 liquidaciones más recientes de sus compañeros y el panel de
+  // anomalías (auditoría 10, CRÍTICO, hallado por separado por backend,
+  // seguridad y frontend). No era un caso adversarial: /login descarta todo
+  // `next` que no empiece con '/dashboard', así que era su destino por default.
+  // Va a /mis-viajes, que SÍ lee con `supabaseServer()` y sí respeta la policy.
+  if (s.rol === 'operador') redirect('/mis-viajes');
   if (!s.tenantId) {
     if (s.rol === 'superadmin') return { ...s, tenantId: TENANT_DEMO() };
     redirect('/sin-acceso');

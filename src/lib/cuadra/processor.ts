@@ -1051,12 +1051,25 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
         return;
       }
 
-      // AÚN NO SE LE HA PREGUNTADO. Se aparta cuando el mensaje parece un
-      // cierre: interceptar un "listo" con una pregunta lo obligaría a
-      // escribirlo dos veces, y en una sala eso se ve como que no entendió.
-      // Perder la oferta este turno no cuesta nada — se le vuelve a hacer.
-      const pareceCierre = /^\s*(listo|ya|ya est[aá]|termin[ée]|termine|acab[ée]|cierra|cerrar|eso es todo|es todo)\b/i.test(msg.text);
-      if (!ofrecidos.length && !pareceCierre) {
+      // AÚN NO SE LE HA PREGUNTADO. Se pregunta SIEMPRE, incluso si el mensaje
+      // parece un cierre.
+      //
+      // Antes se apartaba ante un "listo", con este razonamiento: interceptar
+      // un cierre con una pregunta lo obliga a escribirlo dos veces, y perder
+      // la oferta este turno "no cuesta nada — se le vuelve a hacer".
+      //
+      // La segunda mitad es falsa justo en el turno de cierre, que es el único
+      // sin turno siguiente: "listo" cierra la liquidación, el viaje queda
+      // `liquidado` y de ahí en adelante todo mensaje recibe "No tienes un
+      // viaje abierto". Con la sala de espera llena y el viaje sin gastos, lo
+      // que se imprimía era "Comprobado: $0.00 · Sobró $18,000.00 (a favor de
+      // la empresa)" — y los comprobantes se ofrecían en el viaje SIGUIENTE,
+      // que es el "dinero en la liquidación equivocada" que la mig. 0040 dice
+      // existir para impedir (auditoría 10, CRÍTICO).
+      //
+      // Un `listo` de más cuesta menos que una liquidación en cero, y solo lo
+      // paga quien de verdad tiene comprobantes esperando.
+      if (!ofrecidos.length) {
         const viaje = await getViaje(viajeId, op.tenantId).catch(() => null);
         await marcarHuerfanosOfrecidos(op.tenantId, enEspera.map((h) => h.id));
         logger.info('huerfano.ofrecidos', { viaje: viajeId, cuantos: enEspera.length });

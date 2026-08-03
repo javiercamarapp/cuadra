@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { toCsv, toLiquidacionRows } from '@/lib/cuadra/export';
 import { rateLimit, clientIp } from '@/lib/ratelimit';
 import { getSessionTenant } from '@/lib/auth/session';
+import { puedeExportar } from '@/lib/auth/permisos';
 import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
@@ -16,6 +17,11 @@ export async function GET(req: Request) {
 
   const s = await getSessionTenant();
   if (!s || !s.tenantId) return new NextResponse('No autorizado', { status: 401 });
+  // La autorización por ROL vive aquí y no puede vivir en otro lado: esta ruta
+  // lee con service-role (salta RLS, la policy de la 0045 no se evalúa) y queda
+  // fuera del matcher del proxy. Sin esta línea, el chofer bajaba el CSV con
+  // las liquidaciones de toda la flota (auditoría 10, CRÍTICO).
+  if (!puedeExportar(s.rol)) return new NextResponse('No autorizado', { status: 403 });
   const tenantId = s.tenantId;
 
   const { data, error } = await supabaseAdmin()

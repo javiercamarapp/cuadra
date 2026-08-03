@@ -245,13 +245,44 @@ describe('cuando por fin hay viaje, se pregunta antes de adjuntar', () => {
     expect(resolverHuerfanos).toHaveBeenCalledWith('t1', ['a'], 'descartado', null);
   });
 
-  it('«listo» NO dispara la oferta: cerrar no puede costarle dos intentos', async () => {
-    // Interceptar un cierre con una pregunta lo obligaría a escribir `listo` dos
-    // veces, y en una sala eso se lee como que el sistema no entendió.
+  // ── CRÍTICO de la auditoría 10 (agéntico) ────────────────────────────────
+  //
+  // Esta prueba fijaba lo contrario: que «listo» NO disparara la oferta, para
+  // no obligar al chofer a escribirlo dos veces. La decisión descansaba en una
+  // premisa escrita en el código: «perder la oferta este turno no cuesta nada
+  // — se le vuelve a hacer».
+  //
+  // Esa premisa es FALSA justo en el turno de cierre, que es el único donde no
+  // hay turno siguiente: «listo» cierra la liquidación, el viaje queda
+  // `liquidado`, y a partir de ahí cualquier mensaje recibe «No tienes un viaje
+  // abierto». Los comprobantes que esperaban se ofrecerán en el viaje SIGUIENTE
+  // — «un ticket del viaje anterior metido en el de hoy es dinero en la
+  // liquidación equivocada», que es literalmente lo que la mig. 0040 dice
+  // existir para impedir.
+  //
+  // Medido por el auditor: 6 comprobantes en sala de espera ($16,244.00), viaje
+  // nuevo con anticipo $18,000.00, el chofer escribe `listo` → «Comprobado:
+  // $0.00 · Sobró $18,000.00 (a favor de la empresa)» y su PDF.
+  //
+  // Costar un `listo` de más vale infinitamente menos que cerrar en $0. El
+  // costo, además, solo lo paga quien TIENE comprobantes esperando.
+  it('«listo» con comprobantes sin ofrecer pregunta primero: cerrar en $0 cuesta más que un intento de más', async () => {
     getHuerfanos.mockResolvedValue([HUERFANO('a', 100)]);
     await processInbound(texto('listo'));
-    expect(marcarHuerfanosOfrecidos).not.toHaveBeenCalled();
-    expect(salientes.join(' ')).not.toMatch(/¿Los agrego/);
+    expect(marcarHuerfanosOfrecidos).toHaveBeenCalledWith('t1', ['a']);
+    expect(salientes.join(' ')).toMatch(/¿Los agrego a este viaje\?/);
+    expect(runAgent, 'y sobre todo: NO llegó a cerrar').not.toHaveBeenCalled();
+  });
+
+  // Los otros verbos de cierre entran por la misma puerta.
+  it('«ya estuvo» / «es todo» tampoco cierran sobre la sala de espera llena', async () => {
+    for (const verbo of ['ya', 'termine', 'es todo', 'cierra']) {
+      for (const m of [marcarHuerfanosOfrecidos, runAgent]) m.mockClear();
+      salientes.length = 0;
+      getHuerfanos.mockResolvedValue([HUERFANO('a', 100)]);
+      await processInbound(texto(verbo));
+      expect(runAgent, `«${verbo}» no debe cerrar`).not.toHaveBeenCalled();
+    }
   });
 
   it('sin nada esperando, el flujo normal no se entera de que esto existe', async () => {

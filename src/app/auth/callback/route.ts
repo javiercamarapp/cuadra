@@ -6,6 +6,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
 import { getSessionTenant } from '@/lib/auth/session';
+import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
@@ -28,11 +29,27 @@ export async function GET(req: NextRequest) {
         }
         return NextResponse.redirect(new URL(dest, req.url));
       }
-    } catch {
+      // NUNCA el `code` ni el correo: el primero es una credencial de un solo
+      // uso y el segundo es dato personal. El código y el status de Supabase
+      // bastan para distinguir un link caducado de una config rota.
+      logger.error('auth.callback_intercambio', {
+        code: (error as { code?: string }).code,
+        status: (error as { status?: number }).status,
+        msg: error.message,
+      });
+    } catch (e) {
       // Fallo inesperado del SDK o supabaseServer() — cae al mismo fallback
       // para evitar que un error raro se vuelva un 500 genérico en la pantalla
-      // de login más importante
+      // de login más importante. Pero NO callado: un `catch` vacío además le
+      // impide a `onRequestError` verlo, así que Sentry tampoco se enteraba
+      // (auditoría 10, CRÍTICO de operabilidad).
+      logger.error('auth.callback_excepcion', { err: e instanceof Error ? e.message : String(e) });
     }
+  } else {
+    // Sin `code` no hay nada que intercambiar. Se registra porque es el
+    // síntoma de un link mal formado o de un `emailRedirectTo` equivocado —
+    // exactamente lo que un deploy sin `NEXT_PUBLIC_APP_URL` produce.
+    logger.warn('auth.callback_sin_code', {});
   }
   return NextResponse.redirect(new URL('/login?error=1', req.url));
 }
