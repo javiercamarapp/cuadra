@@ -635,12 +635,15 @@ export async function generateWithTools(opts: {
   // CR-5: completado con fallback cross-provider. Reintentar SÓLO la llamada de
   // completado (las tools se ejecutan DESPUÉS, en nuestro código) es seguro: una
   // caída del provider nunca re-ejecuta una mutación ni duplica una liquidación.
-  const complete = async (msgs: OpenAI.Chat.ChatCompletionMessageParam[]) => {
+  const complete = async (msgs: OpenAI.Chat.ChatCompletionMessageParam[], sinTools = false) => {
     const body = () => ({
       model: activeModel,
       messages: msgs,
+      // Los schemas siguen viajando aunque no se puedan usar: el historial ya
+      // lleva mensajes `role:'tool'` y quitarlos deja esa conversación sin la
+      // declaración que la explica.
       tools: opts.tools.length ? opts.tools : undefined,
-      tool_choice: opts.tools.length ? ('auto' as const) : undefined,
+      tool_choice: opts.tools.length ? (sinTools ? ('none' as const) : ('auto' as const)) : undefined,
       // El MISMO techo que las respuestas estructuradas, y por la misma razón
       // (ver DEFAULT_MAX_TOKENS): con `reasoning: 'high'` —que es como corre el
       // rol `cuadre`— el razonamiento invisible y la respuesta comparten este
@@ -667,7 +670,15 @@ export async function generateWithTools(opts: {
 
   try {
     for (let round = 0; round < maxRounds; round++) {
-      const res = await complete(convo);
+      // LA ÚLTIMA RONDA SE GASTA EN CERRAR, NO EN PEDIR MÁS TOOLS.
+      //
+      // El `for` corría las 6 rondas completas: las tools de la sexta se
+      // ejecutaban, se pagaban, se serializaban a `convo` y sólo entonces se
+      // lanzaba `LoopGuardError`. El conteo estaba bien; lo que se perdía era la
+      // oportunidad de usar esa ronda para responder con lo que ya se tiene, en
+      // vez de correr a ciegas hasta el tope y salir por excepción.
+      const ultima = round === maxRounds - 1;
+      const res = await complete(convo, ultima);
       const rIn = res.usage?.prompt_tokens ?? 0;
       const rOut = res.usage?.completion_tokens ?? 0;
       tokIn += rIn;
@@ -703,6 +714,11 @@ export async function generateWithTools(opts: {
         // mismo modelo.)
         return { finalText: choice?.message?.content ?? '', toolCalls: executed, model: used, tokensIn: tokIn, tokensOut: tokOut, cost: costo, porModelo: [...uso.values()] };
       }
+
+      // Si aun con `tool_choice: 'none'` insiste en pedir tools, se conserva el
+      // loop-guard como respaldo — pero sin ejecutar ni pagar unas tools cuyo
+      // resultado el modelo nunca va a leer.
+      if (ultima) throw new LoopGuardError(maxRounds);
 
       convo.push({ role: 'assistant', content: choice.message.content ?? null, tool_calls: calls });
       const inRound = new Map<string, { p: Promise<ToolExecResult>; args: Record<string, unknown> }>();
@@ -750,6 +766,8 @@ export async function generateWithTools(opts: {
       );
       convo.push(...results);
     }
+    // Inalcanzable: la última vuelta o devuelve texto o lanza arriba. Se conserva
+    // por si `maxRounds` llegara a ser 0.
     throw new LoopGuardError(maxRounds);
   } catch (err) {
     if (err instanceof PartialExecutionError) throw err;
