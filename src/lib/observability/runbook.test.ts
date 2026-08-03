@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -148,5 +148,69 @@ describe('DEPLOY.md pide lo que hace falta para que el sistema no arranque ciego
     expect(t, 'y la Site URL es el default al que cae GoTrue cuando la rechaza').toMatch(/site url/i);
     expect(t).toContain('/auth/callback');
     expect(t, 'el remitente de hoy es el sandbox de Resend, que solo entrega a una dirección').toMatch(/smtp|resend/i);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ALTO de la auditoría 10 · UNA MÁQUINA LIMPIA NO PODÍA ENTRAR AL PANEL.
+//
+// El camino, paso a paso, en una laptop recién clonada: `npm run seed` +
+// `npm run dev` → /dashboard → `proxy.ts` redirige a /login → se teclea el
+// correo → `signInWithOtp` con `shouldCreateUser:false` y sin `auth.users`
+// → Supabase responde `otp_disabled` → la pantalla dice «Te mandamos un link»
+// (a propósito, para no filtrar qué correos existen) y el link nunca llega.
+//
+// El único alta que existía en el árbol era `/admin/usuarios/nuevo`, que
+// empieza con `requireSuperadmin()`: exige una fila `app_user` con
+// `rol='superadmin'` que solo se puede crear con esa misma página. El
+// comentario de esa página remite a `scripts/tmp-provisionar-*.ts`, borrado al
+// construirla. Ni README, ni SEED.md, ni DEPLOY.md, ni TRASPASO.md decían
+// cómo se crea el primero. Si la laptop del demo falla el 5-ago, no había
+// procedimiento escrito para recuperar el acceso al panel.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('una máquina limpia puede llegar al panel, no solo al WhatsApp', () => {
+  const RUTA_SCRIPT = join(RAIZ, 'scripts/crear-superadmin.mjs');
+
+  it('existe el procedimiento para crear el PRIMER superadmin', () => {
+    expect(existsSync(RUTA_SCRIPT), 'no hay ningún camino de alta que no exija un superadmin previo').toBe(true);
+  });
+
+  it('el runbook lo nombra, y quien acaba de sembrar la base también lo encuentra', () => {
+    expect(readFileSync(join(RAIZ, 'DEPLOY.md'), 'utf8'), 'un script que nadie sabe que existe no es un procedimiento')
+      .toContain('crear-superadmin');
+    expect(readFileSync(join(RAIZ, 'scripts/seed.sh'), 'utf8'), 'el seed termina diciendo "siguiente:" y no mencionaba el panel')
+      .toContain('crear-superadmin');
+  });
+
+  it('el script escribe exactamente la fila que `requireSuperadmin` exige', () => {
+    const s = readFileSync(RUTA_SCRIPT, 'utf8');
+    // `guard.ts:requireSuperadmin` compara `rol === 'superadmin'`, y
+    // `getSessionTenant` lee la fila de `app_user` por el `id` de `auth.users`.
+    expect(s).toContain('app_user');
+    expect(s).toContain('superadmin');
+    expect(s, 'app_user.id TIENE que ser el id de auth.users').toContain('createUser');
+  });
+
+  it('y no inventa columnas: las mismas que `provisionar.ts`, que es el alta de verdad', () => {
+    // El script no puede importar el TS, así que lo que lo mantiene honesto es
+    // esto: si `provisionarUsuario` gana o pierde una columna de `app_user`, el
+    // bootstrap deja de producir la misma fila y alguien tiene que enterarse.
+    const prov = readFileSync(join(RAIZ, 'src/lib/auth/provisionar.ts'), 'utf8');
+    const columnas = /insert\(\{([^}]*)\}/s.exec(prov)?.[1] ?? '';
+    const nombres = columnas
+      .split(',')
+      .map((c) => c.split(':')[0].trim())   // `rol,` es abreviatura de `rol: rol`
+      .filter((c) => /^\w+$/.test(c));
+    expect(nombres.length, 'no se pudo leer el insert de provisionar.ts').toBeGreaterThan(3);
+    const s = readFileSync(RUTA_SCRIPT, 'utf8');
+    for (const c of nombres) {
+      expect(s, `provisionar.ts escribe app_user.${c} y el bootstrap no`).toContain(`${c}:`);
+    }
+  });
+
+  it('dice qué variables necesita y falla si no están, en vez de escribir a medias', () => {
+    const s = readFileSync(RUTA_SCRIPT, 'utf8');
+    expect(s).toContain('SUPABASE_SERVICE_ROLE_KEY');
+    expect(s).toContain('NEXT_PUBLIC_SUPABASE_URL');
   });
 });

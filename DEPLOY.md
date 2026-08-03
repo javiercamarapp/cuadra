@@ -109,6 +109,48 @@ protege `/dashboard`. Quitarla no abre nada.
 
 ---
 
+## El primer acceso al panel en una máquina limpia
+
+Una base recién sembrada **no tiene ningún usuario del panel**: `supabase/seed.sql`
+no inserta en `app_user`, el login va con `shouldCreateUser:false` y nadie se da
+de alta solo. Si tecleas tu correo en `/login` sin haber hecho esto, la pantalla
+dice «Te mandamos un link» —a propósito, para no filtrar qué correos existen— y
+el link no llega nunca. En el log queda `login.otp_sin_cuenta`.
+
+Y el único alta que existe, `/admin/usuarios/nuevo`, empieza con
+`requireSuperadmin()`: exige la fila que hay que crear. Se rompe así, una sola
+vez por base:
+
+```
+DATABASE_URL="postgres://..." npm run seed          # migraciones + bucket + datos
+node --env-file=.env.local scripts/crear-superadmin.mjs javier@ejemplo.mx "Javier"
+npm run dev
+```
+
+Contra producción es el mismo script, con las envs del despliegue en vez del
+archivo:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://<proyecto>.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=<service role> \
+node scripts/crear-superadmin.mjs contralor@laflota.mx "Contralor"
+```
+
+Crea el usuario de `auth.users` (con la Admin API, `email_confirm: true`) y su
+fila de `app_user` con `rol='superadmin'` y `tenant_id` nulo — que en esa tabla
+no es "sin asignar" sino "no pertenece a ninguna flota". Es **idempotente**:
+correrlo dos veces con el mismo correo reutiliza el usuario y reescribe la fila,
+que es justo lo que hace falta cuando un intento anterior quedó a medias.
+
+Después: `/login` con ese correo, **desde el mismo navegador** en el que vayas a
+abrir el link (el `code_verifier` del PKCE vive en su cookie; pedirlo en la
+laptop y abrirlo en el teléfono falla con `auth.callback_intercambio`), y desde
+dentro se da de alta al resto en `/admin/usuarios/nuevo`.
+
+Si el correo no llega, el problema es el remitente, no el alta — sigue leyendo.
+
+---
+
 ## Lo que el login necesita del lado de Supabase
 
 Nada de esto vive en el repo, y la mitad de los fallos del login vienen de
