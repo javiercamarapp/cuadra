@@ -27,5 +27,13 @@ por_que_importa_al_producto: >
   salida es el CFDI de egreso.
 verificado_por: "ola1 / 01-cfdi-cff.md; ola2 / 10-contradicciones.md"
 verificado_el: 2026-07-27
+# AUDITORÍA 10, BAJO (fiscal): este campo decía «FISCAL_LEGAL.md §1.6
+# (documentación, no código)», y es falso. `usado_en_codigo` es el campo con el
+# que se calcula el radio de impacto cuando una norma cambia (`normas/README.md`):
+# si miente, una reforma se evalúa contra el archivo equivocado. Aquí mentía en la
+# dirección peor —decía que NO se usa en código— sobre una ficha con
+# `texto_vigente: null` que el agente sí puede citar.
 usado_en_codigo:
-  - "FISCAL_LEGAL.md §1.6 (documentación, no código)"
+  - "normas/por_diferencia.ts — `factura_por_vencer: ['rmf-2026-2.7.1.21', 'politica-portales-plazos-facturacion']`. Es una de las DOS normas que `guardiaFundamento` autoriza a citar sobre un aviso de facturación, y esta ficha todavía no tiene el texto transcrito."
+  - "cuadre/engine.ts — regla `factura_por_vencer`: el aviso que se explica con esta regla (por qué el comercio cierra su ventana a fin de mes)."
+  - "FISCAL_LEGAL.md §1.6 (documentación)"
