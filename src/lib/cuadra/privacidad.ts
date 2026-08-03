@@ -280,6 +280,28 @@ export function versionAviso(texto: string): string {
  * forma de PETICIÓN ("que lo revise una persona"), no la mención suelta de una
  * persona, para no secuestrar la conversación normal de la caseta.
  */
+/**
+ * AUDITORÍA 10, MEDIO: cómo llama un operador de carretera a lo que decide sin
+ * que nadie mire. La lista de la ronda 9 tenía cuatro sustantivos de oficina
+ * —`programa|sistema|robot|bot`— y dejaba fuera "máquina" y "computadora", que
+ * son las palabras que de verdad se usan. Vive en una sola constante para que
+ * ampliarla no exija tocar tres expresiones a la vez, que es como se
+ * desincronizaron.
+ */
+const ACTOR_AUTOMATIZADO = String.raw`(?:programa|sistema|robot|bot|maquina|computadora|algoritmo)`;
+
+/**
+ * Lo que ese actor HACE y que se rechaza: decidir, revisar, calificar.
+ *
+ * NO incluye "leer" ni "ver" a propósito: "el sistema leyó mal mi ticket" es la
+ * queja de OCR más común del canal, y meterla aquí reabriría exactamente el
+ * falso positivo que la ronda 8 cerró con `OBJETO_DE_PAPEL`.
+ */
+const DECIDE_SOBRE_MI = String.raw`(?:decid|revis|analic|analiz|juzg|califi|aprue|rechac)\w*`;
+
+/** Negación de la voluntad o del acuerdo. No tiene que ir pegada al sustantivo. */
+const NIEGA_VOLUNTAD = String.raw`no\s+(?:me\s+)?(?:quiero|quisiera|deseo|acepto|autorizo|estoy\s+de\s+acuerdo)\b`;
+
 const OPOSICION: RegExp[] = [
   // AUDITORÍA 6: faltaba la conjugación más natural del español hablado. El
   // detector solo veía el presente ("me opongo") y el infinitivo con clítico
@@ -298,6 +320,17 @@ const OPOSICION: RegExp[] = [
   /\boposicion\b/,
   /\bno\s+(?:quiero|autorizo|acepto)\s+que\s+(?:me\s+)?(?:revisen|analicen|usen|traten)\b/,
   /\brevision humana\b/,
+  // AUDITORÍA 10: rechazar que lo automatizado DECIDA sobre uno es, por sí
+  // solo, el derecho del art. 26 fr. II — no hace falta que además se pida un
+  // humano. "No estoy de acuerdo con que una computadora revise mis
+  // comprobantes" no traía petición de persona y por eso no llegaba ni a
+  // `OPOSICION_AMBIGUA`: moría en el agente.
+  //
+  // Es inequívoco, así que va aquí y no en la lista ambigua: exige la negación
+  // de la voluntad, el actor automatizado, y que ese actor DECIDA (no que lea).
+  // Esa tercera exigencia es la que deja fuera "no quiero que el sistema me
+  // pida el XML otra vez", que es soporte y no un ARCO.
+  new RegExp(String.raw`\b${NIEGA_VOLUNTAD}(?:\s+\w+){0,4}?\s+${ACTOR_AUTOMATIZADO}\s+(?:\w+\s+){0,2}?${DECIDE_SOBRE_MI}`),
 ];
 
 /**
@@ -313,6 +346,14 @@ const OPOSICION: RegExp[] = [
 const OPOSICION_AMBIGUA: RegExp[] = [
   /\bque (lo |la )?(revise|revisen|vea|vean) (un |una )?(persona|humano|humana|alguien|gente)\b/,
   /\b(un|una) (persona|humano|humana|gente) (lo |la )?(revise|vea|revisara)\b/,
+  // AUDITORÍA 10: el otro orden natural —la persona primero y el verbo
+  // después, con un inciso en medio—: "que ALGUIEN de verdad VEA mi recibo".
+  // Los dos patrones de arriba exigen que el verbo y el sustantivo vayan
+  // pegados, y "alguien" ni siquiera estaba en el segundo.
+  //
+  // El hueco entre los dos es de dos palabras como mucho: con más, "que la
+  // persona de la caseta vea..." entraría, y ese es el ruido normal del canal.
+  /\bque (un |una )?(persona|humano|humana|alguien|gente)\b(\s+\w+){0,2}\s+(lo |la )?(revise|revisen|vea|vean|revisara|viera)\b/,
 ];
 
 /** El objeto de la revisión es un PAPEL, no una decisión sobre la persona. */
@@ -332,8 +373,42 @@ const OBJETO_DE_PAPEL = /\b(ticket|folio|comprobante|recibo|factura|foto|imagen|
  * mal" solo describe un error (`sistema` es el sujeto de una queja, no algo
  * que se rechaza); "que lo revise una persona, no el programa" SÍ lo rechaza.
  * Con el contraste explícito presente, `OBJETO_DE_PAPEL` deja de excluir.
+ *
+ * AUDITORÍA 10: seguía atado a cuatro sustantivos y a una posición fija de la
+ * negación —pegada al sustantivo—, así que "no una MÁQUINA" y "no el ROBOT"
+ * (pospuesto, tras el inciso) no contaban. Ahora el vocabulario sale de
+ * `ACTOR_AUTOMATIZADO` y se admite además la negación de la voluntad, que es
+ * donde el español la pone de verdad: "…y NO QUIERO que un robot decida".
  */
-const RECHAZA_AUTOMATIZADO = /\b(?:no\s+(?:el\s+|un\s+|confio\s+en\s+el\s+)?(?:programa|sistema|robot|bot)\b|en\s+vez\s+del?\s+(?:programa|sistema))/;
+const RECHAZA_AUTOMATIZADO = new RegExp(
+  String.raw`\b(?:` +
+    // El actor va negado directamente: "no el programa", "no una máquina".
+    String.raw`no\s+(?:el\s+|la\s+|un\s+|una\s+|confio\s+en\s+el\s+)?${ACTOR_AUTOMATIZADO}\b` +
+    // La negación cae sobre la voluntad y el actor viene detrás.
+    String.raw`|${NIEGA_VOLUNTAD}(?:\s+\w+){0,4}?\s+${ACTOR_AUTOMATIZADO}\b` +
+    String.raw`|en\s+vez\s+del?\s+(?:el\s+|la\s+|un\s+|una\s+)?${ACTOR_AUTOMATIZADO}\b` +
+  String.raw`)`,
+);
+
+/**
+ * AUDITORÍA 10, MEDIO: la **C** de ARCO (art. 15 fr. V). El detector conocía
+ * `dar de baja mis datos` y no conocía *borrar* ni *eliminar* — una asimetría
+ * de vocabulario, no de diseño: "borren mis datos" y "ya no quiero que tengan
+ * mi teléfono" seguían de largo hacia el agente, que contestaba sobre un ticket.
+ *
+ * El OBJETO es lo que decide, y por eso no basta el verbo: en este canal
+ * "bórralo" casi siempre habla de una foto mal tomada, que es la petición más
+ * común que existe aquí y no es un ARCO. Se exige que lo que se pide borrar
+ * sean SUS DATOS ("mis datos", "mi información", "mi teléfono"), nunca un papel
+ * del viaje.
+ */
+const MIS_DATOS = String.raw`(?:mis?\s+(?:datos|informacion|info)\b|mi\s+(?:telefono|numero|nombre|correo)\b)`;
+
+const CANCELACION: RegExp[] = [
+  new RegExp(String.raw`\b(?:borr|elimin|quit|supri)\w*\s+(?:todos?\s+)?${MIS_DATOS}`),
+  new RegExp(String.raw`\b(?:dar|den|denme|da)\s+de\s+baja\s+(?:todos?\s+)?${MIS_DATOS}`),
+  new RegExp(String.raw`\bno\s+quiero\s+que\s+(?:me\s+)?(?:tengan|guarden|conserven|almacenen|sigan\s+(?:teniendo|guardando))\s+${MIS_DATOS}`),
+];
 
 /**
  * ¿El operador está ejerciendo el medio que el aviso le prometió?
@@ -354,7 +429,8 @@ export function pideAtencionPrivacidad(texto: string): boolean {
     .replace(/[̀-ͯ]/g, '')   // quita acentos
     .toLowerCase();
   return (
-    /\b(privacidad|arco|mis datos personales|dar de baja mis datos)\b/.test(t) ||
+    /\b(privacidad|arco|mis datos personales)\b/.test(t) ||
+    CANCELACION.some((r) => r.test(t)) ||
     OPOSICION.some((r) => r.test(t)) ||
     (OPOSICION_AMBIGUA.some((r) => r.test(t)) && (!OBJETO_DE_PAPEL.test(t) || RECHAZA_AUTOMATIZADO.test(t)))
   );
