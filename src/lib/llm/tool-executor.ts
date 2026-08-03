@@ -43,11 +43,26 @@ export function registerTool(name: string, tool: RegisteredTool): void {
   REGISTRY.set(name, tool);
 }
 
-/** Devuelve los schemas (ChatCompletionTool) para los nombres dados. */
+/**
+ * Devuelve los schemas (ChatCompletionTool) para los nombres dados.
+ *
+ * FALLA RUIDOSO. Antes resolvía por la llave y descartaba en silencio lo que no
+ * encontraba, y ése era el único punto donde la superficie de tools completa
+ * podía desaparecer sin poner una prueba en rojo: renombrar `registerTool` y
+ * olvidar `registry.ts` devolvía 2 esquemas en vez de 3 —el modelo nunca ve
+ * `cuadrar_viaje`, `guardiaCifras` calcula `cuadro = false` y el viaje NO
+ * CIERRA—, y perder el import que puebla el registro devolvía `[]`, con el
+ * agente narrando sin números en cada turno. Las dos cosas son errores de
+ * cableado: se ven al arrancar, no a mitad de un cierre.
+ */
 export function toolSchemas(names: string[]): OpenAI.Chat.ChatCompletionTool[] {
-  return names
-    .map((n) => REGISTRY.get(n)?.schema)
-    .filter((s): s is OpenAI.Chat.ChatCompletionTool => Boolean(s));
+  const faltan = names.filter((n) => !REGISTRY.has(n));
+  if (faltan.length) {
+    throw new Error(
+      `tools no registradas: ${faltan.join(', ')} (registradas: ${[...REGISTRY.keys()].join(', ') || 'ninguna'})`,
+    );
+  }
+  return names.map((n) => REGISTRY.get(n)!.schema);
 }
 
 /** Ejecuta una tool por nombre con timing + captura de errores. */
