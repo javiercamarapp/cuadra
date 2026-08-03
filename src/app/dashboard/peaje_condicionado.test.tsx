@@ -8,11 +8,19 @@ import { resumenCuadre } from '@/lib/cuadra/cuadre/resumen';
 // citando el artículo, sin ninguna de las cuatro condiciones que el PDF sí
 // imprime.
 //
-// La ficha `normas/lif-2026-20-A.yaml` (verificado_fuente_primaria) dice, en
+// La ficha `normas/lif-2026-20-A.yaml` dice, en
 // `estimulo_peaje.texto_vigente`, que el estímulo es para quien se dedique
 // EXCLUSIVAMENTE al transporte, que UTILICE la Red Nacional de Autopistas de
 // Cuota, con ingresos anuales MENORES A 300 MILLONES, y que NO aplica a partes
-// relacionadas (LISR 179). Los propios hallazgos de la ficha lo dicen: el motor
+// relacionadas (LISR 179).
+//
+// (Esta prueba decía «(verificado_fuente_primaria)». El sello de esa ficha bajó
+// a `evidencia_corroborante` / `fuente_secundaria` en `5bcc3be`: el proxy da 403
+// contra diputados y DOF, así que su texto no se pudo cotejar contra fuente
+// primaria. La reserva que este arreglo imprime vale MÁS con el sello bajo, no
+// menos — pero el comentario ya no podía seguir afirmando lo contrario.)
+//
+// Los propios hallazgos de la ficha lo dicen: el motor
 // «aplica el 50% a TODO gasto con concepto caseta» y «no conoce los ingresos de
 // la flota ni su relación de partes».
 //
