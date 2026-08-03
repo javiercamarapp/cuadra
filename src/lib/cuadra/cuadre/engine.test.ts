@@ -778,12 +778,21 @@ describe('cuadrarViaje — soporte de la alimentación (LISR 28-V) y RFC del vi�
     expect(r.diferencias.some((d) => d.tipo === 'alimentacion_sin_soporte')).toBe(true);
   });
 
+  // AUDITORÍA 10, MEDIO (fiscal): estas dos se REESCRIBIERON, no se borraron.
+  // Los fixtures de hospedaje y transporte venían sin `folio` ni `cfdiUuid`, y
+  // fijaban la premisa de que basta la EXISTENCIA DE UN CONCEPTO para que la
+  // comida quede amparada. Dejó de sostenerse: LISR 28-V pide acompañar «el
+  // comprobante fiscal o la documentación comprobatoria QUE AMPARE el hospedaje
+  // o transporte» —un documento—, y con la premisa vieja un hospedaje de $1 sin
+  // UUID, sin RFC y sin XML apagaba la advertencia del viaje entero. Lo que las
+  // pruebas afirman no cambió; el fixture ahora trae el folio del ticket, que es
+  // la documentación comprobatoria que la ley admite además del CFDI.
   it('H1: con hospedaje en el viaje, la alimentación queda soportada', () => {
     const r = cuadrarViaje({
       viajeId: 'h1b', anticipo: 1400, politica: [], estimulos: EST,
       gastos: [
         g({ concepto: 'alimentacion', monto: 400, fecha: '2026-05-01', formaPago: '04' }),
-        g({ concepto: 'hospedaje', monto: 1000, fecha: '2026-05-01', formaPago: '04' }),
+        g({ concepto: 'hospedaje', monto: 1000, fecha: '2026-05-01', formaPago: '04', folio: 'HOT-1' }),
       ],
     });
     expect(r.diferencias.some((d) => d.tipo === 'alimentacion_sin_soporte')).toBe(false);
@@ -794,7 +803,7 @@ describe('cuadrarViaje — soporte de la alimentación (LISR 28-V) y RFC del vi�
       viajeId: 'h1c', anticipo: 700, politica: [], estimulos: EST,
       gastos: [
         g({ concepto: 'alimentacion', monto: 400, fecha: '2026-05-01', formaPago: '04' }),
-        g({ concepto: 'transporte', monto: 300, fecha: '2026-05-01', formaPago: '04' }),
+        g({ concepto: 'transporte', monto: 300, fecha: '2026-05-01', formaPago: '04', folio: 'TR-1' }),
       ],
     });
     expect(r.diferencias.some((d) => d.tipo === 'alimentacion_sin_soporte')).toBe(false);

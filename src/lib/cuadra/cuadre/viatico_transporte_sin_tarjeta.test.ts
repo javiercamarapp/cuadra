@@ -24,6 +24,19 @@ import type { Gasto } from '@/types/cuadra';
 // sido con tarjeta de crédito de quien viaja — débito no cuenta, efectivo no
 // cuenta. Sin esa condición, el motor daba la comida por completamente
 // amparada y no decía nada.
+//
+// AUDITORÍA 10, MEDIO (fiscal) — LOS FIXTURES DE TRANSPORTE Y HOSPEDAJE DE ESTE
+// ARCHIVO SE REESCRIBIERON, NO SE BORRARON. Venían sin `folio` ni `cfdiUuid`, y
+// fijaban con eso la premisa de que basta un renglón con ese concepto para que
+// el viaje "traiga transporte". Dejó de sostenerse: la propia oración citada
+// arriba dice «cuando a LA DOCUMENTACIÓN QUE AMPARE el gasto de alimentación el
+// contribuyente únicamente acompañe EL COMPROBANTE FISCAL relativo al
+// transporte» — lo que se acompaña es un documento, no un concepto. Con la
+// premisa vieja, un hospedaje de $1 sin UUID, sin RFC y sin XML apagaba esta
+// advertencia, y tres de estas pruebas pasaban por la razón equivocada: el
+// motor ni siquiera entraba a la rama, porque para él el viaje no tenía
+// transporte. Añadirles el folio del ticket es lo que las hace ejercer la
+// condición que dicen probar.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const g = (over: Partial<Gasto>): Gasto => ({
@@ -54,7 +67,7 @@ describe('transporte sin hospedaje exige tarjeta de crédito (LISR 28-V, 3er pá
   it('con tarjeta de DÉBITO (28) sigue avisando: la ley pide crédito, no cualquier tarjeta', () => {
     const gastos = [
       g({ concepto: 'alimentacion', monto: 700, formaPago: '28' }),
-      g({ concepto: 'transporte', monto: 450, formaPago: '28' }),
+      g({ concepto: 'transporte', monto: 450, formaPago: '28', folio: 'TR-1' }),
     ];
     expect(sinTarjeta(gastos)).toHaveLength(1);
   });
@@ -62,7 +75,7 @@ describe('transporte sin hospedaje exige tarjeta de crédito (LISR 28-V, 3er pá
   it('CON tarjeta de crédito (04): no avisa — la condición de la ley se cumple', () => {
     const r = cuadrar([
       g({ concepto: 'alimentacion', monto: 700, formaPago: '04' }),
-      g({ concepto: 'transporte', monto: 450, formaPago: '01' }),
+      g({ concepto: 'transporte', monto: 450, formaPago: '01', folio: 'TR-1' }),
     ]);
     expect(r.diferencias.some((x) => x.tipo === 'alimentacion_transporte_sin_tarjeta_credito')).toBe(false);
   });
@@ -70,8 +83,8 @@ describe('transporte sin hospedaje exige tarjeta de crédito (LISR 28-V, 3er pá
   it('con HOSPEDAJE también presente, la condición de tarjeta no aplica (ya no es "SOLO transporte")', () => {
     const r = cuadrar([
       g({ concepto: 'alimentacion', monto: 700, formaPago: '01' }),
-      g({ concepto: 'transporte', monto: 450, formaPago: '01' }),
-      g({ concepto: 'hospedaje', monto: 900, formaPago: '01' }),
+      g({ concepto: 'transporte', monto: 450, formaPago: '01', folio: 'TR-1' }),
+      g({ concepto: 'hospedaje', monto: 900, formaPago: '01', folio: 'HOT-1' }),
     ]);
     expect(r.diferencias.some((x) => x.tipo === 'alimentacion_transporte_sin_tarjeta_credito')).toBe(false);
   });
@@ -85,7 +98,7 @@ describe('transporte sin hospedaje exige tarjeta de crédito (LISR 28-V, 3er pá
   it('no declara dinero perdido: monto en 0, va a revisión — mismo criterio que H1', () => {
     const r = cuadrar([
       g({ concepto: 'alimentacion', monto: 700, formaPago: '01' }),
-      g({ concepto: 'transporte', monto: 450, formaPago: '01' }),
+      g({ concepto: 'transporte', monto: 450, formaPago: '01', folio: 'TR-1' }),
     ]);
     const d = r.diferencias.find((x) => x.tipo === 'alimentacion_transporte_sin_tarjeta_credito')!;
     expect(d.monto).toBe(0);
@@ -95,7 +108,7 @@ describe('transporte sin hospedaje exige tarjeta de crédito (LISR 28-V, 3er pá
     const r = cuadrar([
       g({ concepto: 'alimentacion', monto: 300, formaPago: '01' }),
       g({ concepto: 'alimentacion', monto: 400, formaPago: '01' }),
-      g({ concepto: 'transporte', monto: 450, formaPago: '01' }),
+      g({ concepto: 'transporte', monto: 450, formaPago: '01', folio: 'TR-1' }),
     ]);
     const ds = r.diferencias.filter((x) => x.tipo === 'alimentacion_transporte_sin_tarjeta_credito');
     expect(ds).toHaveLength(1);

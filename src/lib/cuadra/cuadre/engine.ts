@@ -767,7 +767,29 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
     // el 28-jul-2026 sobre tickets reales: tres guías de Paquetexpress bastaban
     // para que esta advertencia desapareciera sobre una comida de $1,050. El
     // motor daba por amparado lo que la ley no ampara, y callando.
-    const haySoporte = vivos.some((g) => g.concepto === 'hospedaje' || g.concepto === 'transporte');
+    //
+    // AUDITORÍA 10, MEDIO (fiscal): esto miraba SOLO el concepto —
+    // `vivos.some((g) => g.concepto === 'hospedaje' || …)`— y lo que la ley pide
+    // acompañar es un COMPROBANTE, no un concepto. Medido: una comida de $700
+    // timbrada, sola, levanta la advertencia; añadiéndole un hospedaje de $1 SIN
+    // UUID, sin RFC y sin XML, la lista de diferencias quedaba VACÍA. El mismo
+    // renglón que el motor acababa de mandar a "por confirmar" con el pie "Falta
+    // timbrar la factura" apagaba la única señal que el producto emite sobre el
+    // requisito de soporte — y como esta regla advierte en vez de quitar
+    // deducción, apagarla no deja rastro en ninguna cifra: el contralor no puede
+    // notar que faltó. El efecto era discontinuo y del lado caro: $0 de
+    // hospedaje → advertencia, $1 sin factura → silencio, sobre un dato que el
+    // operador controla (mandar una foto etiquetada "hospedaje").
+    //
+    // EL CRITERIO ES "HAY UN DOCUMENTO", NO "HAY UNA FACTURA", y eso lo fija la
+    // propia ficha: la ley admite «el comprobante fiscal O LA DOCUMENTACIÓN
+    // COMPROBATORIA». Exigir `cfdiUuid` habría marcado sin soporte un viaje real
+    // con un ticket de hotel de $1,450 todavía sin timbrar —el flujo que el
+    // producto vende son fotos de tickets—, y eso es un falso positivo contra el
+    // texto de la ley. Lo mínimo que distingue un documento de un renglón
+    // inventado, con los datos que hay aquí, es que traiga UUID o folio.
+    const amparaLaComida = (g: Gasto) => !!g.cfdiUuid || !!g.folio;
+    const haySoporte = vivos.some((g) => (g.concepto === 'hospedaje' || g.concepto === 'transporte') && amparaLaComida(g));
     const comidas = haySoporte ? [] : vivos.filter((g) => g.concepto === 'alimentacion');
     if (comidas.length) {
       // UNA sola observación, no una por comida.
@@ -789,9 +811,14 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
       const sujeto = comidas.length === 1
         ? `Alimentación de ${mxn(total)}`
         : `${mxn(total)} en ${comidas.length} comprobantes de alimentación`;
+      // Si el viaje SÍ trae hospedaje o transporte pero sin timbrar, decirlo:
+      // "sin comprobante de hospedaje" a secas, sobre un viaje donde el operador
+      // sí mandó la foto del hotel, se lee como que el sistema no la recibió.
+      // Lo que falta es la factura, y eso es una acción distinta.
+      const sinDocumento = vivos.some((g) => (g.concepto === 'hospedaje' || g.concepto === 'transporte') && !amparaLaComida(g));
       diferencias.push({
         tipo: 'alimentacion_sin_soporte', concepto: 'alimentacion', monto: 0,
-        nota: `${sujeto} sin comprobante de hospedaje ni de transporte del mismo viaje: LISR 28-V condiciona la deducción a que uno de los dos la ampare. Adjúntalo o confírmalo con tu contador.`,
+        nota: `${sujeto} sin comprobante de hospedaje ni de transporte del mismo viaje: LISR 28-V condiciona la deducción a que uno de los dos la ampare.${sinDocumento ? ' El hospedaje o transporte que sí trae el viaje no tiene comprobante (ni CFDI ni folio de ticket): así no ampara.' : ''} Adjúntalo o confírmalo con tu contador.`,
         // Con una sola comida se conserva a qué comprobante apunta; con varias
         // no hay UNO al que señalar, y apuntar al primero sería mentir sobre los
         // otros.
@@ -816,8 +843,14 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
     // Mismo criterio de severidad que H1 y la misma razón: no vemos toda la
     // contabilidad de la flota (el hospedaje podría existir fuera de esta
     // liquidación), así que se manda a revisión, no se declara no deducible.
-    const hayHospedaje = vivos.some((g) => g.concepto === 'hospedaje');
-    const hayTransporte = vivos.some((g) => g.concepto === 'transporte');
+    // Mismo criterio que arriba, y por la misma razón: es "acompañar el
+    // comprobante fiscal", no "que exista un renglón con ese nombre". Con el
+    // criterio viejo, el hospedaje de $1 sin timbrar también apagaba ESTA
+    // advertencia — medido: comida de $700 con `formaPago '28'` + transporte
+    // timbrado daba `alimentacion_transporte_sin_tarjeta_credito`, y añadiendo
+    // el $1 daba `[]`.
+    const hayHospedaje = vivos.some((g) => g.concepto === 'hospedaje' && amparaLaComida(g));
+    const hayTransporte = vivos.some((g) => g.concepto === 'transporte' && amparaLaComida(g));
     if (!hayHospedaje && hayTransporte) {
       const comidasSinTarjeta = vivos.filter((g) => g.concepto === 'alimentacion' && g.formaPago !== '04');
       if (comidasSinTarjeta.length) {
