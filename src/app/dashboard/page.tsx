@@ -158,7 +158,7 @@ export default async function DashboardPage({
                   <Acred titulo="Diésel elegible para el estímulo" valor={acred.litrosDiesel} unidad="litros"
                     base="LIF 2026, Art. 20-A — su contador aplica la cuota semanal vigente" destacar />
                   <Acred titulo="IVA acreditable" valor={acred.iva} base="LIVA, Art. 5 — CFDI con IVA desglosado" />
-                  <Acred titulo="Peaje (50%)" valor={acred.peaje} base="Estímulo de autopistas · LIF 2026, Art. 20-A" />
+                  <Acred titulo="Peaje (50%)" valor={acred.peaje} base="Estímulo de autopistas · LIF 2026, Art. 20-A" condicionado />
                 </div>
               )}
             </section>

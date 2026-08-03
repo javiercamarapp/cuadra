@@ -1,5 +1,6 @@
 import { mxn } from '@/lib/utils';
 import { litros } from './formato';
+import { CONDICIONES_ESTIMULO_PEAJE } from '@/lib/cuadra/liquidacion/acreditable';
 
 /**
  * Una tarjeta de la fila "Estímulos acreditables del periodo".
@@ -25,12 +26,29 @@ export function Acred({
   base,
   destacar,
   unidad,
+  condicionado,
 }: {
   titulo: string;
   valor: number;
   base: string;
   destacar?: boolean;
   unidad?: 'litros';
+  /**
+   * La cifra es correcta ARITMÉTICAMENTE y su derecho NO está verificado.
+   *
+   * El estímulo de peaje (LIF 2026 art. 20, ap. A) exige dedicarse
+   * EXCLUSIVAMENTE al transporte, usar la Red Nacional de Autopistas de Cuota,
+   * ingresos anuales menores a 300 millones, y no ser parte relacionada
+   * (LISR 179). El motor aplica el 50% a todo gasto con concepto `caseta` y no
+   * conoce ninguna de las cuatro — los propios hallazgos de la ficha lo dicen.
+   *
+   * `liquidacion/acreditable.ts` ya resolvía esto para el PDF: label con la
+   * reserva, tono neutro y un pie que dice que Likida NO verifica la
+   * elegibilidad. El panel lo pintaba en verde a 5xl (auditoría 10, ALTO
+   * fiscal). Un contralor que meta ese número en su declaración está tomando
+   * una posición fiscal que nadie comprobó.
+   */
+  condicionado?: boolean;
 }) {
   // AUDITORÍA 10, CRÍTICO (frontend): esta tarjeta imprimía `0 L` en
   // `text-4xl md:text-5xl`, en color de acento y con borde de acento —el
@@ -75,10 +93,13 @@ export function Acred({
   // Sin medición la tarjeta deja de gritar: pierde el acento y baja a tinta
   // apagada. Si sigue destacada en verde acento, un guion grande se lee como
   // un resultado igual que un cero grande.
-  const resaltar = destacar && !sinMedicion;
+  // Un condicionado nunca destaca: el acento se lee como "esto ya es tuyo".
+  const resaltar = destacar && !sinMedicion && !condicionado;
   return (
     <div className="card p-7" style={resaltar ? { borderColor: 'var(--accent)' } : undefined}>
-      <div className="text-sm font-medium" style={{ color: 'var(--muted)' }}>{titulo}</div>
+      <div className="text-sm font-medium" style={{ color: 'var(--muted)' }}>
+        {titulo}{condicionado && !sinMedicion ? ' — sujeto a elegibilidad' : ''}
+      </div>
       <div
         className="text-4xl md:text-5xl font-semibold tracking-tight tabular mt-2"
         style={{ color: resaltar ? 'var(--accent)' : sinMedicion ? 'var(--muted)' : 'var(--ink)' }}
@@ -86,6 +107,9 @@ export function Acred({
         {texto}
       </div>
       <div className="text-xs mt-3" style={{ color: 'var(--muted)' }}>{pie}</div>
+      {condicionado && !sinMedicion && (
+        <div className="text-xs mt-2" style={{ color: 'var(--muted)' }}>{CONDICIONES_ESTIMULO_PEAJE}</div>
+      )}
     </div>
   );
 }
