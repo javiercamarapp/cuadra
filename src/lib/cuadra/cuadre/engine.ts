@@ -79,6 +79,60 @@ function politicaPara(concepto: string, ruta: string | undefined, pol: PoliticaG
 /** Conceptos que la ley trata como viático (LISR 28-V / RLISR 57). */
 const ES_VIATICO = ['alimentacion', 'hospedaje', 'transporte', 'viaticos'];
 
+/**
+ * Los medios de pago que LISR 27-III admite, en códigos del catálogo
+ * `c_FormaPago` del SAT. Es una lista CERRADA, y por eso está escrita como
+ * lista: la fracción no describe lo que no cumple, enumera lo que sí.
+ *
+ * `normas/lisr-27-III.yaml`, `texto_vigente`, 1er párrafo, literal: «...que los
+ * pagos cuyo monto exceda de $2,000.00 se efectúen mediante transferencia
+ * electrónica de fondos...; cheque nominativo de la cuenta del contribuyente,
+ * tarjeta de crédito, de débito, de servicios, o los denominados monederos
+ * electrónicos autorizados por el Servicio de Administración Tributaria»; y el
+ * 2º párrafo la extiende al COMBUSTIBLE «aun cuando la contraprestación de
+ * dichas adquisiciones no excedan de $2,000.00».
+ *
+ * Coincide hoy, código por código, con `MEDIOS_LIF_20A` (ver el bloque de
+ * acreditamiento), y aun así son dos listas a propósito: fundan en párrafos
+ * distintos de leyes distintas y una reforma puede mover una sin la otra.
+ * Unirlas haría que un cambio en el estímulo del LIF moviera en silencio la
+ * deducción para ISR, que es la cifra grande.
+ */
+const MEDIOS_LISR_27_III: readonly string[] = [
+  '02', // cheque nominativo de la cuenta del contribuyente
+  '03', // transferencia electrónica de fondos
+  '04', // tarjeta de crédito
+  '05', // monedero electrónico autorizado por el SAT
+  '28', // tarjeta de débito
+  '29', // tarjeta de servicios
+];
+
+/**
+ * Cómo se llama en el catálogo del SAT el código que no cumple, para que la nota
+ * diga el hecho y no solo el número. Solo los que se ven en la práctica; para
+ * cualquier otro se imprime el código a secas, que es lo que trae el CFDI.
+ */
+function nombreFormaPago(fp: string): string {
+  // La variable NO se llama `m`: `etiquetas_sincronizadas.test.ts` localiza el
+  // mapa de etiquetas de concepto de este archivo buscando en el fuente una
+  // declaración con ese nombre y ese tipo, y un segundo mapa idéntico la
+  // secuestraría (medido: el test quedó en rojo hasta renombrarla).
+  const nombres: Record<string, string> = {
+    '06': ' — dinero electrónico',
+    '08': ' — vales de despensa',
+    '12': ' — dación en pago',
+    '15': ' — condonación',
+    '17': ' — compensación',
+    '23': ' — novación',
+    '30': ' — aplicación de anticipos',
+    // El que más aparece: es obligatorio en todo CFDI con `MetodoPago = PPD`, y
+    // significa que el pago TODAVÍA NO OCURRIÓ. El medio real se conocerá en el
+    // complemento de recepción de pagos.
+    '99': ' — Por definir: el pago aún no ocurre (CFDI en parcialidades o diferido)',
+  };
+  return nombres[fp] ?? '';
+}
+
 /** En cuál de las tres cubetas de deducibilidad cae un gasto. */
 export type Cubeta = 'deducible' | 'no_deducible' | 'por_confirmar';
 
@@ -278,8 +332,33 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
     // 15%. Declararlo no deducible le quita al cliente una deducción que la ley le
     // concede. (El contador del 15% por ejercicio todavía no existe: ver roadmap.)
     const topeEfectivo = input.estimulos?.efectivoTopeMxn ?? 2000;
-    if (g.formaPago === '01' && esCombustible) {
-      diferencias.push({ tipo: 'combustible_efectivo', concepto: g.concepto, monto: 0, nota: `${etiquetaConcepto(g.concepto, g.ocrExtra as Record<string, unknown> | undefined)} pagado en EFECTIVO — cuenta contra el tope del 15% del combustible del ejercicio (RFA 2026 regla 2.9). Dentro del 15% sigue siendo deducible; el excedente no. No acredita IEPS en ningún caso.`, gastoId: g.id });
+    // AUDITORÍA 10, ALTO (fiscal): esto era `g.formaPago === '01'` —"no es
+    // efectivo"—, y la ley dice lo contrario: no describe lo que no cumple,
+    // enumera una lista CERRADA de lo que sí (`MEDIOS_LISR_27_III`). Los otros
+    // 29 códigos de `c_FormaPago` pasaban como si cumplieran. Medido con el
+    // diésel del hallazgo ($5,400, CFDI verificado, IVA $744.83): con `17`
+    // (compensación) o con `99` salía "Deducible para ISR $5,400" y "IVA
+    // acreditable $744.83" en verde, y con `01` —el mismo hecho jurídico, un
+    // pago fuera de la lista del 2º párrafo— salía por confirmar y sin IVA.
+    //
+    // `99` (Por definir) es el valor OBLIGATORIO de todo CFDI con
+    // `MetodoPago = PPD`: una flota que compra diésel a crédito en la estación
+    // factura exactamente así, y ese pago todavía no ocurrió.
+    //
+    // Sin `formaPago` NO se levanta nada: un dato ausente no es un
+    // incumplimiento. (El estímulo de litros del LIF 20-A sí lo exige, y por eso
+    // allá abajo el default es el contrario — ver `MEDIOS_LIF_20A`.)
+    const medioFueraDeLista = !!g.formaPago && !MEDIOS_LISR_27_III.includes(g.formaPago);
+    if (esCombustible && medioFueraDeLista) {
+      // El veredicto sigue siendo `combustible_efectivo` —POR_CONFIRMAR, no
+      // NO_DEDUCIBLE— porque la RFA 2026 regla 2.9 acota su válvula del 15% a
+      // los MISMOS medios: "cuando los pagos por consumo de combustible se
+      // realicen con medios distintos a cheque nominativo…; tarjeta de crédito,
+      // de débito o de servicios; o monederos electrónicos autorizados por el
+      // SAT". La facilidad cubre a los 30 códigos de fuera, no solo al efectivo.
+      // El nombre del tipo se quedó corto (vive en `types/cuadra.ts`); lo que el
+      // contralor lee es la nota, y esa sí nombra el medio real.
+      diferencias.push({ tipo: 'combustible_efectivo', concepto: g.concepto, monto: 0, nota: `${etiquetaConcepto(g.concepto, g.ocrExtra as Record<string, unknown> | undefined)} ${g.formaPago === '01' ? 'pagado en EFECTIVO' : `pagado con una forma que no es medio de pago de LISR 27-III (FormaPago ${g.formaPago}${nombreFormaPago(g.formaPago as string)}): la ley pide transferencia, cheque nominativo, tarjeta de crédito, débito o servicios, o monedero electrónico autorizado`} — cuenta contra el tope del 15% del combustible del ejercicio (RFA 2026 regla 2.9). Dentro del 15% sigue siendo deducible; el excedente no. No acredita IEPS en ningún caso.`, gastoId: g.id });
     } else if (g.formaPago === '01' && !esCombustible && g.monto > topeEfectivo) {
       // Regla 6: gasto no-combustible en efectivo > tope → no deducible.
       diferencias.push({ tipo: 'efectivo_sobre_tope', concepto: g.concepto, monto: 0, nota: `${etiquetaConcepto(g.concepto, g.ocrExtra as Record<string, unknown> | undefined)} de ${mxn(g.monto)} en efectivo excede el tope de ${mxn(topeEfectivo)} (LISR 27-III) — no deducible.`, gastoId: g.id });
