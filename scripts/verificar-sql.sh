@@ -62,18 +62,57 @@ pedidos = set(sys.argv[1:])
 bloques = []
 for i in range(1, len(partes), 3):
     num, titulo, cuerpo = partes[i], partes[i+1].strip(), partes[i+2]
-    # `do $$` A PRINCIPIO DE LÍNEA. Buscarlo en cualquier posición cortaba los
-    # bloques 16 y 23 por la mitad: su comentario de cabecera menciona «`do $$`
-    # corre como el dueño y bypasea RLS», y el índice caía dentro de esa frase.
+    # TRES FORMAS DE BLOQUE, y las tres se reportan. Quedarse callado con las
+    # que no encajan en la forma esperada es el modo de fallo que esta ronda
+    # persigue: el runner decía «34 bloques» y corría 32, sin una línea que
+    # dijera qué pasó con los otros dos.
+    #
+    #   `do $$`  → veredicto por `raise exception` (P0001). A PRINCIPIO DE
+    #   LÍNEA: buscarlo en cualquier posición cortaba los bloques 16 y 23 por la
+    #   mitad, porque su comentario de cabecera menciona «`do $$` corre como el
+    #   dueño y bypasea RLS» y el índice caía dentro de esa frase.
     m = re.search(r'^do \$\$', cuerpo, flags=re.M)
     if m:
-        bloques.append((num, titulo, cuerpo[m.start():]))
+        bloques.append((num, titulo, 'do', cuerpo[m.start():]))
+        continue
+    #   `select` → el veredicto es la FILA que devuelve (bloque 22).
+    m = re.search(r'^select\b', cuerpo, flags=re.M)
+    if m:
+        fin = cuerpo.index(';', m.start()) + 1
+        bloques.append((num, titulo, 'select', cuerpo[m.start():fin]))
+        continue
+    #   sin cuerpo → retirado a propósito (bloque 21, tabla revertida por la
+    #   0041). Se imprime igual, para que «retirado» sea una decisión visible y
+    #   no un bloque que se perdió.
+    bloques.append((num, titulo, 'vacio', ''))
 
 env = dict(os.environ, DB=os.environ.get('DB', 'likida_verif'))
-ok = fallo = saltado = 0
-for num, titulo, sql in bloques:
+ok = fallo = saltado = retirado = 0
+for num, titulo, forma, sql in bloques:
     if pedidos and num not in pedidos:
         saltado += 1; continue
+
+    if forma == 'vacio':
+        retirado += 1
+        print(f'– {num:>2}  {titulo[:52]:<52} sin cuerpo — retirado a propósito, ver cabecera')
+        continue
+
+    if forma == 'select':
+        # El veredicto es la fila. Se imprime tal cual y la lee una persona
+        # contra el «Corrido el …, salida real» de la cabecera: no hay
+        # `raise exception` del que sacar un código.
+        r = subprocess.run(['psql', '-q', '-d', env['DB'], '-v', 'ON_ERROR_STOP=1',
+                            '-A', '-F', ' ', '-P', 'footer=off'],
+                           input=sql, capture_output=True, text=True, env=env)
+        if r.returncode != 0:
+            fallo += 1
+            print(f'✗ {num:>2}  {titulo[:52]:<52} {(r.stderr or "").strip()[:110]}')
+        else:
+            ok += 1
+            fila = ' '.join(r.stdout.split('\n')[:2]).strip()
+            print(f'✓ {num:>2}  {titulo[:52]:<52} {fila[:110]}')
+        continue
+
     # VERBOSITY verbose da el SQLSTATE, que es lo único que distingue el
     # veredicto del bloque de un fallo de armado. `raise exception` sin
     # `using errcode` sale como P0001; cualquier otro código (42P01 tabla que
@@ -99,6 +138,7 @@ for num, titulo, sql in bloques:
     if esperado: ok += 1
     else: fallo += 1
     print(f'{marca} {num:>2}  {titulo[:52]:<52} {msg[:110]}')
-print(f'\n=== {ok} bloques dieron veredicto · {fallo} NO llegaron a medir · {saltado} no pedidos ===')
+print(f'\n=== {ok} bloques dieron veredicto · {fallo} NO llegaron a medir · '
+      f'{retirado} retirados · {saltado} no pedidos  (de {len(bloques)} cabeceras) ===')
 sys.exit(1 if fallo else 0)
 PY

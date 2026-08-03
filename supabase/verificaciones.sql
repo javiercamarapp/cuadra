@@ -871,7 +871,15 @@ end $$;
 -- falla real es que alguien cree el siguiente bucket con el default equivocado,
 -- y ese día esto tiene que ponerse rojo aunque la 0039 siga bien.
 --
--- Corrido el 1-ago, salida real:  1 / f / 0 / t / 0
+-- Corrido el 1-ago contra Supabase, salida real:  1 / f / 0 / t / 0
+--
+-- CONTRA EL ANDAMIAJE LOCAL (3-ago) da `1 f 0 <vacío> 0`: `rls_objects` sale
+-- NULO porque `andamiaje_local.sql` NO crea `storage.objects`, y no lo crea a
+-- propósito. El RLS de esa tabla lo pone la plataforma, no una migración de
+-- este repo; replicarlo en el andamiaje haría que este bloque midiera MI
+-- fixture en vez de Supabase, y devolvería un `t` que no prueba nada. Las otras
+-- cuatro columnas sí las controlan las migraciones y sí se miden aquí. La
+-- columna nula es el recordatorio de que este bloque se repite allá.
 select
   (select count(*) from storage.buckets where id='comprobantes')                    as existe,
   (select bool_or(public) from storage.buckets where id='comprobantes')             as publico,
@@ -900,30 +908,40 @@ select
 -- con una fila sembrada. Un `enable` mal aplicado, o un `force` que falte el
 -- día que la tabla cambie de dueño, se ve aquí y no en el catálogo.
 --
--- Corrido el 1-ago, salida real:  anon=0 filas · service_role=1 fila
-create temp table if not exists _res(quien text, filas int, nota text);
-truncate _res;
+-- El bloque SIEMBRA su propia fila: leer 0 de una tabla vacía no distingue una
+-- policy que cierra de una tabla sin datos, y ése es el modo de fallo que hace
+-- inútil a media suite de RLS. El control `dueno` tiene que dar 1.
+--
+-- Corrido el 3-ago contra el andamiaje, salida real:  anon=0 · dueño=1
 do $$
-declare n int; nota text;
+declare
+  v_t uuid; v_o uuid;
+  n_anon int; n_dueno int; nota text;
 begin
+  insert into tenant (nombre) values ('ZZZ VERIF HUERFANO') returning id into v_t;
+  insert into operador (tenant_id, nombre, telefono) values (v_t, 'Chofer', '520000009023') returning id into v_o;
+  insert into comprobante_huerfano (tenant_id, operador_id, gasto, motivo)
+    values (v_t, v_o, '{"concepto":"diesel","monto":1234.5}'::jsonb, 'sin_viaje');
+
   begin
     set local role anon;
-    select count(*) into n from comprobante_huerfano;
+    select count(*) into n_anon from comprobante_huerfano;
     reset role;
-    nota := case when n = 0 then 'RLS lo deja a ciegas' else 'FUGA: anon LEE' end;
+    nota := case when n_anon = 0 then 'RLS lo deja a ciegas' else 'FUGA: anon LEE' end;
   exception when insufficient_privilege then
     reset role;
-    n := -1; nota := 'denegado por privilegios de tabla';
+    n_anon := -1; nota := 'denegado por privilegios de tabla';
   end;
-  insert into _res values ('anon', n, nota);
-  insert into _res select 'service_role', count(*), 've todo (BYPASSRLS)' from comprobante_huerfano;
+
+  select count(*) into n_dueno from comprobante_huerfano where tenant_id = v_t;
+
+  raise exception E'HUERFANO_ANON  anon=%  dueno=%  (%)   (esperado 0 / 1)',
+    n_anon, n_dueno, nota;
 end $$;
-select * from _res order by quien;
--- anon         | 0 | RLS lo deja a ciegas      ← con una fila sembrada
--- service_role | 1 | ve todo (BYPASSRLS)
 --
 -- Si `anon` devuelve >0, el expediente de gastos de todas las flotas es público
--- para cualquiera con la anon key, que va en el navegador.
+-- para cualquiera con la anon key, que va en el navegador. Si `dueno` devuelve
+-- 0, el bloque no sembró nada y el 0 de `anon` no prueba nada.
 
 -- ── 24. Un UPDATE de solo `fecha` tampoco puede reescribirse tras liquidar (mig. 0042) ──
 -- AUDITORÍA 9, ALTO (backend, seguridad y modelo de datos, tres auditores
@@ -1075,28 +1093,53 @@ end $$;
 -- ── 28. Las policies del chofer filtran por tenant (mig. 0047) ───────────────
 --
 -- La 0045 escribió `using (operador_id = get_user_operador_id())` sin
--- `tenant_id`. Este bloque monta exactamente el estado que ese hueco permitía:
--- un viaje de la flota A apuntando a un chofer de la flota B —lo que
--- `reasignarOperador` podía escribir antes de que validara la pertenencia— y
--- comprueba que el chofer de B NO lo ve.
+-- `tenant_id`. Este bloque monta el estado que ese hueco permitía —un viaje de
+-- la flota A apuntando a un chofer de la flota B, lo que `reasignarOperador`
+-- podía escribir antes de validar la pertenencia— y comprueba que el chofer de
+-- B NO lo ve.
 --
--- Esperado 0/0/0. Con la 0045 sola, daba 1/1/1.
+-- CORRECCIÓN DEL 3-ago, salida de correrlo por primera vez. El bloque reventaba
+-- con `[23503] viaje_operador_tenant_fkey` ANTES de medir nada: la FK compuesta
+-- de la 0028 ya impide insertar ese viaje. O sea que el escenario del ALTO de
+-- backend era **imposible a nivel de base desde la 0028**, y la 0047 es defensa
+-- en profundidad sobre una puerta ya cerrada — no el cierre. Eso queda dicho en
+-- `docs/auditoria-10/pendientes.md` y aquí, y se mide: `fk_rechaza` es ahora la
+-- primera medición del bloque.
 --
--- ⚠️  NO SE HA CORRIDO. La 0047 se escribió sin base contra la cual ejercerla.
+-- Pero «ya hay otra capa» no exime a la policy de hacer su trabajo: si un día
+-- se toca la 0028, se restaura un respaldo viejo o se carga con `service_role`
+-- saltándose la FK, la RLS es lo único que queda. Por eso el bloque TIRA la FK
+-- dentro de su propia transacción —que se revierte entera en el `raise` final,
+-- igual que todos los demás— y recién entonces mide la policy.
+--
+-- Esperado: fk_rechaza=1 · 0/0/0. Con la 0045 sola, daba 1/1/1.
 do $$
 declare
-  v_ta uuid; v_tb uuid; v_ob uuid; v_v uuid; v_ub uuid := gen_random_uuid();
-  n_viaje int; n_gasto int; n_liq int;
+  v_ta uuid; v_tb uuid; v_ob uuid; v_v uuid; v_ub uuid;
+  n_viaje int; n_gasto int; n_liq int; fk_rechaza int := 0;
 begin
   insert into tenant (nombre) values ('ZZZ VERIF FLOTA A') returning id into v_ta;
   insert into tenant (nombre) values ('ZZZ VERIF FLOTA B') returning id into v_tb;
   insert into operador (tenant_id, nombre, telefono) values (v_tb, 'Chofer de B', '520000009050') returning id into v_ob;
 
-  -- El estado imposible: viaje de A apuntando al chofer de B.
+  -- 1. LA PRIMERA CAPA. El estado cruzado, tal cual, contra el esquema real.
+  begin
+    insert into viaje (tenant_id, operador_id) values (v_ta, v_ob);
+    fk_rechaza := 0;                    -- entró: la FK compuesta NO está
+  exception when foreign_key_violation then
+    fk_rechaza := 1;                    -- rechazado por la 0028
+  end;
+
+  -- 2. LA SEGUNDA CAPA. Se retira la FK para poder llegar a la policy. Vive
+  --    dentro de esta transacción y muere con ella: el `raise` de abajo la
+  --    revierte, igual que revierte los tenants sembrados.
+  alter table public.viaje drop constraint viaje_operador_tenant_fkey;
+
   insert into viaje (tenant_id, operador_id) values (v_ta, v_ob) returning id into v_v;
   insert into gasto (tenant_id, viaje_id, concepto, monto) values (v_ta, v_v, 'diesel', 5000);
   insert into liquidacion (tenant_id, viaje_id) values (v_ta, v_v);
 
+  v_ub := auth.crear_usuario('zzz-verif-chofer-b@likida.test');
   insert into app_user (id, tenant_id, email, rol, operador_id)
     values (v_ub, v_tb, 'zzz-verif-chofer-b@likida.test', 'operador', v_ob);
 
@@ -1109,8 +1152,8 @@ begin
 
   reset role;
 
-  raise exception E'OPERADOR_RLS_TENANT  viaje-ajeno=%  gastos-ajenos=%  liquidacion-ajena=%   (esperado 0 / 0 / 0 — con la 0045 sola daba 1/1/1)',
-    n_viaje, n_gasto, n_liq;
+  raise exception E'OPERADOR_RLS_TENANT  fk-compuesta-rechaza=%  viaje-ajeno=%  gastos-ajenos=%  liquidacion-ajena=%   (esperado 1 / 0 / 0 / 0 — con la 0045 sola daba 1/1/1)',
+    fk_rechaza, n_viaje, n_gasto, n_liq;
 end $$;
 
 -- ── 29. El contador lee y no escribe (mig. 0048) ─────────────────────────────
@@ -1207,11 +1250,15 @@ end $$;
 -- saltaba la FK) · propio=1 (control: ligar al chofer de SU flota sí funciona,
 -- si no esto sería un candado que deja el producto sin panel de chofer).
 --
--- ⚠️  NO SE HA CORRIDO. La 0050 se escribió sin base contra la cual ejercerla.
+-- CORRECCIÓN DEL 3-ago, salida de correrlo por primera vez. El armado reventaba
+-- con `[23514] app_user_operador_id_coherente` antes de medir: creaba la cuenta
+-- con `rol='operador'` y `operador_id` NULL, que es justo lo que el CHECK de la
+-- 0051 —escrita DESPUÉS de este bloque— prohíbe. La cuenta nace ya ligada a su
+-- propio chofer, y esa alta pasa a ser la medición de CONTROL (`propio`).
 do $$
 declare
   v_ta uuid; v_tb uuid; v_oa uuid; v_ob uuid;
-  v_u uuid := gen_random_uuid(); v_u2 uuid := gen_random_uuid();
+  v_u uuid; v_u2 uuid;
   cruzado int := 0; sin_tenant int := 0; propio int := 0;
 begin
   insert into tenant (nombre) values ('ZZZ VERIF FK FLOTA A') returning id into v_ta;
@@ -1219,18 +1266,30 @@ begin
   insert into operador (tenant_id, nombre, telefono) values (v_ta, 'Chofer de A', '520000009070') returning id into v_oa;
   insert into operador (tenant_id, nombre, telefono) values (v_tb, 'Chofer de B', '520000009071') returning id into v_ob;
 
-  insert into app_user (id, tenant_id, email, rol) values (v_u, v_ta, 'zzz-verif-fk-a@likida.test', 'operador');
+  v_u  := auth.crear_usuario('zzz-verif-fk-a@likida.test');
+  v_u2 := auth.crear_usuario('zzz-verif-fk-sin-tenant@likida.test');
 
-  -- 1. El UUID de la flota B pegado en la cuenta de la flota A.
+  -- 1. CONTROL, y a la vez el armado. Ligar al chofer de su PROPIA flota tiene
+  --    que seguir siendo posible: si esto diera 0, los candados de la 0050 y la
+  --    0051 dejarían al producto sin poder dar de alta a un chofer.
+  begin
+    insert into app_user (id, tenant_id, email, rol, operador_id)
+      values (v_u, v_ta, 'zzz-verif-fk-a@likida.test', 'operador', v_oa);
+    propio := 1;
+  exception when others then
+    propio := 0;
+  end;
+
+  -- 2. El UUID de la flota B pegado en la cuenta de la flota A.
   begin
     update app_user set operador_id = v_ob where id = v_u;
     cruzado := 1;                       -- pasó: la FK NO está compuesta
-    update app_user set operador_id = null where id = v_u;
+    update app_user set operador_id = v_oa where id = v_u;   -- deshacer
   exception when foreign_key_violation then
     cruzado := 0;                       -- rechazado: es lo que se espera
   end;
 
-  -- 2. El hueco de MATCH SIMPLE: sin tenant, una FK compuesta no comprueba nada.
+  -- 3. El hueco de MATCH SIMPLE: sin tenant, una FK compuesta no comprueba nada.
   begin
     insert into app_user (id, tenant_id, email, rol, operador_id)
       values (v_u2, null, 'zzz-verif-fk-sin-tenant@likida.test', 'operador', v_ob);
@@ -1238,14 +1297,6 @@ begin
     delete from app_user where id = v_u2;
   exception when check_violation or foreign_key_violation then
     sin_tenant := 0;
-  end;
-
-  -- 3. CONTROL. Ligar al chofer de su PROPIA flota tiene que seguir siendo posible.
-  begin
-    update app_user set operador_id = v_oa where id = v_u;
-    propio := 1;
-  exception when others then
-    propio := 0;
   end;
 
   raise exception E'APP_USER_OPERADOR_FK  cruzado=%  sin_tenant=%  propio=%   (esperado 0 / 0 / 1 — antes de la 0050 daba 1 / 1 / 1)',
@@ -1263,19 +1314,30 @@ end $$;
 -- mitades sí entra, si no esto dejaría al producto sin poder dar de alta a un
 -- chofer).
 --
--- ⚠️  NO SE HA CORRIDO. La 0051 se escribió sin base contra la cual ejercerla.
+-- CORRECCIÓN DEL 3-ago, salida de correrlo por primera vez. El bloque daba
+-- `completo=0` y parecía que el CHECK de la 0051 dejaba al producto sin poder
+-- dar de alta a un chofer. No era el CHECK: era la FK `app_user.id →
+-- auth.users.id` de la 0053, que es POSTERIOR a este bloque, reventando sobre
+-- un `gen_random_uuid()` que no existe en Auth. El `when others` del control se
+-- la tragaba y la reportaba como si el candado hubiera cerrado de más — un
+-- falso ALTO a un paso de mandarse. Los tres usuarios se crean ahora en `auth`
+-- primero, que es lo que GoTrue hace antes de que `app_user` exista.
 do $$
 declare
-  v_t uuid; v_o uuid;
+  v_t uuid; v_o uuid; v_u1 uuid; v_u2 uuid; v_u3 uuid;
   sin_ligar int := 0; de_mas int := 0; completo int := 0;
 begin
   insert into tenant (nombre) values ('ZZZ VERIF COHERENTE') returning id into v_t;
   insert into operador (tenant_id, nombre, telefono) values (v_t, 'Chofer', '520000009080') returning id into v_o;
 
+  v_u1 := auth.crear_usuario('zzz-verif-coh-1@likida.test');
+  v_u2 := auth.crear_usuario('zzz-verif-coh-2@likida.test');
+  v_u3 := auth.crear_usuario('zzz-verif-coh-3@likida.test');
+
   -- 1. Chofer sin ligar: lo que la consola creaba en cada alta.
   begin
     insert into app_user (id, tenant_id, email, rol)
-      values (gen_random_uuid(), v_t, 'zzz-verif-coh-1@likida.test', 'operador');
+      values (v_u1, v_t, 'zzz-verif-coh-1@likida.test', 'operador');
     sin_ligar := 1;
   exception when check_violation then
     sin_ligar := 0;
@@ -1284,7 +1346,7 @@ begin
   -- 2. `operador_id` colgado de un rol que no es chofer.
   begin
     insert into app_user (id, tenant_id, email, rol, operador_id)
-      values (gen_random_uuid(), v_t, 'zzz-verif-coh-2@likida.test', 'contador', v_o);
+      values (v_u2, v_t, 'zzz-verif-coh-2@likida.test', 'contador', v_o);
     de_mas := 1;
   exception when check_violation then
     de_mas := 0;
@@ -1293,7 +1355,7 @@ begin
   -- 3. CONTROL: las dos mitades juntas sí entran.
   begin
     insert into app_user (id, tenant_id, email, rol, operador_id)
-      values (gen_random_uuid(), v_t, 'zzz-verif-coh-3@likida.test', 'operador', v_o);
+      values (v_u3, v_t, 'zzz-verif-coh-3@likida.test', 'operador', v_o);
     completo := 1;
   exception when others then
     completo := 0;

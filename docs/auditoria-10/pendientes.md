@@ -39,18 +39,38 @@ el código antes de tocar nada, y los siete reportaron lo mismo. En la auditorí
 aplica las 53 migraciones y corre los 34 bloques.
 
 **Las 53 migraciones aplican limpias, incluidas las 8 escritas a ciegas
-(`0046`–`0053`).** **28 de 34 bloques dan veredicto.**
+(`0046`–`0053`).** **33 de las 34 cabeceras dan veredicto; la 34ª (bloque 21)
+está retirada a propósito. Cero bloques que no lleguen a medir.**
 
-### Las tres migraciones de RLS quedan VERIFICADAS
+La primera corrida dejó 3 bloques reventando antes de medir y 1 dando un
+resultado falso. Los cuatro quedaron arreglados, y **cada arreglo enseñó algo
+que la primera lectura no decía** — el detalle está más abajo.
+
+### Las CUATRO migraciones de RLS quedan VERIFICADAS
 
 | Bloque | Migración | Salida real | Esperado |
 |:--:|---|---|:--:|
 | 26 | `0045` | `viajes=1 gastos=1 liquidaciones=1 viaje-ajeno=0` | ✅ |
 | 27 | `0046` | `terminal=0 operador=0 politica=0 conversacion=0 subio-su-tope=0` | ✅ |
+| 28 | `0047` | `fk-compuesta-rechaza=1 viaje-ajeno=0 gastos=0 liquidacion=0` | ✅ |
 | 29 | `0048` | `ve=1 actualizo=0 borro=0` | ✅ |
 
 El chofer no puede subirse su propio tope de gasto y el contador no puede
 borrar una liquidación. Eso ya no es una promesa: es una medición.
+
+Con una salvedad que hay que decir en voz alta: **la `0047` es defensa en
+profundidad, no el cierre**. Correrla demostró que la FK compuesta de la `0028`
+ya hacía imposible el estado que el ALTO de backend describía. La mitad del
+hallazgo que sí era real —el `UPDATE` sin mirar filas afectadas— se cerró en
+`d6ba851`. El `0` de la policy se mide con la FK retirada a propósito dentro de
+la transacción del bloque, que es lo que quedaría si algún día se toca la 0028.
+
+Y las de identidad, que en la primera corrida no llegaban a medir:
+
+| Bloque | Migración | Salida real | Esperado |
+|:--:|---|---|:--:|
+| 31 | `0050` | `cruzado=0 sin_tenant=0 propio=1` | ✅ |
+| 32 | `0051` | `sin_ligar=0 de_mas=0 completo=1` | ✅ |
 
 ### ⚠️ HALLAZGO NUEVO, salido de correrlo
 
@@ -69,20 +89,33 @@ puerta a la doble liquidación que la 0005 existe para cerrar. **No requiere
 sesión.** Los dos bloques lo declaraban esperado en `f` y nadie los había
 corrido.
 
-### Los 3 bloques que aún no llegan a medir
+### Los 4 bloques arreglados, y lo que enseñó cada uno
 
-- **28** — `[23503] viaje_operador_tenant_fkey`. El bloque monta un viaje de la
-  flota A apuntando a un chofer de la B, y **la FK compuesta de la 0028 ya lo
-  impide**. Es decir: el escenario del ALTO de backend era **imposible a nivel
-  de base** desde antes. La mitad del hallazgo que sí era real —el `UPDATE` sin
-  mirar filas afectadas— quedó cerrada en `d6ba851`; la migración `0047` es
-  defensa en profundidad sobre una puerta ya cerrada, no el cierre.
-- **31** — `[23514] app_user_operador_id_coherente`. El CHECK de la 0051 salta
-  durante el ARMADO del bloque. Hay que reescribirlo con manejador de excepción.
-- **23** — `[42P01] relation "_res" does not exist`. El bloque usa una CTE entre
-  sentencias, que no sobrevive.
-- **32** dio `completo=0` donde esperaba `1`: revisar si es la migración o el
-  armado del bloque.
+| | Fallaba con | Causa real | Ahora |
+|:--:|---|---|---|
+| **23** | `[42P01] relation "_res" does not exist` | Guardaba resultados en una tabla temporal creada FUERA del `do $$`. Y leía una tabla vacía: un `anon=0` sobre cero filas no distingue una policy que cierra de una tabla sin datos. | Siembra su propia fila y añade el control `dueno=1`. `anon=0 dueno=1` |
+| **28** | `[23503] viaje_operador_tenant_fkey` | **La FK compuesta de la 0028 ya impedía el estado cruzado.** El escenario del ALTO de backend era imposible a nivel de base desde antes. | Mide la FK primero (`fk-compuesta-rechaza=1`), luego la TIRA dentro de su propia transacción —que se revierte— para llegar a la policy. `1 / 0 / 0 / 0` |
+| **31** | `[23514] app_user_operador_id_coherente` | El armado creaba `rol='operador'` con `operador_id` NULL, justo lo que el CHECK de la 0051 —posterior al bloque— prohíbe. | La cuenta nace ligada a su chofer, y esa alta pasa a ser el control. `cruzado=0 sin_tenant=0 propio=1` |
+| **32** | `completo=0` (esperaba 1) | **Un falso ALTO a un paso de mandarse.** Parecía que el CHECK de la 0051 dejaba al producto sin poder dar de alta a un chofer. Era la FK `app_user.id → auth.users.id` de la 0053 reventando sobre un UUID que no existe en Auth, y el `when others` del control se la tragaba. | Los usuarios se crean en `auth` primero. `sin_ligar=0 de_mas=0 completo=1` |
+
+El de la 32 es el que vale la pena subrayar: **el bloque no falló, MINTIÓ**. Dio
+un número creíble, con la forma exacta de un hallazgo grave, por una razón que
+no tenía nada que ver con lo que medía. Un `exception when others` que asigna
+`0` no distingue «el candado cerró de más» de «faltaba una fila en otra tabla».
+
+### Y dos cabeceras que el runner se estaba saltando en silencio
+
+Decía «34 bloques» y corría 32, sin una línea que dijera qué pasó con las otras
+dos. **La 21** está retirada a propósito (la 0041 revirtió `foto_pendiente`);
+**la 22** tiene cuerpo y nunca se ejecutó — es un `select`, no un `do $$`, y el
+partidor solo buscaba `do $$`. Ahora el runner reconoce las tres formas e
+imprime una línea por cabecera. La 22 corre y da `existe=1 publico=f
+buckets_publicos=0 policies=0`.
+
+`rls_objects` sale **nulo** contra el andamiaje, y se deja así: `storage.objects`
+lo crea la plataforma, no una migración de este repo. Replicarlo en el andamiaje
+haría que el bloque midiera mi propio fixture y devolviera un `t` que no prueba
+nada. La columna nula es el recordatorio de que ese bloque se repite en Supabase.
 
 ## LO QUE SIGUE SIN PODERSE HACER AQUÍ
 
