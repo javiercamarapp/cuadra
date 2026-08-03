@@ -122,6 +122,33 @@ export function calcCost(model: string, tokIn: number, tokOut: number): number {
 // OpenRouter: no retener input (compliance de datos fiscales).
 const PROVIDER_OPTS = { provider: { data_collection: 'deny' } } as const;
 
+/**
+ * Consumo atribuido al modelo que DE VERDAD respondió cada llamada.
+ *
+ * `model` + `tokensIn/Out/cost` a secas mienten en cuanto hay fallback: el
+ * consumo que se devuelve es de N llamadas a M proveedores y la etiqueta es de
+ * UNO SOLO —el último que respondió en el camino de éxito, el primario en el de
+ * error—. Con eso, `llm_costo` acaba diciendo que Anthropic consumió tokens que
+ * facturó Google, y eso es lo que /admin agrupa bajo «Costo por modelo».
+ *
+ * Invariante que las pruebas fijan: `Σ porModelo == { tokensIn, tokensOut, cost }`.
+ * Quien escriba la fila decide cuántas filas escribe; lo que ya no puede es
+ * inventarse la etiqueta.
+ */
+export type UsoPorModelo = { model: string; tokensIn: number; tokensOut: number; cost: number };
+
+/** Acumula consumo por slug, conservando el orden en que respondieron. */
+function sumarUso(mapa: Map<string, UsoPorModelo>, u: UsoPorModelo): void {
+  const previo = mapa.get(u.model);
+  if (previo) {
+    previo.tokensIn += u.tokensIn;
+    previo.tokensOut += u.tokensOut;
+    previo.cost += u.cost;
+    return;
+  }
+  mapa.set(u.model, { ...u });
+}
+
 // ── generateResponse: chat simple con fallback ──────────────────────────────
 export async function generateResponse(opts: {
   role: ModelRole;
@@ -179,7 +206,7 @@ export class StructuredError extends Error {
     public cause?: unknown,
     public raw?: string,
     /** Consumo de la llamada que falló: se cobra igual, hay que contabilizarlo. */
-    public usage?: { model: string; tokensIn: number; tokensOut: number; cost: number },
+    public usage?: { model: string; tokensIn: number; tokensOut: number; cost: number; porModelo?: UsoPorModelo[] },
   ) {
     super(message);
     this.name = 'StructuredError';
@@ -199,7 +226,7 @@ export class TruncatedError extends StructuredError {
     public tokensUsados: number,
     public tope: number,
     raw?: string,
-    usage?: { model: string; tokensIn: number; tokensOut: number; cost: number },
+    usage?: { model: string; tokensIn: number; tokensOut: number; cost: number; porModelo?: UsoPorModelo[] },
   ) {
     super(message, undefined, raw, usage);
     this.name = 'TruncatedError';
@@ -225,7 +252,7 @@ export async function generateStructured<T>(opts: {
   images?: string[];
   maxTokens?: number;
   temperature?: number;
-}): Promise<{ data: T; raw: string; model: string; tokensIn: number; tokensOut: number; cost: number }> {
+}): Promise<{ data: T; raw: string; model: string; tokensIn: number; tokensOut: number; cost: number; porModelo: UsoPorModelo[] }> {
   const model = modelFor(opts.role);
   const fallback = FALLBACK[model] ?? null;
   const jsonSchema = z.toJSONSchema(opts.schema, { target: 'draft-7' }) as Record<string, unknown>;
@@ -263,13 +290,22 @@ export async function generateStructured<T>(opts: {
   // habiendo pagado dos, tres o cuatro. Likida va a cobrar por liquidación, así
   // que un costo unitario subestimado se propaga directo al precio.
   const gastado = { tokensIn: 0, tokensOut: 0, cost: 0 };
-  const cobrar = (u: { tokensIn: number; tokensOut: number; cost: number }) => {
+  // El acumulado NO es de un solo modelo: cada intento puede haberlo respondido
+  // otro proveedor. Se guarda quién gastó qué (`uso`) y quién respondió el
+  // último intento que sí volvió (`ultimoModelo`), porque la etiqueta escalar
+  // que sale a la superficie —de éxito o de error— tiene que ser ésa y no el
+  // primario de `modelFor`.
+  const uso = new Map<string, UsoPorModelo>();
+  let ultimoModelo = model;
+  const cobrar = (u: UsoPorModelo) => {
     gastado.tokensIn += u.tokensIn;
     gastado.tokensOut += u.tokensOut;
     gastado.cost += u.cost;
+    ultimoModelo = u.model;
+    sumarUso(uso, u);
   };
 
-  const attempt = async (m: string, note?: string, tope?: number): Promise<{ data: T; raw: string; model: string; tokensIn: number; tokensOut: number; cost: number }> => {
+  const attempt = async (m: string, note?: string, tope?: number): Promise<{ data: T; raw: string; model: string; tokensIn: number; tokensOut: number; cost: number; porModelo: UsoPorModelo[] }> => {
     // Si el presupuesto ya se agotó, no se paga una llamada que se va a cortar a
     // media respuesta.
     opts.signal?.throwIfAborted();
@@ -325,8 +361,10 @@ export async function generateStructured<T>(opts: {
     if (!v.success) throw new StructuredError(`Validación falló: ${v.error.message}`, v.error, raw, usage);
     // Se devuelve el ACUMULADO del turno, no el de este intento: el llamador
     // quiere saber qué costó extraer este comprobante, no qué costó el último
-    // reintento.
-    return { data: v.data, raw, model: usage.model, ...gastado };
+    // reintento. `model` es sólo la etiqueta de quién resolvió; la atribución
+    // del consumo va en `porModelo`, porque el acumulado puede ser de dos
+    // proveedores distintos.
+    return { data: v.data, raw, model: usage.model, ...gastado, porModelo: [...uso.values()] };
   };
 
   /**
@@ -336,7 +374,10 @@ export async function generateStructured<T>(opts: {
    */
   const conGastado = (e: unknown, msg: string): StructuredError => {
     const err = e instanceof StructuredError ? e : new StructuredError(msg, e);
-    err.usage = { model, ...gastado };
+    // La etiqueta es el ÚLTIMO que respondió, no el primario: cuando el fallback
+    // también falla, el consumo acumulado ya incluye el suyo y ponerle el slug
+    // del primario le atribuye a Google tokens que facturó Anthropic.
+    err.usage = { model: ultimoModelo, ...gastado, porModelo: [...uso.values()] };
     return err;
   };
 
@@ -357,7 +398,7 @@ export async function generateStructured<T>(opts: {
         // pasándolo por la escalera de "formato malo". Se relanza tal cual para
         // conservar el diagnóstico, pero con el consumo de AMBOS intentos: el
         // error trae el suyo, y el del primero se perdía.
-        if (eT instanceof TruncatedError) { eT.usage = { model, ...gastado }; throw eT; }
+        if (eT instanceof TruncatedError) { eT.usage = { model: ultimoModelo, ...gastado, porModelo: [...uso.values()] }; throw eT; }
       }
     }
     // Reintento con el MISMO modelo + nota (típicamente errores de formato JSON).
@@ -408,6 +449,17 @@ export class PartialExecutionError extends Error {
     public tokensIn = 0,
     public tokensOut = 0,
     public cost = 0,
+    /**
+     * Quién respondió la última ronda que sí volvió, y el desglose de qué
+     * modelo gastó qué.
+     *
+     * Sin ellos el llamador no tiene con qué etiquetar la fila de `llm_costo` y
+     * escribe una constante —`'parcial'`— que ningún proveedor facturó nunca,
+     * en la rama que MÁS tokens consume. `/admin` la agrupa junto a los slugs
+     * reales bajo el encabezado «Costo por modelo».
+     */
+    public model = '',
+    public porModelo: UsoPorModelo[] = [],
   ) {
     super(message);
     this.name = 'PartialExecutionError';
@@ -470,7 +522,7 @@ export async function generateWithTools(opts: {
    *  omite temperature (los modelos de razonamiento la ignoran/rechazan). */
   reasoning?: 'low' | 'medium' | 'high';
   signal?: AbortSignal;
-}): Promise<{ finalText: string; toolCalls: ToolCallRecord[]; model: string; tokensIn: number; tokensOut: number; cost: number }> {
+}): Promise<{ finalText: string; toolCalls: ToolCallRecord[]; model: string; tokensIn: number; tokensOut: number; cost: number; porModelo: UsoPorModelo[] }> {
   const model = modelFor(opts.role);
   const fallback = FALLBACK[model] ?? null;
   const maxRounds = opts.maxToolRounds ?? 6;
@@ -483,6 +535,11 @@ export async function generateWithTools(opts: {
   // las cuatro al precio del fallback.
   let costo = 0;
   let activeModel = model; // cambia a fallback si el primario cae (persiste el resto del ciclo)
+  // El costo por ronda ya se calculaba bien; lo que se perdía era A QUIÉN
+  // atribuirlo. `used` guarda sólo el modelo de la ÚLTIMA ronda, así que un
+  // ciclo mixto reportaba todos los tokens bajo el proveedor que respondió al
+  // final. Aquí queda el desglose real, ronda a ronda.
+  const uso = new Map<string, UsoPorModelo>();
 
   const convo: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: opts.system },
@@ -533,8 +590,10 @@ export async function generateWithTools(opts: {
       tokOut += rOut;
       // `activeModel` ya refleja quién respondió ESTA ronda: `complete` lo mueve
       // al fallback antes de devolver.
-      costo += calcCost(activeModel, rIn, rOut);
+      const costoRonda = calcCost(activeModel, rIn, rOut);
+      costo += costoRonda;
       used = res.model || activeModel;
+      sumarUso(uso, { model: used, tokensIn: rIn, tokensOut: rOut, cost: costoRonda });
       const choice = res.choices[0];
       const calls = choice?.message?.tool_calls;
 
@@ -551,14 +610,14 @@ export async function generateWithTools(opts: {
             tokOut,
             opts.maxTokens ?? DEFAULT_MAX_TOKENS,
             choice?.message?.content ?? undefined,
-            { model: used, tokensIn: tokIn, tokensOut: tokOut, cost: costo },
+            { model: used, tokensIn: tokIn, tokensOut: tokOut, cost: costo, porModelo: [...uso.values()] },
           );
         }
         // El costo ya viene sumado ronda a ronda, cada una al precio del modelo
         // que la respondió. (Antes se precificaba aquí, de una vez, con el
         // modelo activo al final: correcto solo si el ciclo entero corrió en el
         // mismo modelo.)
-        return { finalText: choice?.message?.content ?? '', toolCalls: executed, model: used, tokensIn: tokIn, tokensOut: tokOut, cost: costo };
+        return { finalText: choice?.message?.content ?? '', toolCalls: executed, model: used, tokensIn: tokIn, tokensOut: tokOut, cost: costo, porModelo: [...uso.values()] };
       }
 
       convo.push({ role: 'assistant', content: choice.message.content ?? null, tool_calls: calls });
@@ -600,6 +659,6 @@ export async function generateWithTools(opts: {
     throw new LoopGuardError(maxRounds);
   } catch (err) {
     if (err instanceof PartialExecutionError) throw err;
-    throw new PartialExecutionError(err instanceof Error ? err.message : String(err), err, executed, tokIn, tokOut, costo);
+    throw new PartialExecutionError(err instanceof Error ? err.message : String(err), err, executed, tokIn, tokOut, costo, used, [...uso.values()]);
   }
 }
