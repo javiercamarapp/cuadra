@@ -104,6 +104,56 @@ describe('getSessionTenant', () => {
     expect(r).toEqual({ userId: 'u-4', tenantId: 't-1', rol: 'operador', nombre: 'Juan', operadorId: 'o-9' });
   });
 
+  // ── ALTO de la auditoría 10 (operabilidad) ────────────────────────────────
+  //
+  // `auth-js` NO LANZA en el caso más frecuente. `_getUser` atrapa cualquier
+  // `isAuthError` y devuelve `{ data: { user: null }, error }`
+  // (GoTrueClient.js:2666-2676), y `AuthRetryableFetchError` —lo que produce un
+  // `fetch failed`, un timeout o un 5xx del endpoint de auth— ES un AuthError.
+  // Como el `error` de esa línea se descartaba, un bache de 800 ms contra
+  // Supabase Auth salía por `if (!user) return null`: ni reintento, ni log, y
+  // el contralor expulsado a /login a media demo con CERO líneas escritas,
+  // indistinguible de "este usuario nunca inició sesión".
+  it('un bache de red en auth.getUser NO es "no hay sesión": reintenta y recupera', async () => {
+    getUser
+      .mockResolvedValueOnce({ data: { user: null }, error: { name: 'AuthRetryableFetchError', status: 0, message: 'fetch failed' } })
+      .mockResolvedValue({ data: { user: { id: 'u-6' } } });
+    maybeSingle.mockResolvedValue({ data: { tenant_id: 't-1', rol: 'flota_admin', nombre: 'Ana' } });
+    const r = await getSessionTenant();
+    expect(r?.tenantId, 'el error venía por VALOR de retorno, no lanzado: el for no reintentaba').toBe('t-1');
+    expect(getUser).toHaveBeenCalledTimes(2);
+  });
+
+  it('y si el bache dura los dos intentos, queda escrito CUÁL fue el fallo', async () => {
+    getUser.mockResolvedValue({ data: { user: null }, error: { name: 'AuthRetryableFetchError', status: 503, message: 'fetch failed' } });
+    expect(await getSessionTenant()).toBeNull();
+    expect(logger.error, 'expulsado a /login sin una sola línea que lo explique').toHaveBeenCalled();
+    const msgs = logger.error.mock.calls.map((c) => String(c[0]));
+    expect(msgs.join('|')).toContain('session.auth_error');
+  });
+
+  // CONTROL: el visitante que simplemente no ha iniciado sesión es el camino
+  // NORMAL de esta función, y `auth-js` también lo señala con un error
+  // (`AuthSessionMissingError`). Si eso se registrara, cada visita anónima
+  // dejaría una línea de error y enterraría la de arriba — que es la que
+  // importa a las 3 a.m. Ni log, ni reintento, ni 250 ms de espera.
+  it('CONTROL: sin sesión (AuthSessionMissingError) sale callado y sin reintentar', async () => {
+    getUser.mockResolvedValue({ data: { user: null }, error: { name: 'AuthSessionMissingError', status: 400, message: 'Auth session missing!' } });
+    expect(await getSessionTenant()).toBeNull();
+    expect(getUser).toHaveBeenCalledTimes(1);
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  // CONTROL: y el camino bueno tampoco escribe nada.
+  it('CONTROL: la sesión que sí abre no deja rastro de error', async () => {
+    getUser.mockResolvedValue({ data: { user: { id: 'u-7' } }, error: null });
+    maybeSingle.mockResolvedValue({ data: { tenant_id: 't-1', rol: 'contador', nombre: 'Ana' } });
+    expect((await getSessionTenant())?.tenantId).toBe('t-1');
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   it('si Supabase truena las DOS veces, regresa null en vez de lanzar', async () => {
     getUser.mockRejectedValue(new Error('fetch failed'));
     expect(await getSessionTenant()).toBeNull();

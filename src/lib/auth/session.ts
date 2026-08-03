@@ -22,6 +22,32 @@ function esColumnaAusente(error: { code?: string; message?: string }): boolean {
 }
 
 /**
+ * ¿El error de `auth.getUser()` dice "esta sesión no vale", o dice "no pude
+ * preguntar"?
+ *
+ * La distinción existe porque `auth-js` NO LANZA en el caso más frecuente:
+ * `_getUser` atrapa cualquier `isAuthError` y devuelve
+ * `{ data: { user: null }, error }` (GoTrueClient.js:2666-2676). Ahí caen
+ * juntas dos cosas opuestas:
+ *
+ *   · `AuthSessionMissingError` (400) — no hay cookie de sesión. Es el camino
+ *     NORMAL de un visitante anónimo, igual que `refresh_token_not_found` es
+ *     el de una sesión caducada. Registrarlos dejaría una línea de error por
+ *     visita y enterraría la de abajo, que es la que importa.
+ *   · `AuthRetryableFetchError` (status 0 en un `fetch failed`, o 5xx) — el
+ *     endpoint de auth no contestó. La MISMA sesión válida que un momento
+ *     antes pasó `/auth/callback` se lee como "nunca inició sesión" y el
+ *     contralor sale rebotado a /login a media demo.
+ *
+ * Mismo criterio que `sinRespuesta()` en `cuadra/startup.ts`: sin respuesta no
+ * se afirma nada. Un 4xx sí es una respuesta y dice que la sesión no sirve.
+ */
+function noPudePreguntar(error: { name?: string; status?: number }): boolean {
+  if (error.name === 'AuthRetryableFetchError') return true;
+  return error.status === undefined || error.status === 0 || error.status >= 500;
+}
+
+/**
  * Devuelve el tenant del usuario autenticado, o null si no hay sesión/config.
  *
  * Reintenta UNA vez antes de fallar cerrado: un `fetch failed`/timeout
@@ -37,7 +63,26 @@ export async function getSessionTenant(): Promise<SessionTenant | null> {
   for (let intento = 0; intento < 2; intento++) {
     try {
       const sb = await supabaseServer();
-      const { data: { user } } = await sb.auth.getUser();
+      const { data: { user }, error: errAuth } = await sb.auth.getUser();
+      // El `error` de esta línea se descartaba, y con él el fallo transitorio
+      // MÁS probable de toda la función: un bache de 800 ms contra Supabase
+      // Auth salía por el `if (!user)` de abajo —sin reintento, porque no se
+      // lanzó nada, y sin una sola línea— con un resultado idéntico byte por
+      // byte a "este usuario nunca inició sesión" (auditoría 10, ALTO).
+      if (!user && errAuth && noPudePreguntar(errAuth)) {
+        if (intento === 0) {
+          logger.warn('session.reintento', { err: errAuth.message, fuente: 'auth.getUser' });
+          await new Promise((r) => setTimeout(r, 250));
+          continue;
+        }
+        // Dos veces seguidas ya no es un bache. El llamador solo ve `null` y
+        // redirige a /login: este es el único sitio donde el motivo se escribe.
+        logger.error('session.auth_error', {
+          msg: 'Supabase Auth no contestó dos veces seguidas: la sesión NO se pudo verificar y el usuario sale rebotado a /login como si nunca hubiera entrado. Esto no es "no tiene cuenta".',
+          err: errAuth.message, name: errAuth.name, status: errAuth.status,
+        });
+        return null;
+      }
       if (!user) return null;
       let { data, error } = await sb.from('app_user').select('tenant_id, rol, nombre, operador_id').eq('id', user.id).maybeSingle();
 
