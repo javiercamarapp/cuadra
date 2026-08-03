@@ -38,7 +38,24 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
 import { acotada } from './presupuesto';
 
-export type FaseCosto = 'ocr' | 'cuadre' | 'escalacion' | 'chat' | 'router' | 'whatsapp';
+// AUDITORÍA 10: aquí estaba declarada la fase `'escalacion'`, y con ella
+// `faseDeModelo`, que clasificaba como escalación cualquier modelo cuyo slug
+// llevara «opus». Tenía sentido mientras hubo un rol `cuadre_fallback` con Opus
+// por default; ese rol se retiró (commit eace503) porque nadie lo ejecutaba, y
+// con él se fue el único camino que llevaba un Opus al sistema: ninguno de los
+// cuatro roles por default lo usa, y la tabla `FALLBACK` de `openrouter.ts` tiene
+// a Opus como llave de origen, nunca como destino.
+//
+// Quedaba un solo camino y por él la etiqueta era FALSA: con
+// `CUADRA_MODEL_CUADRE=anthropic/claude-opus-5`, ese Opus ES el agente de cuadre
+// de esa instalación, no una escalación de nada — y la fila se habría rotulado
+// «Agente de Escalación» en tres pantallas de `/admin` mientras el costo del
+// cuadre desaparecía de su propia fase.
+//
+// Cuando la escalación se implemente, la fase vuelve CON el código que la
+// escribe. (La migración 0025 sigue admitiéndola en el `check` de la columna, así
+// que las filas históricas se leen igual y no hace falta tocar la base.)
+export type FaseCosto = 'ocr' | 'cuadre' | 'chat' | 'router' | 'whatsapp';
 
 // Costo por mensaje SALIENTE de WhatsApp (los entrantes son GRATIS).
 // Dentro de la ventana de servicio de 24h son gratis hasta el 1-oct-2026; después
@@ -98,12 +115,6 @@ export interface CostoLLM {
   costoUsd: number;
 }
 
-/** Deriva la fase a partir del slug del modelo (opus = escalación). */
-export function faseDeModelo(modelo: string, base: FaseCosto): FaseCosto {
-  if (modelo.includes('opus')) return 'escalacion';
-  return base;
-}
-
 function entero(n: number): number {
   return Number.isFinite(n) ? Math.round(n) : 0;
 }
@@ -160,8 +171,10 @@ export async function registrarCosto(c: CostoLLM): Promise<void> {
  * Si no hay desglose se escribe una sola fila con el modelo del acumulado — el
  * comportamiento de siempre, para los caminos que aún no lo emiten.
  *
- * La FASE se deriva por fila (`faseDeModelo`), no una vez para todas: si una
- * ronda escaló a un modelo más caro, esa fila es la que tiene que decirlo.
+ * La FASE es la que pide el llamador, la misma para todas las filas: es el
+ * TRABAJO que se estaba haciendo (leer un comprobante, cuadrar un viaje), no una
+ * propiedad del modelo. Reinterpretarla por el slug es lo que hacía
+ * `faseDeModelo`, y por eso se retiró junto con la fase `'escalacion'`.
  */
 export async function registrarCostoDesglosado(
   base: { tenantId: string; viajeId?: string | null; liquidacionId?: string | null; fase: FaseCosto },
@@ -177,7 +190,6 @@ export async function registrarCostoDesglosado(
   for (const u of desglose) {
     await registrarCosto({
       ...base,
-      fase: faseDeModelo(u.model, base.fase),
       modelo: u.model,
       tokensIn: u.tokensIn, tokensOut: u.tokensOut, costoUsd: u.cost,
     });

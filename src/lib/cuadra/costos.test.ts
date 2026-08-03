@@ -43,7 +43,7 @@ function cadena(resultado: unknown) {
   return nodo;
 }
 
-const { registrarCosto, registrarCostoWhatsApp, vincularCostosALiquidacion, getResumenCosto, precioMensajeWhatsAppUsd, faseDeModelo } =
+const { registrarCosto, registrarCostoWhatsApp, vincularCostosALiquidacion, getResumenCosto, precioMensajeWhatsAppUsd } =
   await import('./costos');
 
 beforeEach(() => {
@@ -252,9 +252,17 @@ describe('getResumenCosto — cero, sin datos y no medido son tres cosas distint
   });
 });
 
-describe('faseDeModelo', () => {
-  it('opus es escalación', () => {
-    expect(faseDeModelo('anthropic/claude-opus-5', 'cuadre')).toBe('escalacion');
-    expect(faseDeModelo('anthropic/claude-sonnet-5', 'cuadre')).toBe('cuadre');
-  });
-});
+// AQUÍ VIVÍA `describe('faseDeModelo')`, Y FIJABA LA PREMISA CONTRARIA:
+//
+//   it('opus es escalación', () => {
+//     expect(faseDeModelo('anthropic/claude-opus-5', 'cuadre')).toBe('escalacion');
+//     expect(faseDeModelo('anthropic/claude-sonnet-5', 'cuadre')).toBe('cuadre');
+//   });
+//
+// Dejó de sostenerse cuando se retiró el rol `cuadre_fallback` (commit eace503),
+// que era el único que llevaba un modelo Opus al sistema. Sin él, «opus» ya no
+// significa escalación: significa que alguien configuró Opus como agente de
+// cuadre, y esa fila es de CUADRE. La fase `'escalacion'` se retiró con la
+// función; lo que ahora se comprueba —que ninguna fase se reinterpreta por el
+// slug del modelo, y que ningún default ni ningún destino de `FALLBACK` es un
+// Opus— está en `fase_escalacion.test.ts`.

@@ -70,10 +70,15 @@ describe('registrarCostoDesglosado', () => {
     expect(insertados[0].modelo).toBe('google/gemini-3.6-flash');
   });
 
-  it('la fase se deriva POR FILA, no una vez para todas', async () => {
-    // Si una ronda escaló a un modelo más caro, es esa fila la que tiene que
-    // decirlo: agrupar las dos bajo la fase del último modelo esconde justo el
-    // caso que se quiere ver.
+  // Este caso decía «la fase se deriva POR FILA» y esperaba
+  // `['cuadre', 'escalacion']`, apoyándose en `faseDeModelo`. Esa función se
+  // retiró junto con la fase `'escalacion'`, que ningún camino podía producir
+  // desde que se retiró el rol `cuadre_fallback` (ver `fase_escalacion.test.ts`).
+  // Lo que se comprueba ahora es lo que queda en pie y sigue importando: el
+  // desglose reparte TOKENS y DINERO por modelo, y la fase —el trabajo que se
+  // estaba haciendo, no una propiedad del slug— es la misma para todas las filas
+  // del turno.
+  it('el desglose reparte por modelo, y la fase es la del trabajo', async () => {
     await registrarCostoDesglosado(
       { tenantId: 't1', viajeId: 'v1', fase: 'cuadre' },
       {
@@ -84,7 +89,8 @@ describe('registrarCostoDesglosado', () => {
         ],
       },
     );
-    expect(insertados.map((f) => f.fase)).toEqual(['cuadre', 'escalacion']);
+    expect(insertados.map((f) => f.fase)).toEqual(['cuadre', 'cuadre']);
+    expect(insertados.map((f) => f.modelo)).toEqual(['anthropic/claude-sonnet-5', 'anthropic/claude-opus-5']);
   });
 });
 
