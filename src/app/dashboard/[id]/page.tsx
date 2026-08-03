@@ -7,6 +7,7 @@ import { etiquetaConcepto } from '@/lib/cuadra/cuadre/engine';
 import { filasDeducibilidad } from '@/lib/cuadra/liquidacion/deducibilidad';
 import { mxn } from '@/lib/utils';
 import { litros, fechaMx } from '../formato';
+import { FilaDeduc } from '../deducible';
 import { puedeExportar, puedeAsignar } from '@/lib/auth/permisos';
 import { listOperadores, reasignarOperador } from '@/lib/cuadra/repo';
 
@@ -139,25 +140,21 @@ export default async function Detalle({ params }: { params: Promise<{ id: string
             Este reparto es la razón por la que el contralor compra, y hasta hoy
             solo existía en el PDF: quien revisaba desde el navegador veía
             "Comprobado $47,300" y ahí terminaba (auditoría 5, frontend, ALTO 2).
-            Los montos van en tinta normal salvo lo no deducible: `--color-ok`
-            mide 2.22:1 sobre blanco y es la cifra que se proyecta en una sala
-            iluminada. */}
+
+            La tinta de cada renglón vive en `deducible.tsx` y se deriva de
+            `TonoDeducibilidad`. Aquí había un ternario de DOS ramas para una
+            unión de CUATRO: «Por confirmar» salía con la misma tinta y el mismo
+            peso que «Deducible para ISR» (auditoría 10, frontend, MEDIO
+            reincidente). El comentario que lo justificaba —«`--color-ok` mide
+            2.22:1 sobre blanco»— llevaba dos rondas vencido: el token es
+            `#14602c` desde la ronda 5, 7.67:1, medido en `contraste.test.ts`. */}
         {deducibilidad && (
           <section>
             <h2 className="text-sm font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--muted)' }}>
               De lo comprobado, cuánto es deducible
             </h2>
             <div className="card divide-y" style={{ borderColor: 'var(--line)' }}>
-              {deducibilidad.map((f) => (
-                <div key={f.label} className="px-6 py-4 flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-base font-medium">{f.label}</div>
-                    {f.pie && <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{f.pie}</div>}
-                  </div>
-                  <span className="tabular font-semibold whitespace-nowrap"
-                    style={{ color: f.tono === 'malo' ? 'var(--color-bad)' : 'var(--ink)' }}>{mxn(f.monto)}</span>
-                </div>
-              ))}
+              {deducibilidad.map((f) => <FilaDeduc key={f.label} fila={f} />)}
             </div>
             <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
               Estimación con la información capturada; la determinación final es de su contador.
