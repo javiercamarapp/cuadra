@@ -310,7 +310,23 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
         try {
           const dataUrl = await downloadMediaAsDataUrl(msg.mediaId);
           if (!dataUrl) { await sendText(msg.from, 'No pude descargar tu foto 😕. ¿Me la reenvías?'); return; }
-          const ruta = await subirComprobante(op.tenantId, 'sin-viaje', await hashImagen(dataUrl), dataUrl);
+          // EL HASH SE GUARDA, NO SE TIRA — AUDITORÍA 10, MEDIO agéntico.
+          //
+          // Aquí se calculaba en línea, se usaba para el nombre del archivo y se
+          // perdía: se guardaba `ex.gasto` crudo, que nunca lo trae. En el camino
+          // SIN viaje no hay ningún dedup —la mig. 0040 no tiene índice único y
+          // `guardarHuerfano` es un insert pelado—, así que el tercer candado
+          // (`uq_gasto_img_hash`) era la única defensa que le quedaba a este
+          // comprobante, y llegaba en NULL al `addGasto` que lo adjunta.
+          //
+          // Con un ticket sin folio legible eso es dinero: WhatsApp marca fallo
+          // de envío, el chofer reenvía la MISMA foto (otro `waMessageId`, así
+          // que `claimMessage` no lo ve) y quedan dos filas; al adjuntarlas
+          // entraban dos gastos con `img_hash` nulo —NULL no colisiona— y sin
+          // folio, así que `copiasDeComprobante` tampoco los veía. El comprobado
+          // subía por dinero que nadie gastó, a favor del chofer.
+          const imgHash = await hashImagen(dataUrl);
+          const ruta = await subirComprobante(op.tenantId, 'sin-viaje', imgHash, dataUrl);
           const ex = await extraerComprobante(dataUrl, reloj.senal(25_000));
           await registrarCosto({ tenantId: op.tenantId, viajeId: null, fase: 'ocr', modelo: ex.costo.modelo, tokensIn: ex.costo.tokensIn, tokensOut: ex.costo.tokensOut, costoUsd: ex.costo.costoUsd });
           // Ilegible: se le pide otra ANTES de guardar algo que no se puede usar.
@@ -319,7 +335,7 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
             return;
           }
           const guardado = await guardarHuerfano(op.tenantId, op.operadorId, {
-            gasto: ruta ? { ...ex.gasto, imagenUrl: ruta } : ex.gasto,
+            gasto: { ...ex.gasto, imgHash, ...(ruta ? { imagenUrl: ruta } : {}) },
             motivo: 'sin_viaje', rutaImagen: ruta,
           });
           logger.info('huerfano.guardado', { tenant: op.tenantId, operador: op.operadorId, monto: ex.gasto.monto, ok: guardado });

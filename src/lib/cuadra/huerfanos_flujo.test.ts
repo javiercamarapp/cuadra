@@ -106,8 +106,8 @@ const fetchSpy = vi.fn(async (_u: string, init?: RequestInit) => {
 const foto = { from: '5219993700779', type: 'image' as const, mediaId: 'm1', waMessageId: 'wa1' };
 const texto = (t: string) => ({ from: '5219993700779', type: 'text' as const, text: t, waMessageId: `wa-${t}` });
 
-const HUERFANO = (id: string, monto: number, ofrecido = false) => ({
-  id, gasto: { id: `g-${id}`, concepto: 'diesel', monto, ocrExtra: {} },
+const HUERFANO = (id: string, monto: number, ofrecido = false, imgHash?: string) => ({
+  id, gasto: { id: `g-${id}`, concepto: 'diesel', monto, ocrExtra: {}, ...(imgHash ? { imgHash } : {}) },
   motivo: 'sin_viaje' as const, creadoEn: '2026-07-31T10:00:00Z',
   ofrecidoEn: ofrecido ? '2026-08-01T10:00:00Z' : undefined,
 });
@@ -148,6 +148,27 @@ describe('el chofer que manda fotos sin viaje abierto', () => {
     await processInbound(foto);
     expect(subirComprobante).toHaveBeenCalled();
     expect(guardarHuerfano.mock.calls[0][2]).toMatchObject({ rutaImagen: 't1/sin-viaje/HASH.jpg' });
+  });
+
+  // ── MEDIO de la auditoría 10 (agéntico) ──────────────────────────────────
+  //
+  // El hash de la imagen SÍ se calcula aquí —hace falta para `subirComprobante`—
+  // y se tiraba: se guardaba `ex.gasto` crudo, que nunca lo trae. En el camino
+  // sin viaje no hay ningún dedup (la mig. 0040 no tiene índice único y
+  // `guardarHuerfano` es un insert pelado), así que el tercer candado —
+  // `uq_gasto_img_hash`— era la única defensa que quedaba, y llegaba en NULL.
+  //
+  // Escenario medido: sin viaje abierto, el chofer manda la foto de una caseta
+  // de $312.00 cuyo ticket no trae folio legible; WhatsApp marca fallo de envío
+  // y él la reenvía (otro `waMessageId`, así que `claimMessage` no lo ve) → dos
+  // filas. Al abrir el viaje se le ofrecen las dos, contesta «sí», y entraban
+  // DOS gastos con `img_hash = null` (NULL no colisiona en un índice único) y
+  // sin folio, así que `copiasDeComprobante` tampoco los veía: el comprobado
+  // subía $312.00 de más, a favor del chofer, por dinero que no gastó.
+  it('el hash de la imagen viaja CON el comprobante: es el único candado que le queda', async () => {
+    await processInbound(foto);
+    expect(guardarHuerfano.mock.calls[0][2].gasto, 'sin hash, el reenvío entra dos veces')
+      .toMatchObject({ imgHash: 'HASH' });
   });
 
   it('en una ráfaga de once NO acusa once veces', async () => {
@@ -322,6 +343,23 @@ describe('cuando por fin hay viaje, se pregunta antes de adjuntar', () => {
     expect(m, 'la verdad es que su liquidación ya cerró').toMatch(/cerr[ée]/i);
     expect(resolverHuerfanos, 'no entraron: no se pueden marcar como adjuntados')
       .not.toHaveBeenCalledWith('t1', expect.arrayContaining(['a']), 'adjuntado', 'v1');
+  });
+
+  // La otra mitad del MEDIO: el hash guardado tiene que LLEGAR al `addGasto`,
+  // porque es ahí donde `uq_gasto_img_hash` puede actuar. El reenvío duplicado
+  // ($312.00 dos veces, sin folio) choca contra el índice y se cuenta una vez.
+  it('el hash llega al viaje, y el reenvío duplicado choca contra el índice en vez de sumar', async () => {
+    getHuerfanos.mockResolvedValue([HUERFANO('a', 312, true, 'H312'), HUERFANO('b', 312, true, 'H312')]);
+    getGastos.mockResolvedValue([{ id: 'x', concepto: 'caseta', monto: 312 }]);
+    addGasto
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(Object.assign(new Error('dup'), {
+        code: '23505', message: 'duplicate key value violates unique constraint "uq_gasto_img_hash"',
+      }));
+    await processInbound(texto('sí'));
+    expect(addGasto.mock.calls[0][2]).toMatchObject({ imgHash: 'H312' });
+    expect(salientes.join(' '), 'el comprobado no puede subir $312.00 de más')
+      .toMatch(/llevas \*?\$312\.00\*? comprobado/);
   });
 
   it('con un «no» los descarta sin tocar el viaje', async () => {
