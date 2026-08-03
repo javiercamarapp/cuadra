@@ -186,11 +186,20 @@ export default async function Login({
             )}
 
             <p className="mt-8 text-center text-[11px] leading-relaxed text-[#6b6b6b]/70">
-              Al continuar, aceptas el{' '}
+              {/* Decía «aceptas el Aviso de Privacidad DE LIKIDA», y ese no es
+                  el documento del titular: de los datos del operador y del
+                  contralor responde SU EMPRESA — Likida es persona encargada, y
+                  su propio aviso lo declara. Prometer aquí una aceptación del
+                  documento equivocado es peor que no decir nada. El aviso de la
+                  flota se enlaza donde el tenant ya se conoce (/mis-viajes,
+                  /cuenta); aquí todavía no hay sesión (auditoría 10, MEDIO de
+                  legal). */}
+              Likida trata estos datos por cuenta de tu empresa, que es quien
+              responde por ellos. Consulta el{' '}
               <a href="/privacidad" className="text-[#0a0a0a] underline underline-offset-2 transition-opacity hover:opacity-70">
-                Aviso de Privacidad
+                aviso de Likida
               </a>{' '}
-              de Likida.
+              y, al entrar, el de tu flota.
             </p>
           </div>
         </div>

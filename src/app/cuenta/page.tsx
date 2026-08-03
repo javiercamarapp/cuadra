@@ -31,6 +31,16 @@ export default async function Cuenta() {
             <dd>{s.nombre ?? s.userId}</dd>
           </div>
         </dl>
+        {/* Mismo criterio que /mis-viajes: el aviso del titular es el de SU
+            empresa (/aviso/[tenant]), no el de Likida — que es encargada, no
+            responsable. Estaba publicado y sin enlazar desde ninguna pantalla
+            (auditoría 10, MEDIO de legal). */}
+        <p className="mt-6 text-xs" style={{ color: 'var(--muted)' }}>
+          Tus datos los trata tu empresa. Consulta su{' '}
+          <a href={`/aviso/${s.tenantId}`} className="underline underline-offset-2">
+            Aviso de Privacidad
+          </a>.
+        </p>
         <form action={cerrarSesion} className="mt-6">
           <button type="submit"
             className="w-full px-4 py-2.5 rounded-lg text-sm font-medium hairline"

@@ -42,7 +42,7 @@ async function getMisViajes(): Promise<ViajeChofer[]> {
 }
 
 export default async function MisViajes() {
-  const { nombre } = await requireOperador();
+  const { nombre, tenantId } = await requireOperador();
   const viajes = await getMisViajes();
 
   return (
@@ -100,6 +100,19 @@ export default async function MisViajes() {
             </table>
           </div>
         )}
+        {/* El aviso que le toca al chofer es el INTEGRAL DE SU FLOTA, no el de
+            Likida: el responsable de sus datos es la empresa, y Likida es
+            persona encargada — su propio aviso lo dice. Estaba publicado en
+            /aviso/[tenant] y ninguna pantalla lo enlazaba (auditoría 10, MEDIO
+            de legal). La LFPDPPP art. 15 exige que esté DISPONIBLE al titular;
+            un aviso que nadie enlaza está archivado, no disponible. */}
+        <p className="mt-10 text-xs" style={{ color: 'var(--muted)' }}>
+          Tus datos los trata tu empresa. Consulta su{' '}
+          <a href={`/aviso/${tenantId}`} className="underline underline-offset-2">
+            Aviso de Privacidad
+          </a>{' '}
+          para saber qué se guarda, para qué, y cómo oponerte.
+        </p>
       </main>
     </div>
   );
