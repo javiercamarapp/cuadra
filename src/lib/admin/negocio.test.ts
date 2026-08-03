@@ -13,7 +13,11 @@ function crearBuilder(tabla: string) {
   const resp = (): Resp => respuestas.get(tabla) ?? { data: [], error: null };
   const b: Record<string, unknown> = {};
   const self = () => b;
-  for (const m of ['select', 'eq', 'order', 'limit']) b[m] = self;
+  // `range` y `abortSignal` desde la auditoría 10 (ALTO): las consultas de este
+  // archivo pasan por `traerTodo` (pagina con `.range()`) y por `acotada` (les
+  // pone `abortSignal`). El builder falso tiene que aceptarlos o estas pruebas
+  // fallarían por el arnés y no por el código.
+  for (const m of ['select', 'eq', 'order', 'limit', 'is', 'range', 'abortSignal']) b[m] = self;
   b.then = (ok: (v: Resp) => unknown, fail?: (e: unknown) => unknown) => Promise.resolve(resp()).then(ok, fail);
   return b;
 }

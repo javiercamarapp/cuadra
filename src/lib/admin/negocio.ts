@@ -9,14 +9,36 @@
 // para que nadie copie un patrón de aquí a una consulta de cliente y filtre
 // de menos.
 //
-// Sin paginación: hoy son 131 filas de llm_costo y 1 tenant. El día que
-// crezca de verdad, esto necesita el mismo `traerTodo` que ya usa
-// analytics.ts — no antes.
+// AUDITORÍA 10, ALTO — AQUÍ DECÍA "SIN PAGINACIÓN: HOY SON 131 FILAS".
+//
+// El razonamiento era sobre el VOLUMEN, y el modo de fallo no es el volumen: es
+// que PostgREST recorta a `max_rows` (1 000 por default) EN SILENCIO — no lanza,
+// no loguea, simplemente devuelve menos filas. Una flota real de 30 unidades × 4
+// viajes/mes × 10 comprobantes son 1 200 filas de `gasto` en el PRIMER MES: a
+// partir de la fila 1 001 el contador retro se congela en 1 000 y no se mueve
+// nunca más, y como la consulta tampoco llevaba `.order()`, las 1 000 que
+// vuelven son las que PostgREST decida —típicamente las más viejas—, así que la
+// gráfica de los últimos 7 días pinta siete ceros en un mes con actividad
+// diaria. Lo mismo le pasaba a `viajesProcesados`, `costoIaUsd`, `tokensIn/Out`,
+// `porFase`, `porModelo` y a las dos tendencias.
+//
+// Es la pantalla desde la que se fija el precio del producto, porque de ahí sale
+// el costo de IA por viaje: enseñaba un negocio detenido en el mes 1 con la
+// misma cara que si de verdad no hubiera pasado nada. Es textualmente lo que
+// este repo ya documentó y cerró para `analytics.ts` en la ronda 8; lo que no
+// viajó al archivo nuevo fue el patrón, `traerTodo`.
+//
+// Y ninguna consulta llevaba techo. Sin `acotada`, un Supabase degradado no
+// degrada la consola: la cuelga — ninguna página de `src/app` declara
+// `maxDuration`, solo el webhook, así que el techo es el default de undici,
+// 300 s.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { round2 } from '@/lib/formato';
 import { huellaId, redactarTexto } from '@/lib/logger';
+import { traerTodo } from '@/lib/cuadra/analytics';
+import { acotada } from '@/lib/cuadra/presupuesto';
 
 export interface ResumenNegocio {
   tenants: number;
@@ -50,24 +72,27 @@ export interface ResumenNegocio {
  */
 export async function getResumenNegocio(hoy: string = new Date().toISOString().slice(0, 10)): Promise<ResumenNegocio> {
   const admin = supabaseAdmin();
-  const [tenantsRes, viajesRes, costoRes, gastoRes] = await Promise.all([
-    admin.from('tenant').select('id, nombre, plan'),
-    admin.from('viaje').select('id, tenant_id'),
-    admin.from('llm_costo').select('tenant_id, fase, modelo, tokens_in, tokens_out, costo_usd, created_at'),
-    admin.from('gasto').select('created_at'),
+  // `traerTodo` (analytics.ts) pagina con `.range()` hasta agotar la tabla y
+  // TRADUCE el error por valor a excepción — los cuatro fallan por valor
+  // (supabase-js), no lanzando, y sin ese chequeo una base caída se lee
+  // "0 tenants, $0 gastados", indistinguible de que Likida de verdad no tiene
+  // nada. `acotada` le pone a cada página el mismo techo que el resto del repo.
+  // El `.order()` no es adorno: sin él la paginación no tiene orden estable y
+  // dos páginas pueden traer la misma fila o saltarse otra.
+  const [tenants, viajes, filas, gastos] = await Promise.all([
+    traerTodo<{ id: string; nombre: string; plan: string }>(
+      (d, h) => acotada(admin.from('tenant').select('id, nombre, plan').order('id').range(d, h), 'negocio/tenant'),
+      'getResumenNegocio/tenant'),
+    traerTodo<{ tenant_id: string }>(
+      (d, h) => acotada(admin.from('viaje').select('id, tenant_id').order('id').range(d, h), 'negocio/viaje'),
+      'getResumenNegocio/viaje'),
+    traerTodo<{ tenant_id: string; fase: string; modelo: string; tokens_in: number; tokens_out: number; costo_usd: number; created_at: string }>(
+      (d, h) => acotada(admin.from('llm_costo').select('tenant_id, fase, modelo, tokens_in, tokens_out, costo_usd, created_at').order('created_at').range(d, h), 'negocio/llm_costo'),
+      'getResumenNegocio/llm_costo'),
+    traerTodo<{ created_at: string }>(
+      (d, h) => acotada(admin.from('gasto').select('created_at').order('created_at').range(d, h), 'negocio/gasto'),
+      'getResumenNegocio/gasto'),
   ]);
-  // Los cuatro fallan POR VALOR (supabase-js), no lanzando: sin este chequeo
-  // explícito, una base caída se lee "0 tenants, $0 gastados" — que es
-  // indistinguible de que Likida de verdad no tiene nada, el mismo error que
-  // ya se cerró para el panel de una flota (analytics.ts).
-  if (tenantsRes.error) throw new Error(`getResumenNegocio/tenant: ${tenantsRes.error.message}`);
-  if (viajesRes.error) throw new Error(`getResumenNegocio/viaje: ${viajesRes.error.message}`);
-  if (costoRes.error) throw new Error(`getResumenNegocio/llm_costo: ${costoRes.error.message}`);
-  if (gastoRes.error) throw new Error(`getResumenNegocio/gasto: ${gastoRes.error.message}`);
-
-  const filas = (costoRes.data ?? []) as Array<
-    { tenant_id: string; fase: string; modelo: string; tokens_in: number; tokens_out: number; costo_usd: number; created_at: string }
-  >;
   const porFaseMap = new Map<string, { n: number; costoUsd: number }>();
   const porModeloMap = new Map<string, { n: number; costoUsd: number }>();
   const porDiaMap = new Map<string, { costoUsd: number; tokens: number }>();
@@ -127,14 +152,14 @@ export async function getResumenNegocio(hoy: string = new Date().toISOString().s
   };
 
   const viajesPorTenant = new Map<string, number>();
-  for (const v of (viajesRes.data ?? []) as Array<{ tenant_id: string }>) {
+  for (const v of viajes) {
     viajesPorTenant.set(v.tenant_id, (viajesPorTenant.get(v.tenant_id) ?? 0) + 1);
   }
   // Últimos 7 días, siempre las 7 fechas (0 donde no hubo facturas) — el
   // mismo criterio de `cortes()` de arriba, para que "hoy" sea inyectable
   // en las pruebas en vez de depender del reloj real.
   const facturasPorDiaMap = new Map<string, number>();
-  for (const g of (gastoRes.data ?? []) as Array<{ created_at: string }>) {
+  for (const g of gastos) {
     const dia = g.created_at.slice(0, 10);
     facturasPorDiaMap.set(dia, (facturasPorDiaMap.get(dia) ?? 0) + 1);
   }
@@ -143,8 +168,7 @@ export async function getResumenNegocio(hoy: string = new Date().toISOString().s
     return { dia, n: facturasPorDiaMap.get(dia) ?? 0 };
   });
 
-  const flotasBase = (tenantsRes.data ?? []) as Array<{ id: string; nombre: string; plan: string }>;
-  const flotas = flotasBase.map((t) => ({
+  const flotas = tenants.map((t) => ({
     ...t,
     viajes: viajesPorTenant.get(t.id) ?? 0,
     costoIaUsd: round2(costoPorTenant.get(t.id) ?? 0),
@@ -152,7 +176,7 @@ export async function getResumenNegocio(hoy: string = new Date().toISOString().s
   return {
     tenants: flotas.length,
     flotas,
-    viajesProcesados: (viajesRes.data ?? []).length,
+    viajesProcesados: viajes.length,
     costoIaUsd: round2(costoIaUsd),
     tokensIn,
     tokensOut,
@@ -160,7 +184,7 @@ export async function getResumenNegocio(hoy: string = new Date().toISOString().s
     porModelo,
     porDia,
     facturasPorDia,
-    facturasTotal: (gastoRes.data ?? []).length,
+    facturasTotal: gastos.length,
     tendenciaCosto: tendencia('costoUsd'),
     tendenciaTokens: tendencia('tokens'),
   };
@@ -178,10 +202,11 @@ export interface CostoPorFaseModelo { fase: string; modelo: string; n: number; c
  */
 export async function getCostoPorFaseModelo(): Promise<CostoPorFaseModelo[]> {
   const admin = supabaseAdmin();
-  const { data, error } = await admin.from('llm_costo').select('fase, modelo, costo_usd');
-  if (error) throw new Error(`getCostoPorFaseModelo: ${error.message}`);
+  const data = await traerTodo<{ fase: string; modelo: string; costo_usd: number }>(
+    (d, h) => acotada(admin.from('llm_costo').select('fase, modelo, costo_usd').order('created_at').range(d, h), 'negocio/costoPorFaseModelo'),
+    'getCostoPorFaseModelo');
   const map = new Map<string, { fase: string; modelo: string; n: number; costoUsd: number }>();
-  for (const f of (data ?? []) as Array<{ fase: string; modelo: string; costo_usd: number }>) {
+  for (const f of data) {
     const key = `${f.fase}::${f.modelo}`;
     const cur = map.get(key) ?? { fase: f.fase, modelo: f.modelo, n: 0, costoUsd: 0 };
     cur.n += 1;
@@ -225,11 +250,11 @@ export interface ConversacionActiva {
  */
 export async function getConversacionesActivas(): Promise<ConversacionActiva[]> {
   const admin = supabaseAdmin();
-  const { data, error } = await admin
+  const { data, error } = await acotada(admin
     .from('wa_conversacion')
     .select('telefono, estado, updated_at, tenant:tenant_id(nombre)')
     .order('updated_at', { ascending: false })
-    .limit(20);
+    .limit(20), 'negocio/conversaciones');
   if (error) throw new Error(`getConversacionesActivas: ${error.message}`);
   return (data ?? []).map((c) => {
     const estado = (c.estado as { turns?: TurnoConversacion[] }) ?? {};
@@ -272,12 +297,13 @@ export interface MiembroEquipo {
  */
 export async function getEquipo(): Promise<MiembroEquipo[]> {
   const admin = supabaseAdmin();
-  const { data, error } = await admin
-    .from('app_user')
-    .select('id, tenant_id, rol, nombre, email, operador_id, tenant:tenant_id(nombre)')
-    .order('rol', { ascending: true });
-  if (error) throw new Error(`getEquipo: ${error.message}`);
-  return (data ?? []).map((u) => ({
+  const data = await traerTodo<Record<string, unknown>>(
+    (d, h) => acotada(admin
+      .from('app_user')
+      .select('id, tenant_id, rol, nombre, email, operador_id, tenant:tenant_id(nombre)')
+      .order('rol', { ascending: true }).order('id').range(d, h), 'negocio/equipo'),
+    'getEquipo');
+  return data.map((u) => ({
     id: u.id as string,
     email: u.email as string,
     nombre: (u.nombre as string | null) ?? null,
