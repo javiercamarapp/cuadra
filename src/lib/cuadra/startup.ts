@@ -213,20 +213,42 @@ export async function verificarMigracionesCriticas(): Promise<void> {
     // del mismo viaje), y ninguna línea de este archivo lo sondeaba. Mismo
     // motivo que los índices de arriba: PostgREST no expone `pg_trigger`,
     // así que hace falta `triggers_faltantes` (migración 0043).
+    //
+    // Y se sondea el CUERPO, no el nombre (auditoría 10, MEDIO de modelo de
+    // datos). `triggers_faltantes` comprueba `tgname = e` y nada más. La 0042
+    // hace `drop trigger` + `create trigger` con EL MISMO NOMBRE, cambiando
+    // solo el `when` — que es donde entró `fecha`. Con la 0037 aplicada y la
+    // 0042 no, los dos nombres existen, esta línea decía `{ok: true}`, y un
+    // `UPDATE gasto SET fecha = ... ` posterior a la liquidación volvía a pasar
+    // sin `CU001`: el ALTO de la ronda 9 vivo, con el arranque afirmando por
+    // escrito que estaba cerrado.
+    //
+    // El fragmento de cada uno es lo que distingue la versión que hace falta:
+    // `new.fecha` solo aparece en el `when` que escribió la 0042, y
+    // `before insert on public.gasto` fija que el de la 0036 no se haya
+    // recreado como `after` (que no serializa contra el cierre y no sirve).
     const TRIGGERS = {
-      trg_gasto_no_tras_liquidar: 'migración 0036: un gasto puede INSERTARSE después de emitida la liquidación — el PDF archivado y el WhatsApp que lee el operador dicen cifras contrarias del mismo viaje',
-      trg_gasto_no_tras_liquidar_update: 'migraciones 0037/0042: un gasto puede REESCRIBIRSE (monto, fecha, CFDI) después de emitida la liquidación, con el mismo efecto',
+      trg_gasto_no_tras_liquidar: {
+        fragmento: 'before insert on public.gasto',
+        porque: 'migración 0036: un gasto puede INSERTARSE después de emitida la liquidación — el PDF archivado y el WhatsApp que lee el operador dicen cifras contrarias del mismo viaje',
+      },
+      trg_gasto_no_tras_liquidar_update: {
+        fragmento: 'new.fecha',
+        porque: 'migraciones 0037/0042: un gasto puede REESCRIBIRSE después de emitida la liquidación. Si el trigger EXISTE pero sin `new.fecha` en su `when`, es el de la 0037 y le falta la 0042: `corregirFechaGasto` reescribe la fecha del gasto tras liquidar sin CU001, y la fecha decide ejercicio, plazo de facturación y el tope diario de LISR 28-V',
+      },
     } as const;
-    const { data: trigFaltantes, error: eTrig } = await admin.rpc('triggers_faltantes', {
-      p_esperados: Object.keys(TRIGGERS),
+    const { data: trigFaltantes, error: eTrig } = await admin.rpc('triggers_desactualizados', {
+      p_esperados: Object.fromEntries(
+        Object.entries(TRIGGERS).map(([nombre, t]) => [nombre, t.fragmento]),
+      ),
     });
     if (eTrig) {
-      reportarProbe(eTrig, 'No se pudieron verificar los triggers de "nada entra tras liquidar" (falta la migración 0043, `triggers_faltantes`). Corre `supabase db push`.');
+      reportarProbe(eTrig, 'No se pudieron verificar los triggers de "nada entra tras liquidar" (falta la migración 0052, `triggers_desactualizados`). Corre `supabase db push`.');
       faltan = true;
     } else if (Array.isArray(trigFaltantes) && trigFaltantes.length) {
       for (const trig of trigFaltantes as string[]) {
         logger.error('startup.migraciones', {
-          msg: `FALTA el trigger \`${trig}\` (${TRIGGERS[trig as keyof typeof TRIGGERS] ?? 'sin descripción'}). Corre \`supabase db push\`.`,
+          msg: `FALTA (o está DESACTUALIZADO) el trigger \`${trig}\` (${TRIGGERS[trig as keyof typeof TRIGGERS]?.porque ?? 'sin descripción'}). Corre \`supabase db push\`.`,
         });
       }
       faltan = true;

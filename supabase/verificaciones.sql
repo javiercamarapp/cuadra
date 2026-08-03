@@ -1299,3 +1299,69 @@ begin
   raise exception E'APP_USER_OPERADOR_COHERENTE  sin_ligar=%  de_mas=%  completo=%   (esperado 0 / 0 / 1 — antes de la 0051 daba 1 / 1 / 1)',
     sin_ligar, de_mas, completo;
 end $$;
+
+-- ── 33. La sonda de triggers mira el CUERPO, no el nombre (mig. 0052) ────────
+--
+-- `triggers_faltantes` (0043) comprueba `tgname = e`. La 0042 hace
+-- `drop trigger` + `create trigger` con EL MISMO NOMBRE que la 0037, cambiando
+-- solo el `when` — donde entró `fecha`. Con la 0037 aplicada y la 0042 no, los
+-- dos nombres existen, la sonda vieja devuelve `{}` y el arranque escribe
+-- `{ok: true}` sobre una base donde `UPDATE gasto SET fecha` tras liquidar pasa
+-- sin CU001 (auditoría 10, MEDIO de modelo de datos).
+--
+-- Este bloque monta ese estado exacto: recrea el trigger con el `when` DE LA
+-- 0037 (sin `fecha`) y comprueba que la sonda nueva lo señale y la vieja no.
+-- Al final restaura el `when` de la 0042.
+--
+-- Esperado: vieja_ve=0 (es ciega: ése es el hallazgo) · nueva_ve=1 ·
+-- tras_restaurar=0.
+--
+-- ⚠️  NO SE HA CORRIDO. La 0052 se escribió sin base contra la cual ejercerla.
+do $$
+declare
+  vieja_ve int; nueva_ve int; tras_restaurar int;
+begin
+  -- El `when` de la 0037: sin `fecha`.
+  drop trigger if exists trg_gasto_no_tras_liquidar_update on gasto;
+  create trigger trg_gasto_no_tras_liquidar_update
+    before update on gasto
+    for each row
+    when (
+      new.monto is distinct from old.monto
+      or new.sub_total is distinct from old.sub_total
+      or new.iva_traslado is distinct from old.iva_traslado
+      or new.ieps_traslado is distinct from old.ieps_traslado
+      or new.cfdi_uuid is distinct from old.cfdi_uuid
+    )
+    execute function gasto_no_tras_liquidar();
+
+  select coalesce(array_length(
+    triggers_faltantes(array['trg_gasto_no_tras_liquidar_update']), 1), 0)
+    into vieja_ve;
+
+  select coalesce(array_length(
+    triggers_desactualizados('{"trg_gasto_no_tras_liquidar_update": "new.fecha"}'::jsonb), 1), 0)
+    into nueva_ve;
+
+  -- El `when` de la 0042, de vuelta.
+  drop trigger if exists trg_gasto_no_tras_liquidar_update on gasto;
+  create trigger trg_gasto_no_tras_liquidar_update
+    before update on gasto
+    for each row
+    when (
+      new.monto is distinct from old.monto
+      or new.sub_total is distinct from old.sub_total
+      or new.iva_traslado is distinct from old.iva_traslado
+      or new.ieps_traslado is distinct from old.ieps_traslado
+      or new.cfdi_uuid is distinct from old.cfdi_uuid
+      or new.fecha is distinct from old.fecha
+    )
+    execute function gasto_no_tras_liquidar();
+
+  select coalesce(array_length(
+    triggers_desactualizados('{"trg_gasto_no_tras_liquidar_update": "new.fecha"}'::jsonb), 1), 0)
+    into tras_restaurar;
+
+  raise exception E'SONDA_TRIGGERS_CUERPO  vieja_ve=%  nueva_ve=%  tras_restaurar=%   (esperado 0 / 1 / 0 — la vieja es ciega al reemplazo, que es el hallazgo)',
+    vieja_ve, nueva_ve, tras_restaurar;
+end $$;

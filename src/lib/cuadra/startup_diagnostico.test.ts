@@ -232,8 +232,21 @@ describe('el arranque dice TODO lo que falta, no lo primero', () => {
 // AUDITORÍA 9, CRÍTICO (operabilidad) — "0036/0037, el trigger que blinda el
 // peor bug histórico del camino del dinero, y ninguna línea de este archivo
 // lo sondeaba." PostgREST no expone `pg_trigger`, así que el sondeo pasa por
-// `triggers_faltantes` (migración 0043), mismo patrón que `indices_faltantes`.
-describe('los triggers de "nada entra ni se reescribe tras liquidar" (0036/0037)', () => {
+// una función del esquema, mismo patrón que `indices_faltantes`.
+//
+// ── QUÉ CAMBIÓ EN LA AUDITORÍA 10 (MEDIO de modelo de datos) ────────────────
+//
+// Este bloque afirmaba que la función era `triggers_faltantes` (0043), que
+// sondea por NOMBRE. Esa premisa se retira, no porque estuviera mal escrita,
+// sino porque el mecanismo no alcanzaba: la 0042 hace `drop trigger` +
+// `create trigger` con EL MISMO NOMBRE que la 0037, cambiando solo el `when`.
+// Con la 0037 aplicada y la 0042 no, los dos nombres existen, `triggers_faltantes`
+// devuelve `{}`, el arranque escribe `{ok: true}`, y un
+// `UPDATE gasto SET fecha = ...` posterior a la liquidación vuelve a pasar sin
+// CU001. El sondeo ahora es `triggers_desactualizados` (0052), que mira el
+// CUERPO con `pg_get_triggerdef`. Los casos de abajo son los mismos; lo que
+// cambia es la migración que se nombra cuando la función no está.
+describe('los triggers de "nada entra ni se reescribe tras liquidar" (0036/0037/0042)', () => {
   it('si el trigger de INSERT falta, lo dice con la migración y la consecuencia', async () => {
     rpc.mockResolvedValue({ data: ['trg_gasto_no_tras_liquidar'], error: null });
     await verificarMigracionesCriticas();
@@ -264,16 +277,51 @@ describe('los triggers de "nada entra ni se reescribe tras liquidar" (0036/0037)
     // Misma distinción que ya existe para índices: "no pude preguntar" no es
     // "no está" — un diagnóstico falso manda a correr `db push` contra un
     // problema que no existe.
-    rpc.mockResolvedValue({ error: { code: 'PGRST202', message: 'Could not find the function public.triggers_faltantes' } });
+    rpc.mockResolvedValue({ error: { code: 'PGRST202', message: 'Could not find the function public.triggers_desactualizados' } });
     await verificarMigracionesCriticas();
     const mensajes = error.mock.calls.map((c) => (c[1] as { msg: string }).msg).join(' | ');
-    expect(mensajes).toContain('0043');
+    expect(mensajes).toContain('0052');
   });
 
   it('con los dos triggers puestos no inventa un faltante', async () => {
     rpc.mockResolvedValue({ data: [], error: null });
     await verificarMigracionesCriticas();
     expect(info).toHaveBeenCalledWith('startup.migraciones', { ok: true });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MEDIO de la auditoría 10 (modelo de datos) — la sonda no distinguía el
+  // trigger de la 0037 del de la 0042.
+  //
+  // Los dos se llaman `trg_gasto_no_tras_liquidar_update`. Lo único que los
+  // separa es que el `when` de la 0042 incluye `new.fecha`, y `fecha` decide
+  // ejercicio, plazo de facturación y el tope diario de LISR 28-V. Una sonda de
+  // EXISTENCIA es ciega a eso por construcción.
+  // ═══════════════════════════════════════════════════════════════════════════
+  it('pregunta por el CUERPO del trigger, no por su nombre', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    await verificarMigracionesCriticas();
+
+    const llamada = rpc.mock.calls.find(([f]) => f === 'triggers_desactualizados');
+    expect(llamada, 'el arranque sigue sondeando por nombre: la 0042 es indetectable así').toBeTruthy();
+    const esperados = (llamada![1] as { p_esperados: Record<string, string> }).p_esperados;
+    // `new.fecha` SOLO aparece en el `when` que escribió la 0042.
+    expect(esperados.trg_gasto_no_tras_liquidar_update).toContain('new.fecha');
+    expect(esperados.trg_gasto_no_tras_liquidar).toContain('before insert');
+  });
+
+  it('si el UPDATE existe pero es el de la 0037, lo dice — y dice qué se pierde', async () => {
+    // El caso que el arranque daba por bueno: el nombre está, el `when` no
+    // tiene `fecha`, y `corregirFechaGasto` reescribe la fecha de un gasto
+    // después de emitida la liquidación sin CU001.
+    rpc.mockResolvedValue({ data: ['trg_gasto_no_tras_liquidar_update'], error: null });
+    await verificarMigracionesCriticas();
+
+    const mensajes = error.mock.calls.map((c) => (c[1] as { msg: string }).msg).join(' | ');
+    expect(mensajes).toContain('DESACTUALIZADO');
+    expect(mensajes).toContain('0042');
+    expect(mensajes).toMatch(/LISR 28-V|plazo de facturación/);
+    expect(info).not.toHaveBeenCalledWith('startup.migraciones', { ok: true });
   });
 });
 
