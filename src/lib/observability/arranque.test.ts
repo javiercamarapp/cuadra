@@ -20,7 +20,6 @@ afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 function ponerTodo() {
   vi.stubEnv('VERCEL_ENV', 'production');
   vi.stubEnv('DEMO_TENANT_ID', '11111111-1111-1111-1111-111111111111');
-  vi.stubEnv('DASHBOARD_PASSCODE', 'algo');
   vi.stubEnv('CUADRA_WHATSAPP_MSG_USD', '0.008');
   vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://likidaai.vercel.app');
 }
@@ -56,15 +55,32 @@ describe('avisarConfiguracionSilenciosa', () => {
     expect(linea).toContain('NEXT_PUBLIC_APP_URL');
   });
 
-  it('grita cuando falta DASHBOARD_PASSCODE: el panel queda abierto', async () => {
+  // ── MEDIO de la auditoría 10 (operabilidad) ───────────────────────────────
+  //
+  // La lista afirmaba `DASHBOARD_PASSCODE → "proxy.ts no bloquea /dashboard"`.
+  // Es FALSO desde que el gate pasó a ser la sesión de Supabase: `src/proxy.ts`
+  // no nombra esa variable en ninguna línea, y sus dos únicos lectores
+  // (`app/acceso/page.tsx`, `lib/auth/passcode.ts`) no protegen /dashboard.
+  //
+  // El daño no es cosmético: quien la quite —que es lo correcto, ya no gatea
+  // nada— hace que CADA arranque en frío emita un `error` en el MISMO `msg`
+  // que el aviso real de DEMO_TENANT_ID/NEXT_PUBLIC_APP_URL. Sentry agrupa por
+  // mensaje, así que se entrena a ignorar justo la línea que
+  // `GUION_DEMO.md:28` pone como semáforo antes de entrar a la sala. El
+  // anti-patrón está documentado con nombre y fecha en `cuadra/startup.ts:34`:
+  // «cuando el aviso resulta ser mentira una vez, se aprende a ignorarlo».
+  it('quitar DASHBOARD_PASSCODE ya NO alarma: ningún gate la lee desde el login por usuario', async () => {
     ponerTodo();
     vi.stubEnv('DASHBOARD_PASSCODE', '');
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const { avisarConfiguracionSilenciosa } = await import('./arranque');
 
     avisarConfiguracionSilenciosa();
 
-    expect(spy.mock.calls.map((c) => String(c[0])).join('\n')).toContain('DASHBOARD_PASSCODE');
+    const alarma = err.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(alarma, 'una consecuencia falsa en el mismo cubo de Sentry que la real').not.toContain('DASHBOARD_PASSCODE');
+    expect(log.mock.calls.map((c) => String(c[0])).join('\n'), 'el semáforo del GUION_DEMO tiene que poder pasar sin mantener viva una variable muerta').toContain('"ok":true');
   });
 
   it('con todo puesto deja constancia y no alarma', async () => {
@@ -80,15 +96,15 @@ describe('avisarConfiguracionSilenciosa', () => {
   });
 
   it('el valor de la variable NUNCA sale en el aviso, solo su nombre', async () => {
-    // El aviso se emite en el arranque de producción: nombrar el tenant o el
-    // passcode ahí sería filtrarlos por la puerta que abrimos para vigilar.
+    // El aviso se emite en el arranque de producción: nombrar el tenant ahí
+    // sería filtrarlo por la puerta que abrimos para vigilar.
     ponerTodo();
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const { avisarConfiguracionSilenciosa } = await import('./arranque');
 
     avisarConfiguracionSilenciosa();
 
-    expect(log.mock.calls.map((c) => String(c[0])).join('\n')).not.toContain('algo');
+    expect(log.mock.calls.map((c) => String(c[0])).join('\n')).not.toContain('11111111-1111-1111-1111-111111111111');
   });
 
   it('nombra el grupo y la variable que falta de la configuración dura', async () => {
