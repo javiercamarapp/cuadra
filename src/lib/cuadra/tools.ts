@@ -20,6 +20,34 @@ import { getAcumuladoCombustible } from './repo';
 import { evaluarTope15 } from './periodo/combustible';
 import { avisoTope15 } from './periodo/aviso';
 import { NORMAS, esVinculante } from './normas/indice';
+import { sanitizarTexto } from './intake/sanitizar';
+
+// ── EL RESULTADO DE UNA TOOL ES CONTEXTO DEL MODELO ─────────────────────────
+//
+// AUDITORÍA 10, MEDIO. `sanitizar.ts` se escribió para lo que se PERSISTE y lo
+// que se ENSEÑA, y nadie declaró que `ocrExtra` también se REMITE al modelo: el
+// resultado de esta tool se serializa con `JSON.stringify` y se empuja como
+// mensaje `role:'tool'`, que el modelo lee como dato del sistema.
+//
+// Dos campos llegaban crudos hasta ahí: `fechaRaw` (salida del modelo de visión,
+// schema sin `max` ni regex) y `codigoBarras` (lo que decodifica zxing; un
+// PDF417 impreso al pie de un comprobante cabe con 1,100 caracteres de texto
+// libre). Quien imprime el papel no es necesariamente el chofer — es la
+// gasolinera, o quien le venda un ticket falso—, y así decidía contenido y
+// tamaño dentro del prompt del turno que cierra el dinero.
+//
+// Se sanea el TEXTO y sólo el texto: litros, IVA y montos son datos y siguen
+// intactos, porque de ellos vive el cuadre.
+const TEXTO_OCR_MAX = 120;
+function sanearOcrExtra(extra: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(extra)) {
+    if (typeof v !== 'string') { out[k] = v; continue; }
+    const limpio = sanitizarTexto(v, TEXTO_OCR_MAX);
+    if (limpio !== undefined) out[k] = limpio;
+  }
+  return out;
+}
 
 // ── consultar_politica ──────────────────────────────────────────────────────
 registerTool('consultar_politica', {
@@ -206,7 +234,15 @@ registerTool('guardar_liquidacion', {
       // Se manda el snapshot completo para que la guardia lo REUSE en vez de
       // recalcular — el mismo principio que ya aplica el resto del sistema: una
       // sola fotografía de la verdad por cierre, nunca dos.
-      liq,
+      //
+      // Sale con el texto del papel saneado (ver `sanearOcrExtra`): las cifras
+      // son las mismas que se imprimieron y se persistieron —la guardia sigue
+      // narrando el MISMO cuadre—, pero ningún texto de un tercero cruza esta
+      // frontera sin cap ni charset.
+      liq: {
+        ...liq,
+        gastos: liq.gastos.map((g) => (g.ocrExtra ? { ...g, ocrExtra: sanearOcrExtra(g.ocrExtra) } : g)),
+      },
     };
   },
 });
