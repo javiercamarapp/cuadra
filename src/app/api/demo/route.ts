@@ -75,6 +75,24 @@ export async function POST(req: Request) {
     // un tercero se marca. Es el mismo RFC del seed, con dígito verificador
     // válido (d08db8a).
     empresaRfc: RFC_FLOTA_DEMO,
+    // AUDITORÍA 10, BAJO (fiscal): esta puerta corría el motor real SIN
+    // configuración fiscal, y `/demo` anuncia «El cuadre es real». `engine.ts`
+    // condiciona todo el bloque del tope de alimentación a
+    // `if (topeAlimentacion != null)` —el $750/día de LISR 28-V, que viaja
+    // dentro de `estimulos`—, así que la regla NO CORRÍA: una alimentación de
+    // $3,000 timbrada salía por aquí sin una sola observación y por
+    // `cuadre/desde_db.ts` (la puerta de WhatsApp) con `viatico_excede_fiscal`
+    // de $2,250. Tampoco corrían el complemento de hidrocarburos ni el aviso de
+    // facturación.
+    //
+    // Se pasa `DEMO_CONFIG` —la misma base que `getConfig` usa para todo
+    // tenant—, no una copia: dos juegos de topes fiscales se separan en
+    // silencio, y el simulador es lo que se proyecta cuando Meta falla.
+    estimulos: DEMO_CONFIG.estimulos,
+    hidrocarburos: DEMO_CONFIG.hidrocarburos,
+    // El motor es puro y no lee el reloj: la fecha se inyecta en el borde, igual
+    // que en `desde_db.ts`. Sin esto el aviso de "ticket por facturar" no corre.
+    hoy: new Date().toISOString().slice(0, 10),
   });
   return NextResponse.json({
     totalComprobado: liq.totalComprobado,
