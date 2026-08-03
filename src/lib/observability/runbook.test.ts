@@ -135,6 +135,55 @@ describe('DEPLOY.md pide lo que hace falta para que el sistema no arranque ciego
     }
   });
 
+  // ─── ALTO de la auditoría 10 (arquitectura) ───────────────────────────────
+  //
+  // EL RUNBOOK SEGUÍA CITANDO DOS ARCHIVOS QUE YA NO EXISTEN.
+  //
+  // El passcode del panel se retiró de verdad —`/acceso` y `lib/auth/passcode.ts`
+  // borrados, cero lectores de la variable (`auth/acceso_retirado.test.ts`)—,
+  // pero `DEPLOY.md` se quedó a medias: la tabla de variables seguía
+  // explicando `DASHBOARD_SECRET` como «el HMAC de la cookie de `/acceso`», y
+  // el párrafo de abajo seguía diciendo que los lectores del passcode «son
+  // `src/app/acceso/page.tsx` y `src/lib/auth/passcode.ts`». En presente, de
+  // dos archivos que ya no están en el árbol.
+  //
+  // Es el mismo modo de fallo que las tres pruebas de arriba, con otra cara:
+  // no es una variable que el documento omite, es un MECANISMO que el
+  // documento inventa. Quien lea eso el 5-ago concluye que hay una cookie
+  // firmada gateando el panel y sale a buscar por qué no funciona.
+  //
+  // La prueba no revisa prosa: extrae cada ruta `src/…` que los documentos
+  // citan EN PRESENTE y comprueba que el archivo exista. Un renombre o un
+  // borrado que deje el runbook atrás se cae aquí.
+  //
+  // CONTAR LA HISTORIA SÍ SE VALE, y por eso la línea que dice que algo se
+  // borró queda exenta. `.env.example` explica, con nombre, que `/acceso` y
+  // `lib/auth/passcode.ts` se fueron en esta auditoría y que la variable hay
+  // que quitarla de Vercel — es justo la explicación que evita que alguien la
+  // reponga. Prohibirla sería el mismo error que el guardarraíl de `mxn()` ya
+  // pagó una vez: una prueba que impide hablar del defecto que vigila obliga a
+  // borrar lo único que impide repetirlo.
+  const HISTORIA = /se borr|se fue|se fueron|ya no exist|se retir|dejó de|dejaron de|salió del repo|aquí vivía|aquí estaba/i;
+
+  it('no cita en presente un solo archivo de `src/` que ya no exista', () => {
+    const rotas: string[] = [];
+    for (const doc of ['DEPLOY.md', '.env.example']) {
+      for (const linea of readFileSync(join(RAIZ, doc), 'utf8').split('\n')) {
+        if (HISTORIA.test(linea)) continue;
+        // `src/lib/auth/passcode.ts`, `src/proxy.ts:44-77`, `lib/auth/guard.ts`
+        // — con o sin el prefijo `src/`, con o sin `:línea`.
+        for (const m of linea.matchAll(/\b((?:src\/)?(?:app|lib|types)\/[\w[\]/.-]*\.tsx?)/g)) {
+          const rel = m[1].startsWith('src/') ? m[1] : `src/${m[1]}`;
+          if (!existsSync(join(RAIZ, rel))) rotas.push(`${doc} → ${m[1]}`);
+        }
+      }
+    }
+    expect(
+      rotas,
+      `estos documentos operativos describen, en presente, archivos que no están en el árbol:\n${rotas.join('\n')}`,
+    ).toEqual([]);
+  });
+
   // El otro medio hallazgo: ningún archivo del repo documentaba el lado de
   // Supabase. Escenario frecuente: `NEXT_PUBLIC_APP_URL` perfectamente puesta,
   // pero `https://<dominio>/auth/callback` fuera de la lista de Redirect URLs

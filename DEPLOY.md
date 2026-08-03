@@ -98,14 +98,22 @@ cuatro que hay que revisar a mano porque **si faltan el sistema arranca igual**:
 | `DEMO_TENANT_ID` | El panel consulta el tenant del seed y pinta **cero liquidaciones**, sin log. |
 | `NEXT_PUBLIC_APP_URL` | El login arma el magic link y el retorno de Google contra el fallback del código, `https://likida.ai`, que **no es** el dominio desplegado (`https://likidaai.vercel.app`). El correo llega, el link abre, y la sesión se completa en otro sitio: nadie entra y no hay un solo error. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `createServerClient` lanza `supabaseKey is required` dentro del middleware: **cada** petición a `/dashboard`, `/admin` y `/mis-viajes` se vuelve un 500. |
-| `DASHBOARD_SECRET` | El HMAC de la cookie de `/acceso` se deriva del passcode: crackeable offline. |
+| `DASHBOARD_SECRET` | Nada del panel. Su único lector que queda es `verificarEntornoCritico()` (`src/lib/cuadra/startup.ts`), que grita en producción si falta — un aviso que ya no describe ningún candado (ver abajo). |
 
 Para listarlas: `vercel env ls production`.
 
-`DASHBOARD_PASSCODE` **ya no gatea el panel** y esta tabla decía que sí. Desde
-que el gate es la sesión de Supabase (`src/proxy.ts:44-77`), sus únicos
-lectores son `src/app/acceso/page.tsx` y `src/lib/auth/passcode.ts`; ninguno
-protege `/dashboard`. Quitarla no abre nada.
+**El passcode del panel ya no existe.** El gate es la sesión de Supabase, en
+dos capas: `src/proxy.ts` y `requireSessionTenant` en cada página. La página
+`/acceso` y el módulo del passcode se borraron en la auditoría 10 —la pantalla
+"aceptaba" el código, emitía una cookie que ningún gate lee y devolvía al
+usuario a `/login` sin decir nada—, así que **`DASHBOARD_PASSCODE` se quedó sin
+un solo lector en el código** (`src/lib/auth/acceso_retirado.test.ts` lo mide).
+Bórrala también del entorno de Vercel: un secreto vivo que no protege nada
+sigue siendo un secreto que rotar y que se puede filtrar.
+
+`DASHBOARD_SECRET` era la clave del HMAC de aquella cookie y quedó en la misma
+situación. Retirarla exige tocar `verificarEntornoCritico()`, que hoy la sigue
+exigiendo en producción; queda anotado y por eso sigue en la tabla.
 
 ---
 
