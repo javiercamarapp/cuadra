@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { ESTATUS, etiquetaEstatus } from '@/app/dashboard/estatus';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOS MISMOS CONCEPTOS, ESCRITOS EN TRES SITIOS, YA SE DESINCRONIZARON DOS VECES.
@@ -66,48 +68,87 @@ describe('etiquetas de concepto — las tres fuentes dicen lo mismo', () => {
   });
 });
 
-// El MISMO patrón, en el otro mapa duplicado del panel. `ESTATUS` vive en las dos
-// páginas del dashboard con el mismo contenido copiado; el auditor lo señaló como
-// "latente para el próximo estatus nuevo". Es exactamente lo que pasó con
-// CONCEPTO dos veces, así que se cierra antes de que pase una tercera.
-/**
- * Igual que `etiquetas`, para mapas cuyo valor es un objeto:
- *   clave: { label: '…', color: '…' }
- * El extractor simple corta en el primer `}` y aquí eso caía dentro del primer
- * valor anidado.
- */
-function etiquetasAnidadas(ruta: string, ancla: string): Record<string, Record<string, string>> {
-  const src = readFileSync(new URL(ruta, import.meta.url), 'utf8');
-  const i = src.indexOf(ancla);
-  expect(i, `no se encontró el ancla "${ancla}" en ${ruta}`).toBeGreaterThanOrEqual(0);
-  const bloque = src.slice(i, src.indexOf('\n};', i) >= 0 ? src.indexOf('\n};', i) : src.indexOf('} as const', i));
-  const out: Record<string, Record<string, string>> = {};
-  for (const m of bloque.matchAll(/(\w+):\s*\{([^}]*)\}/g)) {
-    const campos: Record<string, string> = {};
-    for (const f of m[2].matchAll(/(\w+):\s*'([^']*)'/g)) campos[f[1]] = f[2];
-    out[m[1]] = campos;
+// ═══════════════════════════════════════════════════════════════════════════
+// EL MISMO PATRÓN, EN EL OTRO MAPA DEL PANEL — Y LA TERCERA VEZ QUE PASA.
+//
+// ESTA SECCIÓN COMPARABA DOS ARCHIVOS POR NOMBRE, Y ESA ERA LA FALLA.
+//
+// `ESTATUS` vivía copiado en `dashboard/page.tsx` y `dashboard/[id]/page.tsx`;
+// el auditor lo marcó como "latente para el próximo estatus nuevo" y esto se
+// escribió para cerrarlo. Pero se escribió nombrando los dos archivos, así que
+// la página nueva de la ronda 10 —`/mis-viajes`, la ÚNICA pantalla web que
+// tiene el chofer— añadió una TERCERA copia idéntica justo fuera de su alcance.
+//
+// El cambio que lo hacía estallar, con valores: se agrega `'en_revision'` a
+// `EstatusLiquidacion`. Este test fallaba y obligaba a actualizar las dos
+// páginas del panel — hacía su trabajo. `/mis-viajes` pasaba verde y caía a su
+// fallback: el chofer leía la clave cruda `en_revision`, en gris, donde el
+// contralor leía «Por revisar».
+//
+// PREMISA VIEJA (ya no es cierta): «no se unificó en una constante compartida
+// porque el dashboard es un server component y el PDF corre en otro runtime».
+// Para el mapa de CONCEPTOS eso sigue en pie —el PDF sí corre en otro runtime y
+// por eso arriba se comparan fuentes—. Para ESTATUS no aplicaba: sus tres
+// consumidores son páginas de Next del mismo runtime, y `/mis-viajes` ya
+// importaba `fechaMx` de `../dashboard/formato`. Ahora el mapa vive UNA vez en
+// `src/app/dashboard/estatus.ts`, tipado `Record<EstatusLiquidacion, …>` para
+// que `tsc` cace el estatus nuevo sin etiqueta.
+//
+// Y el guardarraíl deja de nombrar archivos: DESCUBRE a cualquiera que declare
+// un mapa de estatus propio, que es como llegó a haber tres.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Todos los `.ts`/`.tsx` de `src/app/`, sin pruebas. */
+function paginas(dir: string): string[] {
+  const out: string[] = [];
+  for (const e of readdirSync(dir)) {
+    const p = join(dir, e);
+    if (statSync(p).isDirectory()) { out.push(...paginas(p)); continue; }
+    if (!/\.tsx?$/.test(e) || /\.test\.tsx?$/.test(e)) continue;
+    out.push(p);
   }
   return out;
 }
 
-describe('etiquetas de estatus — las dos páginas del panel dicen lo mismo', () => {
-  const lista = etiquetasAnidadas('../../app/dashboard/page.tsx', 'const ESTATUS');
-  const detalle = etiquetasAnidadas('../../app/dashboard/[id]/page.tsx', 'const ESTATUS');
+describe('etiquetas de estatus — una sola declaración, y nadie puede escribir la cuarta', () => {
+  const RAIZ = process.cwd();
+  const APP = join(RAIZ, 'src/app');
+  const MODULO = join('dashboard', 'estatus.ts');
 
-  it('cubren los mismos estatus', () => {
-    expect(Object.keys(lista).sort()).toEqual(Object.keys(detalle).sort());
+  it('ninguna página declara su propio mapa de estatus', () => {
+    const copias = paginas(APP)
+      .filter((f) => !f.endsWith(MODULO))
+      .filter((f) => /const\s+ESTATUS\b/.test(readFileSync(f, 'utf8')))
+      .map((f) => f.slice(RAIZ.length + 1));
+    expect(
+      copias,
+      `estas páginas copian el mapa de estatus en vez de importarlo de dashboard/estatus.ts:\n${copias.join('\n')}`,
+    ).toEqual([]);
   });
 
-  it('con las mismas etiquetas y los mismos colores', () => {
-    expect(lista).toEqual(detalle);
+  it('las tres pantallas que lo pintan lo traducen con la MISMA función', () => {
+    // Las dos del contralor y la del chofer. Si aparece una cuarta pantalla que
+    // pinte estatus sin `etiquetaEstatus`, la lista de abajo se queda corta y
+    // hay que venir aquí — que es exactamente el aviso que faltaba.
+    for (const p of ['dashboard/page.tsx', 'dashboard/[id]/page.tsx', 'mis-viajes/page.tsx']) {
+      const src = readFileSync(join(RAIZ, 'src/app', p), 'utf8');
+      expect(src, `${p} no usa etiquetaEstatus`).toContain('etiquetaEstatus');
+    }
   });
 
-  it('cubren todos los estatus que el tipo permite', () => {
+  it('el mapa cubre todos los estatus que el tipo permite', () => {
+    // `tsc` ya lo garantiza por el tipo. Esto lo mide TAMBIÉN en runtime para
+    // que aflojarlo a `Record<string, …>` —que es lo que tenían las tres
+    // copias— no pase inadvertido.
     const tipos = readFileSync(new URL('../../types/cuadra.ts', import.meta.url), 'utf8');
     const i = tipos.indexOf('export type EstatusLiquidacion');
     const decl = tipos.slice(i, tipos.indexOf(';', i));
     const estatus = [...decl.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
     expect(estatus.length, 'no se pudo leer EstatusLiquidacion').toBeGreaterThan(1);
-    for (const e of estatus) expect(lista[e], `falta etiqueta para el estatus "${e}"`).toBeTruthy();
+    expect(Object.keys(ESTATUS).sort()).toEqual([...estatus].sort());
+  });
+
+  it('y un estatus que nadie reconoce se lee como viene, no como undefined', () => {
+    expect(etiquetaEstatus('estatus_que_no_existe').label).toBe('estatus_que_no_existe');
   });
 });

@@ -7,16 +7,11 @@ import { mxn } from '@/lib/utils';
 import { LEYENDA_CORTA } from '@/lib/cuadra/cuadre/leyendas';
 import { estadoPanel } from './estado';
 import { fechaMx } from './formato';
+import { etiquetaEstatus } from './estatus';
 import { Acred } from './acred';
 import { puedeExportar } from '@/lib/auth/permisos';
 
 export const dynamic = 'force-dynamic';
-
-const ESTATUS = {
-  cuadrada: { label: 'Cuadrada', color: 'var(--color-ok)' },
-  con_diferencias: { label: 'Con diferencias', color: 'var(--color-warn)' },
-  revisar: { label: 'Por revisar', color: 'var(--color-bad)' },
-} as const;
 
 /** Resiliencia por sección: si una consulta falla, devuelve null y la tarjeta
  *  muestra un fallback en vez de tirar toda la pantalla. */
@@ -247,7 +242,7 @@ export default async function DashboardPage({
                     </thead>
                     <tbody>
                       {liqs.map((l) => {
-                        const e = ESTATUS[l.estatus as keyof typeof ESTATUS] ?? { label: l.estatus, color: 'var(--muted)' };
+                        const e = etiquetaEstatus(l.estatus);
                         return (
                           // `relative` + el pseudo-elemento estirado del <Link>:
                           // la fila entera es el blanco de toque, no un texto de

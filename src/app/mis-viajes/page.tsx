@@ -2,15 +2,10 @@ import { requireOperador } from '@/lib/auth/guard';
 import { supabaseServer } from '@/lib/supabase/server';
 import { mxn } from '@/lib/utils';
 import { fechaMx } from '../dashboard/formato';
+import { etiquetaEstatus } from '../dashboard/estatus';
 import { SOLO_CONTRALOR } from '@/lib/cuadra/cuadre/resumen';
 
 export const dynamic = 'force-dynamic';
-
-const ESTATUS: Record<string, { label: string; color: string }> = {
-  cuadrada: { label: 'Cuadrada', color: 'var(--color-ok)' },
-  con_diferencias: { label: 'Con diferencias', color: 'var(--color-warn)' },
-  revisar: { label: 'Por revisar', color: 'var(--color-bad)' },
-};
 
 /**
  * El semáforo del chofer no es el del contralor.
@@ -124,7 +119,7 @@ export default async function MisViajes() {
                   // `con_diferencias` son del chofer igual que siempre.
                   const e = v.estatus === 'revisar' && v.soloContralor
                     ? EN_REVISION_EMPRESA
-                    : v.estatus ? (ESTATUS[v.estatus] ?? { label: v.estatus, color: 'var(--muted)' }) : null;
+                    : v.estatus ? etiquetaEstatus(v.estatus) : null;
                   return (
                     <tr key={v.id} className="border-t" style={{ borderColor: 'var(--line)' }}>
                       <td className="px-6 py-4 font-medium">{v.folio}</td>
