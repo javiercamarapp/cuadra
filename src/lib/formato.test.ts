@@ -88,6 +88,49 @@ describe('round2 — redondeo a centavos que no le cree a la coma flotante', () 
     expect(round2(0)).toBe(0);
     expect(round2(500)).toBe(500);
   });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // AUDITORÍA 10, ALTO — TERCERA RONDA CON EL MISMO VALOR.
+  //
+  // La ronda 9 cerró la DUPLICACIÓN (cuatro copias → una, con guardarraíl) y
+  // dio por cerrado el NÚMERO, que era el escenario del hallazgo. No lo
+  // estaba: `Number.EPSILON` es 2.22e-16 ABSOLUTO y el ULP de un double crece
+  // con la magnitud, así que sumarlo es un no-op para todo |n| ≳ 2. Barrido de
+  // 3 000 000 de valores en [0, 100000): CERO divergencias entre el `round2`
+  // que se escribió y el `Math.round(n*100)/100` que decía sustituir.
+  //
+  // Los ocho valores que probaba esta suite (1.005, 0.145, -1.005, 35.645,
+  // 1234.567, 839.7, 0, 500) distinguían la implementación nueva de la vieja
+  // SOLO en los tres menores a $2 — y el importe más chico que este producto
+  // maneja de verdad es una caseta de ~$150. La suite pasaba verde sobre un
+  // arreglo que no cubría su propio caso motivador.
+  //
+  // Estos son los casos que ponen la premisa a prueba EN EL RANGO DE DINERO
+  // REAL. Si alguien vuelve a "arreglar" el redondeo con un épsilon absoluto,
+  // aquí se cae.
+  // ═════════════════════════════════════════════════════════════════════════
+  it('el caso motivador de la ronda 9, con su valor exacto: el tope del art. 110-I LFT', () => {
+    // `pagadero.ts` calcula el 30% del excedente. Con excedente = 1000.55 el
+    // producto en doubles es 300.16499999999996, y el tope legal impreso en la
+    // nota de descuento de nómina salía UN CENTAVO por debajo.
+    expect(round2(1000.55 * 0.30)).toBe(300.17);
+  });
+
+  it('arriba de $2, donde el épsilon absoluto no movía nada', () => {
+    // Los tres son x.xx5 mal representados y los tres caían para abajo con la
+    // implementación anterior: 8.16, 10000.00 y 300.16.
+    expect(round2(8.165)).toBe(8.17);
+    expect(round2(10000.005)).toBe(10000.01);
+    expect(round2(300.165)).toBe(300.17);
+  });
+
+  it('no inventa un número ante lo que no es un número', () => {
+    // El redondeo pasa por texto decimal; `Infinity`/`NaN` no tienen forma
+    // decimal y `Number('Infinitye+2')` es NaN. Se devuelven tal cual.
+    expect(round2(Number.NaN)).toBeNaN();
+    expect(round2(Number.POSITIVE_INFINITY)).toBe(Number.POSITIVE_INFINITY);
+    expect(round2(Number.NEGATIVE_INFINITY)).toBe(Number.NEGATIVE_INFINITY);
+  });
 });
 
 describe('NO puede volver a haber una copia de round2', () => {
