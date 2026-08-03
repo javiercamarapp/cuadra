@@ -14,14 +14,31 @@ Cerrados con arreglo, prueba que los reproduce y verificación en rojo antes:
 - d08db8a · el RFC del tenant de demo reprobaba nuestro propio validador y
   apagaba TODAS las cifras fiscales del PDF del 6-ago
 
-Quedan 7 críticos PROPUESTOS, todos verificados contra el código: se agotó el
-tope de 3 vueltas de arreglo. Dos de ellos (RLS parcial de la 0045, y que nada
-sonde que la 0045 esté aplicada) no son reproducibles sin base de datos y no se
-tocaron a ciegas a propósito.
+SEGUNDA TANDA, a petición explícita del dueño («corrige todo»): el tope de 3
+vueltas es del modo desatendido y deja de aplicar. Se atacaron los 7 críticos
+restantes con el mismo rigor.
+- 8f615d4 · «listo» con la sala de espera llena cerraba la liquidación en $0
+- 31276b2 · /auth/callback y el envío del magic link fallaban sin dejar un log
+- 4a1c2d9 · las dos capas de autorización de /admin, ancladas y verificadas POR
+  MUTACIÓN (quitar cada una tira 2 pruebas)
+- 3a38488 · el arranque sonda la 0045 y su ausencia ya no echa a todos del panel
+- abbf9e8 · migración 0046: la RLS del chofer pasa de 3 a 7 tablas
+- 5b43fd8 · /admin deja de identificar al operador (seudónimo + texto redactado)
 
-Compuerta verde sobre el árbol final: vitest 175 archivos / 1638 pruebas / 1
+DE LOS 10 CRÍTICOS: 8 cerrados, 1 con migración escrita pero SIN VERIFICAR
+contra una base (hay que correr el bloque 27 de verificaciones.sql), y 1 (legal)
+cerrado a la mitad — si Likida debe ver transcripciones para finalidad propia es
+decisión de producto y de aviso, no un arreglo.
+
+SIGUEN ABIERTOS 30 ALTOS, 38 MEDIOS y 27 BAJOS, ninguno tocado.
+
+Compuerta verde sobre el árbol final: vitest 178 archivos / 1663 pruebas / 1
 saltada / exit 0 · tsc exit 0 · lint exit 0. Sin `npm run build` (nube).
 Tablero capturado y mirado.
+
+LAS NOTAS NO SE MOVIERON por estos arreglos, a propósito: las puso cada auditor
+con contexto fresco ANTES de tocar código. Quien las mueve es la ronda 11, con
+auditores que no sepan dónde se acaba de arreglar.
 
 REQUIERE DECISIÓN HUMANA: el crítico #4 (un «listo» con la sala de espera llena
 cierra la liquidación en $0 y manda los comprobantes al viaje siguiente) es el

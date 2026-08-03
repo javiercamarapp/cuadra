@@ -161,3 +161,65 @@ misma rama, sin abrir PR nuevo.
 
 **TOPE DE 3 VUELTAS AGOTADO.** Lo demás queda propuesto, incluidos 4 críticos
 verificados que no se arreglaron: se listan en la síntesis con su razón.
+
+---
+
+# SEGUNDA TANDA DE ARREGLOS — 3-ago-2026, a petición explícita del dueño
+
+El tope de 3 vueltas es del modo desatendido; con el dueño pidiendo
+«corrige todo», deja de aplicar. Se atacaron los 7 críticos que habían quedado
+propuestos, en orden de daño, con el mismo rigor: prueba roja verificada →
+arreglo → verde → suite completa → commit atómico.
+
+- **`8f615d4`** — CRÍTICO #4 (agéntico). «listo» con la sala de espera llena
+  cerraba en $0. La prueba que fijaba el comportamiento anterior se **reescribió,
+  no se borró**: documenta cuál era la premisa («perder la oferta este turno no
+  cuesta nada») y por qué es falsa justo en el turno de cierre, el único sin
+  turno siguiente.
+- **`31276b2`** — CRÍTICOS #8 y #9 (operabilidad). `/auth/callback` era mudo en
+  sus tres caminos de fallo (incluido un `catch` vacío que además le tapaba los
+  ojos a `onRequestError`); `/login` solo registraba el caso benigno. La prueba
+  del callback EJECUTA el handler y lleva control. La de `/login` lee el fuente
+  y **dice por escrito que ese idioma es débil** y por qué no se cambió aquí.
+- **`4a1c2d9`** — CRÍTICO #10 (pruebas). Las dos capas de autorización de
+  `/admin` quedaron ancladas. **Verificado por mutación**, que es lo que el
+  hallazgo exigía: quitar `/admin` del matcher tira 2 pruebas; quitar
+  `requireSuperadmin()` tira otras 2. Ambas mutaciones revertidas.
+- **`3a38488`** — CRÍTICO #6 (datos). El arranque ya sonda la 0045, y
+  `getSessionTenant` distingue «columna ausente» de cualquier otro fallo: grita
+  y degrada, en vez de dejar a todos —incluido el superadmin— fuera del panel.
+- **`abbf9e8`** — CRÍTICO #5 (seguridad). Migración **0046**: la RLS del chofer
+  pasa de 3 a 7 tablas. El arnés comprueba una propiedad ESTRUCTURAL sobre el
+  SQL y **no ejerce ninguna policy** — aquí no hay base. Eso lo hace el bloque
+  27 nuevo de `verificaciones.sql`, que hay que correr. Hasta entonces la 0046
+  es plausible, no verificada, y su propia cabecera lo dice.
+- **`5b43fd8`** — CRÍTICO #7 (legal), **mitad**. `/admin` deja de identificar al
+  operador: seudónimo estable en vez del teléfono y texto redactado con el mismo
+  redactor de Sentry. Cierra lo que el aviso ya prohíbe («sin identificarte en
+  los reportes»). **Lo que NO se tocó**: si Likida debe ver transcripciones para
+  una finalidad propia siendo persona encargada. Eso es decisión de producto y
+  de aviso.
+
+## Estado de los diez críticos
+
+| # | Rubro | Estado |
+|:-:|---|---|
+| 1 | backend · seguridad · frontend | CERRADO `d081176` |
+| 2 | backend · seguridad · arquitectura · datos | CERRADO `8fb74d4` |
+| 3 | fiscal | CERRADO `d08db8a` |
+| 4 | agéntico | CERRADO `8f615d4` |
+| 5 | seguridad | Migración escrita `abbf9e8` · **falta correr el bloque 27 contra la base** |
+| 6 | datos | CERRADO `3a38488` |
+| 7 | legal | Mitad cerrada `5b43fd8` · **la otra mitad es decisión de producto** |
+| 8 | operabilidad | CERRADO `31276b2` |
+| 9 | operabilidad | CERRADO `31276b2` |
+| 10 | pruebas | CERRADO `4a1c2d9`, verificado por mutación |
+
+## Lo que sigue abierto
+
+**30 ALTOS, 38 MEDIOS y 27 BAJOS**, ninguno tocado en esta tanda. Y las notas
+de los doce rubros **no se movieron**: las puso cada auditor con contexto
+fresco antes de los arreglos, y subirlas porque el orquestador arregló cosas es
+exactamente el movimiento que esta rutina existe para impedir. Quien las mueve
+es la ronda 11, con auditores nuevos que no sepan dónde se acaba de tocar
+código.

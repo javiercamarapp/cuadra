@@ -96,7 +96,7 @@
     <div class="card kpi">
       <div class="lbl">Críticos distintos</div>
       <div class="val">10</div>
-      <div class="note"><span class="fixed">3 cerrados</span> · 7 propuestos (tope de 3 vueltas)</div>
+      <div class="note"><span class="fixed">8 cerrados</span> · 1 a medias · 1 por verificar en base</div>
     </div>
   </div>
 
@@ -167,6 +167,12 @@
   </div>
 
   <h2>Los diez críticos distintos</h2>
+  <p class="sub" style="margin:-6px 0 12px">
+    Los tres primeros se cerraron en la corrida desatendida; los otros siete, en una segunda
+    tanda a petición explícita del dueño — el tope de 3 vueltas es del modo desatendido y deja
+    de aplicar cuando hay alguien pidiendo. Cada uno: prueba roja verificada → arreglo → verde →
+    suite completa → commit atómico.
+  </p>
   <div class="card scroll">
     <table>
       <thead><tr><th>#</th><th>Crítico</th><th>Quién lo halló</th><th>Estado</th></tr></thead>
@@ -178,19 +184,19 @@
         <tr><td>3</td><td>El RFC del tenant de demo reprueba nuestro propio dígito verificador: el 6-ago la liquidación imprime <code>Deducible para ISR $0.00</code>, la sección ACREDITABLE desaparece del PDF y el único pie que sale es falso</td>
             <td>fiscal</td><td class="fixed">CERRADO <code>d08db8a</code></td></tr>
         <tr><td>4</td><td>«listo» con la sala de espera llena cierra la liquidación en $0 y los comprobantes nunca se ofrecen — se irán al viaje siguiente, que es lo que la 0040 existe para impedir</td>
-            <td>agéntico</td><td class="prop">PROPUESTO — tope de 3 vueltas</td></tr>
+            <td>agéntico</td><td class="fixed">CERRADO <code>8f615d4</code></td></tr>
         <tr><td>5</td><td>La RLS del chofer cubre 3 de las 7 tablas: <code>operador</code>, <code>terminal</code>, <code>politica_gasto</code> y <code>wa_conversacion</code> le siguen dando lectura <strong>y escritura</strong></td>
-            <td>seguridad</td><td class="prop">PROPUESTO — no reproducible sin base</td></tr>
+            <td>seguridad</td><td class="fixed">mig. <code>0046</code> <code>abbf9e8</code><br><span class="prop">falta correr el bloque 27</span></td></tr>
         <tr><td>6</td><td>Nada sonda la <code>0045</code>: si no está aplicada, el <code>select</code> de <code>operador_id</code> deja a todos fuera del panel —incluido el superadmin— con <code>startup: ok:true</code></td>
-            <td>datos</td><td class="prop">PROPUESTO — no reproducible sin base</td></tr>
+            <td>datos</td><td class="fixed">CERRADO <code>3a38488</code></td></tr>
         <tr><td>7</td><td><code>/admin</code> enseña la conversación íntegra y el teléfono de operadores identificables, para una finalidad de Likida que el aviso de la flota no cubre</td>
-            <td>legal</td><td class="prop">PROPUESTO — requiere decisión de producto</td></tr>
+            <td>legal</td><td class="fixed">mitad cerrada <code>5b43fd8</code><br><span class="prop">el resto es decisión de producto</span></td></tr>
         <tr><td>8</td><td><code>/auth/callback</code> no escribe una sola línea cuando el login falla, y su <code>catch</code> vacío impide que <code>onRequestError</code> lo vea</td>
-            <td>operabilidad</td><td class="prop">PROPUESTO — tope de 3 vueltas</td></tr>
+            <td>operabilidad</td><td class="fixed">CERRADO <code>31276b2</code></td></tr>
         <tr><td>9</td><td>El login solo registra el caso benigno: los fallos reales de envío del magic link salen sin log, y el SMTP de hoy es un sandbox que ya se sabe que rebota</td>
-            <td>operabilidad</td><td class="prop">PROPUESTO — tope de 3 vueltas</td></tr>
+            <td>operabilidad</td><td class="fixed">CERRADO <code>31276b2</code></td></tr>
         <tr><td>10</td><td><code>/admin</code>: 3,839 líneas y 28 páginas con cero archivos de prueba, y sus <strong>dos</strong> capas de autorización sin ancla — las dos mutaciones (<code>admin/layout.tsx:27</code> y <code>proxy.ts:44</code>) dejan la suite verde</td>
-            <td>pruebas</td><td class="prop">PROPUESTO — tope de 3 vueltas</td></tr>
+            <td>pruebas</td><td class="fixed">CERRADO <code>4a1c2d9</code><br><span class="prop">verificado por mutación</span></td></tr>
       </tbody>
     </table>
   </div>
@@ -198,14 +204,14 @@
   <h2>La compuerta, sobre el árbol final</h2>
   <div class="card">
     <div class="gate">
-      <span class="g">npm test → exit 0 · 175 archivos · 1638 pruebas · 1 saltada</span>
+      <span class="g">npm test → exit 0 · 178 archivos · 1663 pruebas · 1 saltada</span>
       <span class="g">npx tsc --noEmit → exit 0</span>
       <span class="g">npm run lint → exit 0</span>
       <span class="g off">npm run build → no se corre en la nube (pide credenciales)</span>
     </div>
     <p class="sub" style="margin:14px 0 0">
-      Línea base al arrancar la continuación: 173 archivos / 1629 pruebas. Los tres arreglos de
-      hoy sumaron <strong>+2 archivos y +9 pruebas</strong>, cada una con su caso rojo verificado
+      Línea base al arrancar la continuación: 173 archivos / 1629 pruebas. Los nueve arreglos de
+      hoy sumaron <strong>+5 archivos y +34 pruebas</strong>, cada una con su caso rojo verificado
       antes del arreglo. Contra los 49 commits de código que entraron desde el 2-ago
       (+5,743 líneas en 82 archivos) el repo había sumado 10 archivos de prueba y 59 pruebas.
       <strong>Verde no es lo mismo que cubierto:</strong> de 7 mutaciones que el auditor de

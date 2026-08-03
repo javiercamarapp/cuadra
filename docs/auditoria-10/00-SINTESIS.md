@@ -261,3 +261,49 @@ compuerta cotejadas con la corrida real.
    `pdf_un_solo_nombre.test.ts` — ninguno existe en el árbol de hoy). Sigue
    requiriendo decisión humana: su diff borraría migraciones y pruebas que sí
    están en `master`.
+
+---
+
+## Adenda — segunda tanda de arreglos (3-ago, a petición del dueño)
+
+El tope de 3 vueltas es una regla del modo desatendido: existe para que una
+corrida sin nadie mirando no se quede puliendo hallazgos hasta agotar el
+presupuesto. Con el dueño pidiendo «corrige todo», deja de aplicar. Se
+atacaron los siete críticos restantes con el mismo rigor —prueba roja
+verificada, arreglo, verde, suite completa, commit atómico—, y el estado final
+de los diez es:
+
+| # | Rubro | Estado |
+|:-:|---|---|
+| 1 | backend · seguridad · frontend | CERRADO `d081176` |
+| 2 | backend · seguridad · arquitectura · datos | CERRADO `8fb74d4` |
+| 3 | fiscal | CERRADO `d08db8a` |
+| 4 | agéntico | CERRADO `8f615d4` |
+| 5 | seguridad | mig. `0046` escrita `abbf9e8` · **sin verificar contra base** |
+| 6 | datos | CERRADO `3a38488` |
+| 7 | legal | mitad cerrada `5b43fd8` · **el resto es decisión de producto** |
+| 8 | operabilidad | CERRADO `31276b2` |
+| 9 | operabilidad | CERRADO `31276b2` |
+| 10 | pruebas | CERRADO `4a1c2d9`, verificado por mutación |
+
+Compuerta final: **178 archivos / 1663 pruebas / 1 saltada, exit 0** · tsc 0 ·
+lint 0. Los nueve arreglos del día sumaron +5 archivos y +34 pruebas.
+
+### Las notas siguen donde las dejaron los auditores, y no es un descuido
+
+Nadie recalifica un rubro porque el orquestador arregló cosas en él. Las doce
+notas las pusieron auditores con contexto fresco **antes** de tocar código;
+subirlas ahora sería exactamente el movimiento que esta rutina existe para
+impedir, y el que la síntesis de la ronda 9 se reprochó a sí misma. Quien las
+mueve es la ronda 11, con auditores que no sepan dónde se acaba de arreglar.
+
+### Lo que falta para que la nota suba de verdad
+
+- **30 ALTOS, 38 MEDIOS y 27 BAJOS** sin tocar.
+- **Correr el bloque 27** de `verificaciones.sql` contra la base: hasta
+  entonces la 0046 es plausible, no verificada.
+- **Decidir la mitad legal** del crítico 7.
+- Y el techo estructural: la escala reserva 9–10 para «un experto externo del
+  rubro no encontraría nada material». Con 30 altos abiertos y `npm run build`
+  sin correr nunca en este entorno, ningún rubro puede honestamente llegar ahí
+  hoy.
