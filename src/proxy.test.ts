@@ -68,6 +68,25 @@ describe('proxy · gate de /dashboard sin sesión', () => {
     expect(res.headers.get('Cache-Control')).toContain('no-store');
   });
 
+  // CRÍTICO de la auditoría 10 (pruebas): `/admin` estaba en la lista del
+  // matcher y NADA lo anclaba — borrarlo de `proxy.ts:44` dejaba la suite
+  // entera en verde. Es la consola de negocio de Likida (cuántos tenants,
+  // cuánto se gasta en IA); su primera capa no puede depender de que nadie
+  // toque esa línea por accidente.
+  it('/admin (consola de negocio) pasa por el mismo gate de sesión', async () => {
+    const res = await pedir('/admin');
+    expect(res.status).toBe(307);
+    const destino = new URL(res.headers.get('location')!);
+    expect(destino.pathname).toBe('/login');
+    expect(destino.searchParams.get('next')).toBe('/admin');
+  });
+
+  it('una página interna de /admin tampoco se sirve sin sesión', async () => {
+    const res = await pedir('/admin/costos-facturacion');
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get('location')!).pathname).toBe('/login');
+  });
+
   it('/mis-viajes (panel del chofer) pasa por el mismo gate que /dashboard', async () => {
     const res = await pedir('/mis-viajes');
     const destino = new URL(res.headers.get('location')!);
