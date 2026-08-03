@@ -1,72 +1,101 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// LA SEGUNDA CAPA TIENE QUE VALER POR SÍ SOLA.
-//
-// Un guard que "protege" pero deja pasar cuando la cookie falta no añade nada:
-// da la sensación de defensa en profundidad sin la defensa. Estos casos fijan
-// que corta de verdad, y que en desarrollo no estorba.
-// ═══════════════════════════════════════════════════════════════════════════
 const redirect = vi.fn(() => { throw new Error('NEXT_REDIRECT'); });
-const get = vi.fn();
 vi.mock('next/navigation', () => ({ redirect: (...a: unknown[]) => redirect(...(a as [])) }));
-vi.mock('next/headers', () => ({ cookies: async () => ({ get: (...a: unknown[]) => get(...(a as [])) }) }));
 
-const { exigirAcceso } = await import('./guard');
-const { accessToken } = await import('./passcode');
+const getSessionTenant = vi.fn();
+vi.mock('./session', () => ({ getSessionTenant: (...a: unknown[]) => getSessionTenant(...a) }));
 
-describe('exigirAcceso', () => {
-  beforeEach(() => { redirect.mockClear(); get.mockReset(); vi.unstubAllEnvs(); });
+const { requireSessionTenant, requireOperador, requireSuperadmin } = await import('./guard');
 
-  it('sin passcode configurado (dev) no bloquea', async () => {
-    vi.stubEnv('DASHBOARD_PASSCODE', '');
-    get.mockReturnValue(undefined);
-    await expect(exigirAcceso('/dashboard')).resolves.toBeUndefined();
+describe('requireSessionTenant', () => {
+  beforeEach(() => { redirect.mockClear(); getSessionTenant.mockReset(); });
+
+  it('sin sesión, manda a /login con el next codificado', async () => {
+    getSessionTenant.mockResolvedValue(null);
+    await expect(requireSessionTenant('/dashboard/abc-123')).rejects.toThrow('NEXT_REDIRECT');
+    expect(redirect).toHaveBeenCalledWith(`/login?next=${encodeURIComponent('/dashboard/abc-123')}`);
+  });
+
+  it('con sesión pero sin tenant y sin alta en app_user (rol default flota_admin), manda a /sin-acceso', async () => {
+    getSessionTenant.mockResolvedValue({ userId: 'u-1', tenantId: null, rol: 'flota_admin', nombre: null });
+    await expect(requireSessionTenant('/dashboard')).rejects.toThrow('NEXT_REDIRECT');
+    expect(redirect).toHaveBeenCalledWith('/sin-acceso');
+  });
+
+  it('superadmin (tenant_id null por diseño) NO va a /sin-acceso — cae al tenant demo', async () => {
+    vi.stubEnv('DEMO_TENANT_ID', 'demo-tenant-id');
+    getSessionTenant.mockResolvedValue({ userId: 'u-2', tenantId: null, rol: 'superadmin', nombre: 'Javier' });
+    const r = await requireSessionTenant('/dashboard');
+    expect(redirect).not.toHaveBeenCalled();
+    expect(r).toEqual({ userId: 'u-2', tenantId: 'demo-tenant-id', rol: 'superadmin', nombre: 'Javier' });
+    vi.unstubAllEnvs();
+  });
+
+  it('con sesión y tenant, regresa el SessionTenant tal cual', async () => {
+    const s = { userId: 'u-1', tenantId: 't-1', rol: 'flota_admin', nombre: 'Ana' };
+    getSessionTenant.mockResolvedValue(s);
+    await expect(requireSessionTenant('/dashboard')).resolves.toEqual(s);
     expect(redirect).not.toHaveBeenCalled();
   });
+});
 
-  it('con passcode y SIN cookie, manda a /acceso', async () => {
-    vi.stubEnv('DASHBOARD_PASSCODE', 'demo2026');
-    vi.stubEnv('DASHBOARD_SECRET', 'secreto-de-servidor');
-    get.mockReturnValue(undefined);
-    await expect(exigirAcceso('/dashboard')).rejects.toThrow('NEXT_REDIRECT');
-    expect(redirect).toHaveBeenCalledWith(expect.stringContaining('/acceso'));
+// `requireOperador` es la puerta de /mis-viajes (Task 5 del plan de roles):
+// el reverso de `requireSessionTenant`, que asume el panel de flota_admin/
+// encargado/contador. Un chofer que aterrice ahí por error no debe ver ESE
+// panel (RLS ya se lo impediría, pero la UI ni se lo ofrece).
+describe('requireOperador', () => {
+  beforeEach(() => { redirect.mockClear(); getSessionTenant.mockReset(); });
+
+  it('sin sesión, manda a /login', async () => {
+    getSessionTenant.mockResolvedValue(null);
+    await expect(requireOperador()).rejects.toThrow('NEXT_REDIRECT');
+    expect(redirect).toHaveBeenCalledWith(`/login?next=${encodeURIComponent('/mis-viajes')}`);
   });
 
-  it('con una cookie FALSA, manda a /acceso', async () => {
-    vi.stubEnv('DASHBOARD_PASSCODE', 'demo2026');
-    vi.stubEnv('DASHBOARD_SECRET', 'secreto-de-servidor');
-    get.mockReturnValue({ value: 'a'.repeat(64) });
-    await expect(exigirAcceso('/dashboard')).rejects.toThrow('NEXT_REDIRECT');
+  it('rol distinto de operador (flota_admin, encargado, contador, superadmin) manda a /dashboard — es SU panel, no el de un chofer', async () => {
+    getSessionTenant.mockResolvedValue({ userId: 'u-1', tenantId: 't-1', rol: 'flota_admin', nombre: 'Ana', operadorId: null });
+    await expect(requireOperador()).rejects.toThrow('NEXT_REDIRECT');
+    expect(redirect).toHaveBeenCalledWith('/dashboard');
   });
 
-  it('con la cookie BUENA, deja pasar', async () => {
-    vi.stubEnv('DASHBOARD_PASSCODE', 'demo2026');
-    vi.stubEnv('DASHBOARD_SECRET', 'secreto-de-servidor');
-    get.mockReturnValue({ value: await accessToken('demo2026') });
-    await expect(exigirAcceso('/dashboard')).resolves.toBeUndefined();
+  it('operador sin operador_id ligado (alta a medias) manda a /sin-acceso', async () => {
+    getSessionTenant.mockResolvedValue({ userId: 'u-2', tenantId: 't-1', rol: 'operador', nombre: 'Juan', operadorId: null });
+    await expect(requireOperador()).rejects.toThrow('NEXT_REDIRECT');
+    expect(redirect).toHaveBeenCalledWith('/sin-acceso');
+  });
+
+  it('operador con todo en regla, regresa la sesión con operadorId no nulo', async () => {
+    const s = { userId: 'u-3', tenantId: 't-1', rol: 'operador', nombre: 'Juan', operadorId: 'o-9' };
+    getSessionTenant.mockResolvedValue(s);
+    await expect(requireOperador()).resolves.toEqual(s);
     expect(redirect).not.toHaveBeenCalled();
   });
+});
 
-  // La cookie caduca en el SERVIDOR, no solo en el navegador. Importa que la
-  // segunda capa lo respete por su cuenta: `/api/export/liquidaciones` también
-  // se apoya en `tokenMatches` y no pasa por el proxy (el matcher excluye /api).
-  it('con la cookie CADUCADA, manda a /acceso aunque el navegador la conserve', async () => {
-    vi.stubEnv('DASHBOARD_PASSCODE', 'demo2026');
-    vi.stubEnv('DASHBOARD_SECRET', 'secreto-de-servidor');
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-08-06T10:00:00Z'));
-    get.mockReturnValue({ value: await accessToken('demo2026') });
-    vi.setSystemTime(new Date('2026-08-07T10:00:00Z'));   // 24 h después
-    await expect(exigirAcceso('/dashboard')).rejects.toThrow('NEXT_REDIRECT');
-    vi.useRealTimers();
+// `requireSuperadmin` es la puerta de /admin — la consola de negocio de
+// Likida (docs/superpowers/plans/2026-08-02-panel-superadmin.md). Ningún
+// otro rol la ve: ni siquiera flota_admin, que sí ve todo SU tenant, ve
+// cuánto gasta Likida en IA o cuántos tenants tiene.
+describe('requireSuperadmin', () => {
+  beforeEach(() => { redirect.mockClear(); getSessionTenant.mockReset(); });
+
+  it('sin sesión, manda a /login', async () => {
+    getSessionTenant.mockResolvedValue(null);
+    await expect(requireSuperadmin()).rejects.toThrow('NEXT_REDIRECT');
+    expect(redirect).toHaveBeenCalledWith(`/login?next=${encodeURIComponent('/admin')}`);
   });
 
-  it('conserva a dónde volver, incluido el id de la liquidación', async () => {
-    vi.stubEnv('DASHBOARD_PASSCODE', 'demo2026');
-    vi.stubEnv('DASHBOARD_SECRET', 'secreto-de-servidor');
-    get.mockReturnValue(undefined);
-    await exigirAcceso('/dashboard/abc-123').catch(() => {});
-    expect(redirect).toHaveBeenCalledWith(expect.stringContaining(encodeURIComponent('/dashboard/abc-123')));
+  it('cualquier rol que no sea superadmin manda a /dashboard — es SU panel, no la consola de negocio', async () => {
+    getSessionTenant.mockResolvedValue({ userId: 'u-1', tenantId: 't-1', rol: 'flota_admin', nombre: 'Ana', operadorId: null });
+    await expect(requireSuperadmin()).rejects.toThrow('NEXT_REDIRECT');
+    expect(redirect).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('superadmin entra sin redirigir', async () => {
+    const s = { userId: 'u-2', tenantId: null, rol: 'superadmin', nombre: 'Javier', operadorId: null };
+    getSessionTenant.mockResolvedValue(s);
+    await expect(requireSuperadmin()).resolves.toEqual(s);
+    expect(redirect).not.toHaveBeenCalled();
   });
 });

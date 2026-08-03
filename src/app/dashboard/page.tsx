@@ -1,4 +1,5 @@
-import { exigirAcceso } from '@/lib/auth/guard';
+import { requireSessionTenant } from '@/lib/auth/guard';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getKpis, getAcreditables, detectarAnomalias, type DashboardKpis, type Acreditables, type Anomalia } from '@/lib/cuadra/analytics';
 import { supabaseAdmin } from '@/lib/supabase/admin';
@@ -7,10 +8,9 @@ import { LEYENDA_CORTA } from '@/lib/cuadra/cuadre/leyendas';
 import { estadoPanel } from './estado';
 import { fechaMx } from './formato';
 import { Acred } from './acred';
+import { puedeExportar } from '@/lib/auth/permisos';
 
 export const dynamic = 'force-dynamic';
-
-const TENANT = () => process.env.DEMO_TENANT_ID ?? '11111111-1111-1111-1111-111111111111';
 
 const ESTATUS = {
   cuadrada: { label: 'Cuadrada', color: 'var(--color-ok)' },
@@ -52,11 +52,21 @@ async function getLiquidaciones(tenantId: string): Promise<LiqRow[]> {
   }));
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ vista?: string }>;
+}) {
   // Segunda capa: la autorización viaja con la página, no solo con el matcher
   // del proxy. Las dos tienen que fallar a la vez para que esto se sirva.
-  await exigirAcceso('/dashboard');
-  const tenantId = TENANT();
+  const { tenantId, rol } = await requireSessionTenant('/dashboard');
+  // Sin esto, un superadmin que llegue aquí por bookmark/historial (no por
+  // /login, que es lo único que /auth/callback intercepta) se quedaba
+  // viendo el panel del tenant demo en vez de SU consola. /admin enlaza aquí
+  // con `?vista=demo` a propósito, cuando de verdad quiere ver lo que ve un
+  // cliente.
+  const sp = await searchParams;
+  if (rol === 'superadmin' && sp?.vista !== 'demo') redirect('/admin');
   const [acred, kpis, liqs, anomalias] = await Promise.all([
     safe<Acreditables>(() => getAcreditables(tenantId)),
     safe<DashboardKpis>(() => getKpis(tenantId)),
@@ -80,9 +90,18 @@ export default async function DashboardPage() {
             <span className="font-semibold tracking-tight text-xl">Likida</span>
             <span className="text-base" style={{ color: 'var(--muted)' }}>· Panel de liquidación</span>
           </h1>
-          <span className="text-xs px-2.5 py-1 rounded-full" style={{ color: 'var(--muted)', background: 'color-mix(in srgb, var(--muted) 10%, transparent)' }}>
-            datos de demostración
-          </span>
+          {/* `/cuenta` es el ÚNICO sitio con "Cerrar sesión" y nada en la app
+              apuntaba ahí: la página existía y solo se llegaba tecleando la URL.
+              Con el passcode no importaba (se cerraba borrando la cookie); con
+              cuentas por usuario, salirse es parte del producto. */}
+          <div className="flex items-center gap-3">
+            <span className="text-xs px-2.5 py-1 rounded-full" style={{ color: 'var(--muted)', background: 'color-mix(in srgb, var(--muted) 10%, transparent)' }}>
+              datos de demostración
+            </span>
+            <Link href="/cuenta" className="text-sm px-3 py-1.5 rounded-lg hairline hover:opacity-70">
+              Mi cuenta
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -200,10 +219,12 @@ export default async function DashboardPage() {
                 <h2 className="text-sm font-semibold uppercase tracking-wide m-0" style={{ color: 'var(--muted)' }}>
                   Detalle por liquidación
                 </h2>
-                <a href="/api/export/liquidaciones" download
-                  className="text-sm px-3.5 py-2 rounded-lg hairline hover:opacity-70">
-                  Exportar CSV
-                </a>
+                {puedeExportar(rol) && (
+                  <a href="/api/export/liquidaciones" download
+                    className="text-sm px-3.5 py-2 rounded-lg hairline hover:opacity-70">
+                    Exportar CSV
+                  </a>
+                )}
               </div>
               {liqs === null ? (
                 <div className="card p-8" style={{ color: 'var(--muted)' }}>No se pudo cargar el listado.</div>

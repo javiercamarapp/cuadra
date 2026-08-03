@@ -1,37 +1,67 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // SEGUNDA CAPA DE AUTORIZACIÓN — la que no depende de un regex.
 //
-// Hoy el único candado del panel es el matcher del proxy:
+// Mismo criterio que la versión anterior (passcode): el proxy es la primera
+// capa (barata, por matcher de ruta); esta es la segunda, y viaja CON la
+// página en vez de con la configuración de rutas. Las dos tienen que fallar a
+// la vez para que una página del panel se sirva sin autorización.
 //
-//   matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)']
+// Ahora la fuente de verdad es `app_user` vía `getSessionTenant()`, no un
+// passcode compartido: sin sesión de Supabase, a /login; con sesión pero sin
+// fila en `app_user` (alta pendiente), a /sin-acceso — nunca se sirve el
+// panel sin un tenantId real.
 //
-// Funciona, y se comprobó que ninguna ruta queda fuera. Pero es UNA capa, y de
-// las frágiles: basta añadir una excepción al negative lookahead, mover una
-// página a un route group nuevo, o que Next cambie cómo resuelve el matcher, para
-// que una página del panel quede servida sin pasar por el gate. El fallo no deja
-// rastro — la página simplemente responde 200 a quien no debía.
-//
-// Esta función es la segunda capa: se llama DENTRO de cada página del panel, así
-// que la autorización viaja con la página y no con la configuración de rutas.
-// Si el proxy falla, esto sigue de pie; si esto se olvida en una página
-// nueva, el proxy sigue de pie. Las dos tienen que fallar a la vez.
+// SUPERADMIN ES EL CASO APARTE. `app_user.tenant_id` nulo es AMBIGUO por
+// diseño (0001_init.sql:17): puede ser "sin alta" o puede ser "superadmin,
+// no pertenece a ningún tenant". Hoy el panel no tiene selector de flota, así
+// que un superadmin ve el tenant de la demo — el mismo que veía todo el mundo
+// antes de que existiera login por usuario. El día que haga falta elegir
+// entre varias flotas, esto se reemplaza por un selector; construirlo hoy
+// sería una pantalla para un caso de uso que todavía no existe.
 // ═══════════════════════════════════════════════════════════════════════════
-
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { ACCESS_COOKIE, hayPasscode, tokenMatches } from './passcode';
+import { getSessionTenant, type SessionTenant } from './session';
+
+const TENANT_DEMO = () => process.env.DEMO_TENANT_ID ?? '11111111-1111-1111-1111-111111111111';
+
+export async function requireSessionTenant(
+  destino: string,
+): Promise<SessionTenant & { tenantId: string }> {
+  const s = await getSessionTenant();
+  if (!s) redirect(`/login?next=${encodeURIComponent(destino)}`);
+  if (!s.tenantId) {
+    if (s.rol === 'superadmin') return { ...s, tenantId: TENANT_DEMO() };
+    redirect('/sin-acceso');
+  }
+  return s as SessionTenant & { tenantId: string };
+}
 
 /**
- * Corta la página si quien la pide no tiene una cookie válida.
+ * Puerta de /mis-viajes — el reverso de `requireSessionTenant`.
  *
- * Sin passcode configurado (desarrollo) no bloquea: el mismo criterio que el
- * proxy, para que las dos capas no se contradigan.
- *
- * @param destino ruta a la que volver tras autenticarse.
+ * Un rol≠operador no va a /sin-acceso (SÍ tiene acceso, solo que a OTRO
+ * panel): va a /dashboard, que es el suyo. Y un operador sin `operador_id`
+ * ligado (alta a medias — se creó la cuenta de Auth pero no se completó la
+ * liga con `operador`) sí va a /sin-acceso: no hay panel del que rebotarlo,
+ * de verdad no puede entrar a nada todavía.
  */
-export async function exigirAcceso(destino: string): Promise<void> {
-  if (!hayPasscode()) return;                  // dev sin passcode
-  const cookie = (await cookies()).get(ACCESS_COOKIE)?.value;
-  if (await tokenMatches(cookie)) return;
-  redirect(`/acceso?next=${encodeURIComponent(destino)}`);
+export async function requireOperador(): Promise<SessionTenant & { operadorId: string }> {
+  const s = await getSessionTenant();
+  if (!s) redirect('/login?next=%2Fmis-viajes');
+  if (s.rol !== 'operador') redirect('/dashboard');
+  if (!s.operadorId) redirect('/sin-acceso');
+  return s as SessionTenant & { operadorId: string };
+}
+
+/**
+ * Puerta de /admin — la consola de negocio de Likida. Ningún otro rol la ve,
+ * ni flota_admin: lo que vive aquí (cuántos tenants, cuánto gasta Likida en
+ * IA) es de Javier, no de un cliente. Un rol≠superadmin va a /dashboard —
+ * SÍ tiene panel, es otro.
+ */
+export async function requireSuperadmin(): Promise<SessionTenant> {
+  const s = await getSessionTenant();
+  if (!s) redirect(`/login?next=${encodeURIComponent('/admin')}`);
+  if (s.rol !== 'superadmin') redirect('/dashboard');
+  return s;
 }
