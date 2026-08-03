@@ -53,10 +53,24 @@ export function Acred({
   // Se conserva la tarjeta (el contralor tiene que ver que el concepto existe)
   // y se le quita la afirmación: raya en vez de cero, y el pie dice qué falta.
   // Cuando SÍ hay litros, nada cambia.
-  const sinMedicion = unidad === 'litros' && !(valor > 0);
+  // La regla NO se condiciona a la unidad, y ese fue el hueco del arreglo
+  // anterior (auditoría 10, ALTO de frontend): el mismo defecto vivía dos
+  // tarjetas a la derecha, en «IVA acreditable $0.00» y «Peaje (50%) $0.00».
+  //
+  // El IVA y el peaje se acumulan DESPUÉS de `if (!g.xmlVerificado) continue;`
+  // (`engine.ts:898`). Una foto nunca produce `xmlVerificado`, y las fotos son
+  // el flujo que el producto vende. Así que en el camino normal esas dos
+  // cifras dan cero porque no llegó ningún XML — no porque no hubiera IVA que
+  // acreditar. Un CFDI de diésel de $4,200 traslada ~$581.
+  //
+  // Cero grande en `text-5xl` se lee como «su sistema no encontró nada». Es
+  // peor que no enseñar la tarjeta, porque la tarjeta afirma haber medido.
+  const sinMedicion = !(valor > 0);
   const texto = sinMedicion ? '—' : unidad === 'litros' ? litros(valor) : mxn(valor);
   const pie = sinMedicion
-    ? 'Sin litros medidos en el periodo — se cuentan los del CFDI de diésel con complemento de hidrocarburos.'
+    ? unidad === 'litros'
+      ? 'Sin litros medidos en el periodo — se cuentan los del CFDI de diésel con complemento de hidrocarburos.'
+      : 'Sin comprobantes medibles en el periodo — se acredita con el XML del CFDI, no con la foto del ticket.'
     : base;
   // Sin medición la tarjeta deja de gritar: pierde el acento y baja a tinta
   // apagada. Si sigue destacada en verde acento, un guion grande se lee como

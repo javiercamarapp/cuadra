@@ -65,11 +65,57 @@ describe('la tarjeta de litros no afirma una medición que no ocurrió', () => {
     expect(html).not.toContain('Sin litros medidos');
   });
 
-  it('control: las tarjetas en pesos no se tocan — un IVA de $0 sigue siendo $0', () => {
+  // ── ALTO de la auditoría 10 (frontend), 3-ago ────────────────────────────
+  //
+  // Esta prueba fijaba lo contrario, con esta premisa escrita: «cero pesos
+  // acreditables SÍ es una medición: no hubo IVA que acreditar».
+  //
+  // Es falsa. `engine.ts:898` es un `continue` que descarta el gasto ANTES de
+  // mirar `ivaTraslado` o `subTotal`:
+  //
+  //     if (!g.xmlVerificado) continue;
+  //     ...
+  //     if ((g.ivaTraslado ?? 0) > 0) ivaAcreditable += ...
+  //     if (g.concepto === 'caseta' && ...) peajeAcreditable += ...
+  //
+  // Una FOTO nunca produce `xmlVerificado`. Y las fotos son el flujo que el
+  // producto vende (GUION_DEMO.md:60-62: «Mandas fotos de tickets reales»).
+  // Así que en el camino normal el panel imprimía «IVA acreditable $0.00» y
+  // «Peaje (50%) $0.00» en el tamaño más grande de la pantalla, cuando lo
+  // cierto es que no llegó ningún XML y no se pudo medir nada. Un CFDI de
+  // diésel de $4,200 traslada ~$581 de IVA — lo trae el propio XML del seed.
+  //
+  // Es el mismo defecto del CRÍTICO de los litros, dos tarjetas a la derecha.
+  // El arreglo de aquel se condicionó a `unidad === 'litros'` y por eso no las
+  // alcanzó.
+  it('un IVA de $0 tampoco se afirma: no es «no hubo IVA», es «no llegó ningún XML»', () => {
     const html = renderToStaticMarkup(
       <Acred titulo="IVA acreditable" valor={0} base="LIVA, Art. 5 — CFDI con IVA desglosado" />,
     );
-    expect(html, 'cero pesos acreditables SÍ es una medición: no hubo IVA que acreditar').toContain('$0');
-    expect(html).not.toContain('Sin litros medidos');
+    expect(html, 'el cero grande se lee como un resultado medido, y no lo es').not.toContain('$0');
+    expect(html).toContain('—');
+    expect(html, 'y el pie tiene que decir qué falta').toMatch(/CFDI|XML/);
+  });
+
+  it('el peaje en $0 recibe el mismo trato', () => {
+    const html = renderToStaticMarkup(
+      <Acred titulo="Peaje (50%)" valor={0} base="Estímulo de autopistas · LIF 2026, Art. 20-A" />,
+    );
+    expect(html).not.toContain('$0');
+    expect(html).toContain('—');
+  });
+
+  // CONTROL. Con pesos de verdad medidos, la tarjeta no se apaga: el arreglo
+  // distingue «no medí» de «medí y dio cero», no borra la cifra.
+  it('control: con IVA medido la tarjeta imprime la cifra y su pie original', () => {
+    const html = renderToStaticMarkup(
+      <Acred titulo="IVA acreditable" valor={581.38} base="LIVA, Art. 5 — CFDI con IVA desglosado" />,
+    );
+    expect(html).toContain('581');
+    expect(html).toContain('LIVA');
+    // El pie original lleva su propio guion largo, así que la señal es la
+    // cifra en la ranura del valor, no la ausencia del carácter.
+    expect(html).toMatch(/>\$?581/);
+    expect(html).not.toMatch(/Sin .* medid/);
   });
 });
