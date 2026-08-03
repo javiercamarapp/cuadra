@@ -1,6 +1,7 @@
 import { requireSuperadmin } from '@/lib/auth/guard';
 import { getResumenNegocio, getConversacionesActivas } from '@/lib/admin/negocio';
 import { usd, numero } from '@/lib/utils';
+import { fechaMx } from '../dashboard/formato';
 import Link from 'next/link';
 import {
   Truck, DollarSign, Cpu, CheckCircle2, BarChart3, UserPlus2, MessageCircle,
@@ -19,9 +20,18 @@ const SALUDO = () => {
   return 'Buenas noches';
 };
 
-const FECHA_HOY = () => new Date().toLocaleDateString('es-MX', {
-  weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Mexico_City',
-});
+/**
+ * La fecha del saludo sale de `fechaMx`, como todas las fechas del producto.
+ *
+ * Esto era un `toLocaleDateString('es-MX', { weekday: 'long', … })` escrito
+ * aquí, y se coló por el hueco del guardarraíl: `lib/formato.test.ts` hacía
+ * grep del literal `toLocaleString('es-MX'`, que `toLocaleDateString` no
+ * contiene. La compuerta pasaba en verde mientras esta página decía «lunes, 3
+ * de agosto de 2026» y el resto del producto «03 ago 2026» (auditoría 10,
+ * frontend, BAJO). El grep ya cubre la familia entera
+ * (`dashboard/formato.test.ts`).
+ */
+const FECHA_HOY = () => fechaMx(new Date().toISOString());
 
 export const dynamic = 'force-dynamic';
 

@@ -22,6 +22,15 @@
 // Y hay una prueba que impide la siguiente copia (`formato.test.ts`): busca
 // `toLocaleString('es-MX')` en todo `src/` y falla si aparece fuera de
 // `formato.ts`. Es lo que le faltaba al hallazgo para no volver por cuarta vez.
+//
+// AUDITORÍA 10 (frontend, BAJO): ese grep era LITERAL, y
+// `toLocaleDateString` no contiene la subcadena `toLocaleString`. Por ahí se
+// coló `admin/page.tsx`, que formateaba el saludo por su cuenta —«lunes, 3 de
+// agosto de 2026» contra el «03 ago 2026» de `fechaMx`— con la compuerta en
+// verde. El grep de `dashboard/formato.test.ts` cubre ahora la familia entera
+// (`toLocaleString`, `toLocaleDateString`, `toLocaleTimeString`): se arreglaba
+// la copia conocida y no se impedía la siguiente, que es exactamente cómo este
+// hallazgo sobrevivió tres rondas.
 // ═══════════════════════════════════════════════════════════════════════════
 
 export { TZ_MX, litros, fechaMx } from '@/lib/formato';

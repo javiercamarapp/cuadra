@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { sinComentarios } from '@/lib/pruebas/codigo';
 import { litros, fechaMx } from './formato';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -51,5 +54,56 @@ describe('fechaMx: la fecha del cliente, no la del servidor', () => {
     expect(fechaMx(null)).toBe('—');
     expect(fechaMx('')).toBe('—');
     expect(fechaMx('no es una fecha')).toBe('—');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EL GUARDARRAÍL TENÍA UN HUECO, Y UNA PÁGINA NUEVA YA SE COLÓ POR ÉL.
+//
+// `lib/formato.test.ts` impide una segunda copia del formato haciendo grep de
+// `toLocaleString('es-MX'` sobre todo `src/`. `toLocaleDateString` NO contiene
+// esa subcadena, así que `admin/page.tsx:22` formateaba fechas por su cuenta
+// —«lunes, 3 de agosto de 2026», donde `fechaMx` dice «03 ago 2026»— y la
+// compuerta pasaba en verde (auditoría 10, frontend, BAJO).
+//
+// El daño de ESA copia era cosmético. Lo que no lo es: el hallazgo que aquel
+// archivo documenta sobrevivió TRES rondas por exactamente esto —se arreglaban
+// las copias conocidas y no se impedía la siguiente—, y la prueba afirmaba, con
+// el comentario de `dashboard/formato.ts` repitiéndolo, proteger algo que no
+// protegía del todo.
+//
+// Aquí se cierra sobre la familia entera: `toLocaleString`,
+// `toLocaleDateString` y `toLocaleTimeString` con locale mexicano. El único
+// archivo que puede formatear sigue siendo `src/lib/formato.ts`.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('NO puede volver a haber una copia a mano del formato mexicano', () => {
+  // `grep -E` sobre la familia completa, no sobre un literal. El `|| true`
+  // evita que un cero-resultados (exit 1 de grep) tumbe la prueba.
+  const archivos = execSync(
+    `grep -rlE "toLocale(Date|Time)?String\\('es-MX'" src/ --include='*.ts' --include='*.tsx' || true`,
+    { encoding: 'utf8' },
+  ).split('\n').filter(Boolean);
+
+  it('solo `lib/formato.ts` formatea fechas y cifras mexicanas', () => {
+    // SE MIRA EL CÓDIGO, NO LOS COMENTARIOS: el encabezado de `formato.ts`
+    // CITA la llamada para contar la historia del hallazgo, y una prueba que
+    // prohíbe hablar del bug que vigila obliga a borrar la explicación que
+    // evita repetirlo.
+    const fuera = archivos
+      .filter((f) => !f.includes('lib/formato.ts') && !f.includes('.test.'))
+      .filter((f) => /toLocale(Date|Time)?String\('es-MX'/.test(sinComentarios(readFileSync(f, 'utf8'))));
+    expect(
+      fuera,
+      `estos archivos formatean por su cuenta en vez de usar formato.ts:\n${fuera.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  it('y el hueco concreto por el que se coló `/admin` queda cerrado', () => {
+    // Regresión del hueco, no del archivo: el grep del guardarraíl viejo no ve
+    // esta cadena. Si alguien vuelve a estrecharlo, esto falla.
+    const grepViejo = /toLocaleString\('es-MX'/;
+    expect(grepViejo.test("new Date().toLocaleDateString('es-MX', {})")).toBe(false);
+    expect(/toLocale(Date|Time)?String\('es-MX'/.test("new Date().toLocaleDateString('es-MX', {})")).toBe(true);
   });
 });
