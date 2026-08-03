@@ -146,7 +146,7 @@ A partir de ahí el correo personal de Juan vive en dos tablas, se enseña en
 llave con la que entra a `/mis-viajes`.
 
 Juan no se entera nunca. `createUser` con `email_confirm: true` no manda correo.
-Y el aviso tampoco se reenvía: `ponerAvisoADisposicion` (`processor.ts:166`)
+Y el aviso tampoco se reenvía: `ponerAvisoADisposicion` (`processor.ts:167`)
 reenvía solo cuando cambia `versionAviso(texto)`, que es un hash del texto
 armado con razón social, domicilio y liga del integral (`privacidad.ts:255-262`)
 — dar de alta un correo no cambia ninguno de los tres, así que el hash es el

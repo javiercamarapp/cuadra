@@ -136,3 +136,13 @@ misma rama, sin abrir PR nuevo.
 - Se relanzan **los 12 rubros**, no 3: nueve nunca se auditaron en esta ronda y
   los tres del 2-ago (frontend, fiscal, tool calling) se escribieron contra un
   árbol que ya no existe.
+
+## Arreglos de la continuación
+
+- **Vuelta 1 · `d081176`** — CRÍTICO «el chofer entra al panel del contralor».
+  Hallado por separado por backend (CRÍTICO), seguridad (CRÍTICO) y frontend
+  (ALTO), los tres contra el mismo camino. Verificado por el orquestador
+  abriendo `guard.ts:27-37`, `login/page.tsx:49` y `dashboard/page.tsx:62-69`.
+  Prueba roja primero (`guard.test.ts`, 2 casos: devolvían la sesión del chofer
+  en vez de redirigir) → arreglo → verde → suite completa 173/1631 exit 0,
+  tsc 0, lint 0.
