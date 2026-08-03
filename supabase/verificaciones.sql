@@ -1150,3 +1150,43 @@ begin
   raise exception E'CONTADOR_RLS  ve=%  actualizo=%  borro=%   (esperado 1 / 0 / 0 — antes de la 0048 daba 1 / 1 / 1)',
     n_ve, n_actualizo, n_borro;
 end $$;
+
+-- ── 30. Ninguna función de `public` con `search_path` mutable (mig. 0049) ────
+--
+-- La 0035 fijó diez funciones y es ANTERIOR a la 0036, así que
+-- `gasto_no_tras_liquidar()` —la barrera de «nada entra tras liquidar»— se
+-- quedó fuera y siguió fuera tres rondas (auditoría 8, 9 y 10). Ninguna prueba
+-- del repo lo miraba: el bloque 18 comprueba `has_function_privilege` de las
+-- RPC, no `proconfig`.
+--
+-- Esto NO se puede sondear desde la aplicación —PostgREST no expone
+-- `pg_proc`—, así que vive aquí. Es la única fuente de verdad: una migración
+-- puede escribir `set search_path` y no estar aplicada.
+--
+-- Esperado: cero filas.
+--
+-- ⚠️  NO SE HA CORRIDO. La 0049 se escribió sin base contra la cual ejercerla.
+do $$
+declare
+  sin_fijar text[];
+  n int;
+begin
+  select coalesce(array_agg(p.proname order by p.proname), '{}'), count(*)
+    into sin_fijar, n
+  from pg_proc p
+  join pg_namespace n2 on n2.oid = p.pronamespace
+  where n2.nspname = 'public'
+    and p.prokind = 'f'
+    -- Solo las nuestras: las de extensiones instaladas en `public` no se tocan.
+    and not exists (
+      select 1 from pg_depend d
+      where d.objid = p.oid and d.deptype = 'e'
+    )
+    and not exists (
+      select 1 from unnest(coalesce(p.proconfig, '{}')) c
+      where c like 'search\_path=%'
+    );
+
+  raise exception E'SEARCH_PATH_MUTABLE  n=%  funciones=%   (esperado 0 — antes de la 0049 salía 1: gasto_no_tras_liquidar)',
+    n, sin_fijar;
+end $$;
