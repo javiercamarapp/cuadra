@@ -487,7 +487,16 @@ export async function generateStructured<T>(opts: {
  */
 export type ToolExecResult = { success: boolean; result: unknown; paraModelo?: unknown; error?: string; durationMs: number };
 export type ToolExecutor = (name: string, args: Record<string, unknown>) => Promise<ToolExecResult>;
-export type ToolCallRecord = { toolName: string; args: Record<string, unknown>; result: unknown; durationMs: number; error?: string };
+/**
+ * `args` es el que PRODUJO el `result`, no necesariamente el de esta llamada.
+ *
+ * Cuando la caché acierta —entre rondas o dentro de la misma— el registro se
+ * escribía con el `args` de ESTE llamador y el `result` de OTRO. La llave de
+ * caché colapsa por nombre para las tools sin parámetros (el handler recibe
+ * `_args` y no lo lee), así que servir el mismo resultado es correcto; afirmar
+ * que lo produjo otro JSON no lo es. `desdeCache` dice que no hubo ejecución.
+ */
+export type ToolCallRecord = { toolName: string; args: Record<string, unknown>; result: unknown; durationMs: number; error?: string; desdeCache?: true };
 
 export class LoopGuardError extends Error {
   constructor(public rounds: number) {
@@ -618,7 +627,9 @@ export async function generateWithTools(opts: {
     { role: 'system', content: opts.system },
     ...opts.messages,
   ];
-  const crossRound = new Map<string, ToolExecResult>();
+  // Se guarda el `args` JUNTO al resultado: es el que lo produjo, y es el que el
+  // registro tiene que citar cuando la caché acierta.
+  const crossRound = new Map<string, { exec: ToolExecResult; args: Record<string, unknown> }>();
   const llave = llaveDeCache(opts.tools);
 
   // CR-5: completado con fallback cross-provider. Reintentar SÓLO la llamada de
@@ -694,7 +705,7 @@ export async function generateWithTools(opts: {
       }
 
       convo.push({ role: 'assistant', content: choice.message.content ?? null, tool_calls: calls });
-      const inRound = new Map<string, Promise<ToolExecResult>>();
+      const inRound = new Map<string, { p: Promise<ToolExecResult>; args: Record<string, unknown> }>();
 
       const results = await Promise.all(
         calls.map(async (call) => {
@@ -710,20 +721,30 @@ export async function generateWithTools(opts: {
           }
           const key = llave(call.function.name, args);
           if (isReadOnly(call.function.name) && crossRound.has(key)) {
-            const c = crossRound.get(key)!;
-            executed.push({ toolName: call.function.name, args, result: c.result, durationMs: c.durationMs, error: c.error });
+            const { exec: c, args: argsQueLoProdujo } = crossRound.get(key)!;
+            executed.push({ toolName: call.function.name, args: argsQueLoProdujo, result: c.result, durationMs: c.durationMs, error: c.error, desdeCache: true });
             return { role: 'tool' as const, tool_call_id: call.id, content: JSON.stringify(c.success ? paraElModelo(c) : { error: c.error }) };
           }
-          let p = inRound.get(key);
-          if (!p) { p = opts.toolExecutor(call.function.name, args); inRound.set(key, p); }
+          const yaEnRonda = inRound.get(key);
+          const p = yaEnRonda?.p ?? opts.toolExecutor(call.function.name, args);
+          if (!yaEnRonda) inRound.set(key, { p, args });
           const exec = await p;
           // Solo se cachea el ÉXITO, igual que la rejilla de mutaciones
           // (`tool-executor.ts`). Guardar el fracaso convierte un blip de un
           // segundo en un fallo permanente del turno: el modelo reintenta, se le
           // sirve el mismo error desde memoria, y nadie vuelve a preguntarle a
           // una base que ya se curó sola.
-          if (isReadOnly(call.function.name) && exec.success) crossRound.set(key, exec);
-          executed.push({ toolName: call.function.name, args, result: exec.result, durationMs: exec.durationMs, error: exec.error });
+          if (isReadOnly(call.function.name) && exec.success) crossRound.set(key, { exec, args: yaEnRonda?.args ?? args });
+          executed.push({
+            toolName: call.function.name,
+            // Si otra llamada de ESTA ronda ya había lanzado la ejecución, el
+            // `args` que la produjo es el suyo, no el de este llamador.
+            args: yaEnRonda?.args ?? args,
+            result: exec.result,
+            durationMs: exec.durationMs,
+            error: exec.error,
+            ...(yaEnRonda ? { desdeCache: true as const } : {}),
+          });
           return { role: 'tool' as const, tool_call_id: call.id, content: JSON.stringify(exec.success ? paraElModelo(exec) : { error: exec.error }) };
         }),
       );
