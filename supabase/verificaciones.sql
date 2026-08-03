@@ -1190,3 +1190,61 @@ begin
   raise exception E'SEARCH_PATH_MUTABLE  n=%  funciones=%   (esperado 0 — antes de la 0049 salía 1: gasto_no_tras_liquidar)',
     n, sin_fijar;
 end $$;
+
+-- ── 31. La cuenta del chofer no puede apuntar a otra flota (mig. 0050) ───────
+--
+-- `app_user.operador_id` era la única FK de identidad del repo sin `tenant_id`
+-- (0045). La 0047 cerró la mitad —las policies— y ésta cierra la clave. Este
+-- bloque intenta EXACTAMENTE el UPDATE que la consola de Supabase permitía:
+-- pegar en la cuenta de un chofer de la flota A el UUID de un chofer de la
+-- flota B.
+--
+-- Esperado: cruzado=0 (la FK compuesta lo rechaza) · sin_tenant=0 (el CHECK
+-- rechaza `operador_id` con `tenant_id` nulo, que es como MATCH SIMPLE se
+-- saltaba la FK) · propio=1 (control: ligar al chofer de SU flota sí funciona,
+-- si no esto sería un candado que deja el producto sin panel de chofer).
+--
+-- ⚠️  NO SE HA CORRIDO. La 0050 se escribió sin base contra la cual ejercerla.
+do $$
+declare
+  v_ta uuid; v_tb uuid; v_oa uuid; v_ob uuid;
+  v_u uuid := gen_random_uuid(); v_u2 uuid := gen_random_uuid();
+  cruzado int := 0; sin_tenant int := 0; propio int := 0;
+begin
+  insert into tenant (nombre) values ('ZZZ VERIF FK FLOTA A') returning id into v_ta;
+  insert into tenant (nombre) values ('ZZZ VERIF FK FLOTA B') returning id into v_tb;
+  insert into operador (tenant_id, nombre, telefono) values (v_ta, 'Chofer de A', '520000009070') returning id into v_oa;
+  insert into operador (tenant_id, nombre, telefono) values (v_tb, 'Chofer de B', '520000009071') returning id into v_ob;
+
+  insert into app_user (id, tenant_id, email, rol) values (v_u, v_ta, 'zzz-verif-fk-a@likida.test', 'operador');
+
+  -- 1. El UUID de la flota B pegado en la cuenta de la flota A.
+  begin
+    update app_user set operador_id = v_ob where id = v_u;
+    cruzado := 1;                       -- pasó: la FK NO está compuesta
+    update app_user set operador_id = null where id = v_u;
+  exception when foreign_key_violation then
+    cruzado := 0;                       -- rechazado: es lo que se espera
+  end;
+
+  -- 2. El hueco de MATCH SIMPLE: sin tenant, una FK compuesta no comprueba nada.
+  begin
+    insert into app_user (id, tenant_id, email, rol, operador_id)
+      values (v_u2, null, 'zzz-verif-fk-sin-tenant@likida.test', 'operador', v_ob);
+    sin_tenant := 1;                    -- pasó: falta el CHECK
+    delete from app_user where id = v_u2;
+  exception when check_violation or foreign_key_violation then
+    sin_tenant := 0;
+  end;
+
+  -- 3. CONTROL. Ligar al chofer de su PROPIA flota tiene que seguir siendo posible.
+  begin
+    update app_user set operador_id = v_oa where id = v_u;
+    propio := 1;
+  exception when others then
+    propio := 0;
+  end;
+
+  raise exception E'APP_USER_OPERADOR_FK  cruzado=%  sin_tenant=%  propio=%   (esperado 0 / 0 / 1 — antes de la 0050 daba 1 / 1 / 1)',
+    cruzado, sin_tenant, propio;
+end $$;
