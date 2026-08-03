@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { mxn } from '@/lib/formato';
 
-interface Comprobante { concepto: string; monto: number; folio?: string; cfdiUuid?: string; label: string }
+interface Comprobante { concepto: string; monto: number; folio?: string; cfdiUuid?: string; rfcReceptor?: string; label: string }
 interface Bubble { from: 'op' | 'cuadra'; text: string }
 
 // 🔴 INVENTADO: escenario de demo Silao→Laredo. Anticipo = total comprobado,
@@ -13,7 +13,11 @@ const PRESETS: Comprobante[] = [
   { concepto: 'diesel', monto: 4200, folio: 'DS-8801', label: 'Diésel $4,200 (sobre tope)' },
   { concepto: 'diesel', monto: 3800, folio: 'DS-8802', label: 'Diésel $3,800' },
   { concepto: 'caseta', monto: 1400, folio: 'CA-4471', label: 'Caseta $1,400' },
-  { concepto: 'factura', monto: 1200, folio: 'FA-9007', cfdiUuid: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', label: 'Factura CFDI $1,200' },
+  // El receptor viaja con el preset: la burbuja de acuse afirma «CFDI validado
+  // por QR ✅», y sin este campo el motor —con razón— pedía dos burbujas
+  // después «reenvía una foto más clara del QR» sobre ese mismo comprobante
+  // (FE-2, auditoría 10). Un QR que de verdad se leyó entrega el receptor.
+  { concepto: 'factura', monto: 1200, folio: 'FA-9007', cfdiUuid: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', rfcReceptor: 'TIN010101AA5', label: 'Factura CFDI $1,200' },
 ];
 
 
