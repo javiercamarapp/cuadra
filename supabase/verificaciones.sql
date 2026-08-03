@@ -992,7 +992,7 @@ end $$;
 -- se cuenta qué ve. 1/1/1 = solo lo suyo. 2/2/2 sería la fuga.
 do $$
 declare
-  v_t uuid; v_o1 uuid; v_o2 uuid; v_v1 uuid; v_v2 uuid; v_u1 uuid := gen_random_uuid();
+  v_t uuid; v_o1 uuid; v_o2 uuid; v_v1 uuid; v_v2 uuid; v_u1 uuid;
   n_viaje int; n_gasto int; n_liq int; n_otro_viaje int;
 begin
   insert into tenant (nombre) values ('ZZZ VERIF OPERADOR RLS') returning id into v_t;
@@ -1002,6 +1002,7 @@ begin
   insert into viaje (tenant_id, operador_id) values (v_t, v_o2) returning id into v_v2;
   insert into gasto (tenant_id, viaje_id, concepto, monto) values (v_t, v_v1, 'diesel', 100), (v_t, v_v2, 'diesel', 200);
   insert into liquidacion (tenant_id, viaje_id) values (v_t, v_v1), (v_t, v_v2);
+  v_u1 := auth.crear_usuario('zzz-verif-chofer1@likida.test');
   insert into app_user (id, tenant_id, email, rol, operador_id)
     values (v_u1, v_t, 'zzz-verif-chofer1@likida.test', 'operador', v_o1);
 
@@ -1041,14 +1042,15 @@ end $$;
 -- ═══════════════════════════════════════════════════════════════════════════
 do $$
 declare
-  v_t uuid; v_o1 uuid; v_u1 uuid := gen_random_uuid();
+  v_t uuid; v_o1 uuid; v_u1 uuid;
   n_term int; n_oper int; n_pol int; n_conv int; n_upd int;
 begin
   insert into tenant (nombre) values ('ZZZ VERIF OPERADOR RLS RESTO') returning id into v_t;
   insert into operador (tenant_id, nombre, telefono) values (v_t, 'Chofer Uno', '520000009040') returning id into v_o1;
   insert into terminal (tenant_id, nombre) values (v_t, 'Terminal Demo');
   insert into politica_gasto (tenant_id, concepto, tope_monto) values (v_t, 'diesel', 4000);
-  insert into wa_conversacion (tenant_id, operador_id) values (v_t, v_o1);
+  insert into wa_conversacion (tenant_id, operador_id, telefono) values (v_t, v_o1, '520000009040');
+  v_u1 := auth.crear_usuario('zzz-verif-chofer-resto@likida.test');
   insert into app_user (id, tenant_id, email, rol, operador_id)
     values (v_u1, v_t, 'zzz-verif-chofer-resto@likida.test', 'operador', v_o1);
 
@@ -1124,13 +1126,14 @@ end $$;
 -- ⚠️  NO SE HA CORRIDO. La 0048 se escribió sin base contra la cual ejercerla.
 do $$
 declare
-  v_t uuid; v_o uuid; v_v uuid; v_l uuid; v_u uuid := gen_random_uuid();
+  v_t uuid; v_o uuid; v_v uuid; v_l uuid; v_u uuid;
   n_ve int; n_borro int; n_actualizo int;
 begin
   insert into tenant (nombre) values ('ZZZ VERIF CONTADOR') returning id into v_t;
   insert into operador (tenant_id, nombre, telefono) values (v_t, 'Chofer', '520000009060') returning id into v_o;
   insert into viaje (tenant_id, operador_id) values (v_t, v_o) returning id into v_v;
   insert into liquidacion (tenant_id, viaje_id) values (v_t, v_v) returning id into v_l;
+  v_u := auth.crear_usuario('zzz-verif-contador@likida.test');
   insert into app_user (id, tenant_id, email, rol)
     values (v_u, v_t, 'zzz-verif-contador@likida.test', 'contador');
 
@@ -1413,3 +1416,20 @@ begin
   raise exception E'APP_USER_AUTH_FK  huerfanas=%  viva=%  tras_borrar=%   (esperado 0 / 1 / 0 — antes de la 0053 daba 1 / 1 / 1)',
     huerfanas, viva, tras_borrar;
 end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- CÓMO SE CORREN ESTOS BLOQUES  (3-ago-2026)
+--
+-- `./scripts/verificar-sql.sh` arma un PostgreSQL 16 local, aplica
+-- `andamiaje_local.sql` (los roles de PostgREST, `auth.uid()`, `auth.users` y
+-- `storage.buckets` — lo que la plataforma pone y el repo no), corre las 53
+-- migraciones en orden y ejecuta cada bloque, distinguiendo el veredicto
+-- (SQLSTATE P0001) de un fallo de armado (cualquier otro código).
+--
+-- QUÉ VALE: el motor de RLS es el mismo PostgreSQL, así que un bloque que pasa
+-- aquí es evidencia FUERTE. NO es Supabase — sin GoTrue ni PostgREST reales.
+-- Los que tocan `auth` o `storage` se vuelven a correr allá antes de desplegar.
+--
+-- 3 bloques siguen sin llegar a medir, y cada uno es un hallazgo, no un
+-- descuido del script — están anotados en `docs/auditoria-10/pendientes.md`.
+-- ═══════════════════════════════════════════════════════════════════════════
