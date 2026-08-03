@@ -55,6 +55,11 @@ const FALLBACK: Record<string, string> = {
   'google/gemini-3.6-flash': 'anthropic/claude-haiku-4.5',
   'google/gemini-3.5-flash-lite': 'openai/gpt-5.6-luna',
   'anthropic/claude-sonnet-5': 'openai/gpt-5.6-terra',
+  // Opus ya no es el default de ningún rol (se retiró `cuadre_fallback`, que
+  // nadie ejecutaba), pero esta tabla se llavea por SLUG y cualquier rol puede
+  // apuntarse a él por env (`CUADRA_MODEL_CUADRE=anthropic/claude-opus-5`). Por
+  // eso su fallback —y su precio en PRICES— se quedan: no son entradas muertas,
+  // son la red de la configuración.
   'anthropic/claude-opus-5': 'anthropic/claude-sonnet-5',
 };
 
