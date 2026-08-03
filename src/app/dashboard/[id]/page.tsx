@@ -1,7 +1,7 @@
 import { requireSessionTenant } from '@/lib/auth/guard';
 import Link from 'next/link';
 import { LEYENDA_CORTA } from '@/lib/cuadra/cuadre/leyendas';
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { getLiquidacionDetalle } from '@/lib/cuadra/analytics';
 import { etiquetaConcepto } from '@/lib/cuadra/cuadre/engine';
 import { filasDeducibilidad } from '@/lib/cuadra/liquidacion/deducibilidad';
@@ -9,7 +9,8 @@ import { mxn } from '@/lib/utils';
 import { litros, fechaMx } from '../formato';
 import { FilaDeduc } from '../deducible';
 import { puedeExportar, puedeAsignar } from '@/lib/auth/permisos';
-import { listOperadores, reasignarOperador } from '@/lib/cuadra/repo';
+import { listOperadores } from '@/lib/cuadra/repo';
+import { reasignarChofer } from './reasignar';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,19 +42,15 @@ export default async function Detalle({ params }: { params: Promise<{ id: string
   const puedeReasignar = puedeAsignar(rol);
   const operadores = puedeReasignar ? await listOperadores(tenantId) : [];
 
+  // El CUERPO de este action vive en `./reasignar` — se sacó para poder
+  // EJECUTARLO en una prueba (auditoría 10, ALTO de pruebas: los tres gates de
+  // rol del panel se podían borrar con la suite verde). Aquí queda el
+  // envoltorio, así que el `<form action={…}>` y lo que viaja por el cable son
+  // los mismos: la segunda comprobación de permiso sigue ocurriendo DENTRO del
+  // action, no solo en el `puedeAsignar` de arriba que decide si se pinta.
   async function reasignar(formData: FormData) {
     'use server';
-    // Repite la comprobación de permiso EN el server action: el `puedeAsignar`
-    // de arriba solo decide si el <form> se pinta. Sin este segundo chequeo,
-    // un contador que arme la petición a mano (misma sesión válida, sin el
-    // botón) podría reasignar igual — el mismo criterio que ya usa
-    // `requireSessionTenant` para no confiar solo en lo que el proxy filtra.
-    const { tenantId: t, rol: r } = await requireSessionTenant(`/dashboard/${id}`);
-    if (!puedeAsignar(r)) redirect(`/dashboard/${id}`);
-    const operadorId = String(formData.get('operadorId') ?? '');
-    if (!operadorId) redirect(`/dashboard/${id}`);
-    await reasignarOperador(t, d!.viajeId, operadorId);
-    redirect(`/dashboard/${id}`);
+    await reasignarChofer(id, d!.viajeId, formData);
   }
   // LA FOTO DEL TICKET SE GUARDA (CFF art. 30, conservación 5 años) PERO NO SE
   // ENSEÑA AQUÍ. El aviso de privacidad (privacidad.ts:498) le promete al
