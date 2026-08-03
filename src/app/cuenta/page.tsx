@@ -9,6 +9,19 @@ export default async function Cuenta() {
   const s = await requireSessionTenant('/cuenta');
   const { data: tenant } = await supabaseAdmin()
     .from('tenant').select('nombre').eq('id', s.tenantId).maybeSingle();
+  // EL CORREO, NO EL UUID. El campo "Nombre" del alta es opcional por diseño
+  // (`admin/usuarios/nuevo/page.tsx:57`), así que `app_user.nombre` puede
+  // quedar en `null`; esta pantalla resolvía con `s.nombre ?? s.userId` y bajo
+  // la etiqueta "Usuario" imprimía `3f2a1c88-9b04-4e11-…`. Es la única pantalla
+  // que el contralor abre para confirmar "sí, soy yo", y le contestaba con un
+  // identificador interno (auditoría 10, frontend, BAJO).
+  //
+  // `app_user.email` es `not null unique` (schema.sql:22) y `session.ts` no lo
+  // selecciona; se pide aquí, que es donde hace falta, en vez de engordar el
+  // select de la puerta de autorización.
+  const { data: usuario } = await supabaseAdmin()
+    .from('app_user').select('email').eq('id', s.userId).maybeSingle();
+  const quienEs = s.nombre ?? (usuario?.email as string | undefined) ?? '—';
 
   async function cerrarSesion() {
     'use server';
@@ -28,7 +41,7 @@ export default async function Cuenta() {
           </div>
           <div>
             <dt style={{ color: 'var(--muted)' }}>Usuario</dt>
-            <dd>{s.nombre ?? s.userId}</dd>
+            <dd>{quienEs}</dd>
           </div>
         </dl>
         {/* Mismo criterio que /mis-viajes: el aviso del titular es el de SU
