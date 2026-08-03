@@ -111,6 +111,19 @@ export async function verificarMigracionesCriticas(): Promise<void> {
       reportarProbe(e16, 'FALTA la migración 0016 (codigo_pendiente): el acercamiento que llegue antes que su ticket pierde el folio exacto y el gasto se queda con el folio del OCR. Corre `supabase db push`.');
       faltan = true;
     }
+    // Migración 0045 (app_user.operador_id + RLS del chofer). Su ausencia es de
+    // las peores, y era la única sin sondear: `getSessionTenant` pide
+    // `operador_id` en el MISMO select que `tenant_id`, así que sin la columna
+    // PostgREST falla la consulta ENTERA, `data` queda null y TODO usuario
+    // —incluido el superadmin— sale con `tenantId: null` y aterriza en
+    // /sin-acceso. El panel no se ve roto: se ve como si nadie tuviera alta, que
+    // es el síntoma más caro de diagnosticar que puede tener este producto
+    // (auditoría 10, CRÍTICO de modelo de datos).
+    const { error: e45 } = await admin.from('app_user').select('operador_id').limit(1);
+    if (e45) {
+      reportarProbe(e45, 'FALTA la migración 0045 (app_user.operador_id): NADIE puede entrar al panel —ni el contralor ni el superadmin—, porque el select de la sesión pide esa columna y falla entero; todos acaban en /sin-acceso como si no tuvieran alta. Y la RLS del chofer tampoco está. Corre `supabase db push`.');
+      faltan = true;
+    }
     // Las dos migraciones nuevas del camino del dinero. La 0017 hace el merge de
     // ocr_extra con claim (sin ella se pisan los folios de portal entre fotos de
     // una misma ráfaga); la 0019 impide que el mismo CFDI se liquide dos veces.

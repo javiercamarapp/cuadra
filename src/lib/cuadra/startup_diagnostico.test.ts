@@ -77,6 +77,38 @@ describe('diagnóstico de migraciones', () => {
     expect(info).toHaveBeenCalledWith('startup.migraciones', { ok: true });
   });
 
+  // ── CRÍTICO de la auditoría 10 (modelo de datos) ──────────────────────────
+  //
+  // Nada sondaba la 0045, y su ausencia es de las peores que hay: el `select`
+  // de `getSessionTenant` pide `operador_id`, una columna que NACE en esa
+  // migración. Si no está, PostgREST falla el select ENTERO, `data` queda en
+  // null y TODO usuario —el contralor, y también el superadmin— sale con
+  // `tenantId: null` y aterriza en /sin-acceso. El panel no se ve roto: se ve
+  // como si nadie tuviera alta. Y el arranque decía `ok: true`.
+  it('si falta la 0045, el arranque lo dice — es la que deja a TODOS fuera del panel', async () => {
+    rpc.mockResolvedValue({ error: null });
+    from.mockImplementation((t: string) => (t === 'app_user'
+      ? tabla({ error: { code: '42703', message: 'column app_user.operador_id does not exist' } })
+      : okTabla));
+    await verificarMigracionesCriticas();
+
+    expect(info).not.toHaveBeenCalledWith('startup.migraciones', { ok: true });
+    const dicho = error.mock.calls.map(([, m]) => (m as { msg: string }).msg).join(' ');
+    expect(dicho).toContain('0045');
+    expect(dicho, 'y que diga la consecuencia, no solo el número').toMatch(/panel|sin-acceso|fuera/i);
+  });
+
+  it('un fallo de RED sobre esa misma sonda no se reporta como migración faltante', async () => {
+    rpc.mockResolvedValue({ error: null });
+    from.mockImplementation((t: string) => (t === 'app_user'
+      ? tabla({ error: { code: '', message: 'TypeError: fetch failed' } })
+      : okTabla));
+    await verificarMigracionesCriticas();
+
+    expect(error).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+  });
+
   // La red se puede caer en cualquiera de los cuatro probes, no solo en el primero.
   it('el mismo criterio aplica al probe de la barrera de intake', async () => {
     rpc.mockResolvedValueOnce({ error: null })                                        // 0005 ok
