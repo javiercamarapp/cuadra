@@ -134,12 +134,65 @@ describe('getConversacionesActivas', () => {
       error: null,
     });
     const r = await getConversacionesActivas();
-    expect(r).toEqual([{
-      telefono: '529993700779',
-      tenantNombre: 'Transportes Innovativos',
-      turns: [{ role: 'user', content: 'Listo' }, { role: 'assistant', content: 'Listo, cuadré tu viaje' }],
-      actualizadaEn: '2026-08-02T20:00:00Z',
-    }]);
+    expect(r[0].tenantNombre).toBe('Transportes Innovativos');
+    expect(r[0].turns).toEqual([{ role: 'user', content: 'Listo' }, { role: 'assistant', content: 'Listo, cuadré tu viaje' }]);
+    expect(r[0].actualizadaEn).toBe('2026-08-02T20:00:00Z');
+  });
+
+  // ── CRÍTICO de la auditoría 10 (legal) ────────────────────────────────────
+  //
+  // Estas conversaciones se pintan en CUATRO pantallas de /admin, y el layout
+  // las carga en cada página. El aviso integral que el operador consulta en
+  // `/aviso/[tenant]` lista, entre las finalidades a las que puede oponerse:
+  //
+  //   «Medir cómo funciona el servicio para mejorarlo (estadísticas de uso,
+  //    SIN IDENTIFICARTE EN LOS REPORTES).»
+  //
+  // Y cierra: «Cualquier finalidad que no esté escrita aquí requiere que te
+  // vuelvan a pedir permiso. La ley vigente ya no permite ampararse en usos
+  // "compatibles o análogos"». `/admin` enseñaba +5219993700779 como título de
+  // la tarjeta: el titular, identificado, en el reporte.
+  //
+  // Esto cierra la mitad que el propio aviso ya prohíbe. La otra mitad —si
+  // Likida debe ver transcripciones para una finalidad propia— es una decisión
+  // de producto y de aviso, y queda anotada como hallazgo abierto.
+  it('el reporte NO lleva el teléfono del operador: el aviso dice «sin identificarte»', async () => {
+    respuestas.set('wa_conversacion', {
+      data: [{
+        telefono: '5219993700779', updated_at: '2026-08-02T20:00:00Z',
+        estado: { turns: [{ role: 'user', content: 'soy Juan, mi tel es 5219993700779' }] },
+        tenant: { nombre: 'Transportes Innovativos' },
+      }],
+      error: null,
+    });
+    const r = await getConversacionesActivas();
+    const todo = JSON.stringify(r);
+    expect(todo, 'el teléfono no puede salir por ningún campo').not.toContain('5219993700779');
+    expect(r[0].seudonimo, 'pero sí un seudónimo, para poder distinguir dos conversaciones').toBeTruthy();
+  });
+
+  it('el seudónimo es ESTABLE: la misma conversación se sigue a lo largo del tiempo', async () => {
+    const fila = (updated: string) => ({
+      data: [{ telefono: '5219993700779', updated_at: updated, estado: { turns: [] }, tenant: null }],
+      error: null,
+    });
+    respuestas.set('wa_conversacion', fila('2026-08-02T20:00:00Z'));
+    const a = (await getConversacionesActivas())[0].seudonimo;
+    respuestas.set('wa_conversacion', fila('2026-08-03T09:00:00Z'));
+    const b = (await getConversacionesActivas())[0].seudonimo;
+    expect(a).toBe(b);
+  });
+
+  it('y dos operadores distintos no colapsan en el mismo seudónimo', async () => {
+    respuestas.set('wa_conversacion', {
+      data: [
+        { telefono: '5219993700779', updated_at: '2026-08-02T20:00:00Z', estado: { turns: [] }, tenant: null },
+        { telefono: '5219993700780', updated_at: '2026-08-02T19:00:00Z', estado: { turns: [] }, tenant: null },
+      ],
+      error: null,
+    });
+    const r = await getConversacionesActivas();
+    expect(r[0].seudonimo).not.toBe(r[1].seudonimo);
   });
 
   it('sin turns (conversación recién creada) o estado ajeno, lista vacía en vez de reventar', async () => {

@@ -16,6 +16,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { round2 } from '@/lib/formato';
+import { huellaId, redactarTexto } from '@/lib/logger';
 
 export interface ResumenNegocio {
   tenants: number;
@@ -195,7 +196,20 @@ export async function getCostoPorFaseModelo(): Promise<CostoPorFaseModelo[]> {
 export interface TurnoConversacion { role: 'user' | 'assistant'; content: string }
 
 export interface ConversacionActiva {
-  telefono: string;
+  /**
+   * Seudónimo estable del operador — NUNCA su teléfono.
+   *
+   * El aviso integral que el operador consulta en `/aviso/[tenant]` lista, entre
+   * las finalidades a las que puede oponerse, «estadísticas de uso, SIN
+   * IDENTIFICARTE EN LOS REPORTES», y cierra diciendo que cualquier finalidad no
+   * escrita ahí exige pedirle permiso otra vez. `/admin` pintaba
+   * `+5219993700779` como título de la tarjeta, en cuatro pantallas
+   * (auditoría 10, CRÍTICO de cumplimiento legal).
+   *
+   * Estable a propósito: dos conversaciones del mismo operador dan el mismo
+   * seudónimo, así que se puede seguir un caso sin saber de quién es.
+   */
+  seudonimo: string;
   tenantNombre: string;
   turns: TurnoConversacion[];
   actualizadaEn: string;
@@ -220,9 +234,20 @@ export async function getConversacionesActivas(): Promise<ConversacionActiva[]> 
   return (data ?? []).map((c) => {
     const estado = (c.estado as { turns?: TurnoConversacion[] }) ?? {};
     return {
-      telefono: c.telefono as string,
+      // La seudonimización va AQUÍ, en la capa de datos, y no en cada pantalla:
+      // estas conversaciones se pintan en cuatro sitios de /admin y el layout
+      // las carga en cada página. Taparlo pantalla por pantalla es cómo se
+      // olvida la quinta.
+      seudonimo: huellaId(c.telefono as string),
       tenantNombre: ((c.tenant as { nombre?: string } | null)?.nombre) ?? '—',
-      turns: Array.isArray(estado.turns) ? estado.turns : [],
+      // Y dentro del texto también: el operador teclea su propio teléfono y su
+      // RFC en la conversación («soy Juan, mi tel es 5219…»). Quitar el
+      // encabezado y dejar el identificador en el cuerpo no seudonimiza nada.
+      // Se usa el MISMO redactor que ya filtra lo que va a Sentry, para que no
+      // haya dos definiciones de «dato sensible» que puedan divergir.
+      turns: Array.isArray(estado.turns)
+        ? estado.turns.map((t) => ({ ...t, content: redactarTexto(String(t.content ?? '')) }))
+        : [],
       actualizadaEn: c.updated_at as string,
     };
   });
