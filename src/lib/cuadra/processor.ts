@@ -29,7 +29,7 @@ import { violaIndice, llegoTarde } from '@/lib/cuadra/pg_errores';
 import { mxn, fechaMx } from '@/lib/formato';
 import { guardiaFundamento, normasDeToolCalls } from '@/lib/cuadra/normas/fundamento';
 import { guardiaEstado } from '@/lib/cuadra/cuadre/estado_afirmado';
-import { crearPresupuesto, PRESUPUESTO_WEBHOOK_MS, acotada, TECHO_OCR_MS, TOPE_BARRERA_INTAKE_MS } from '@/lib/cuadra/presupuesto';
+import { crearPresupuesto, PRESUPUESTO_WEBHOOK_MS, acotada, TECHO_OCR_MS, TOPE_BARRERA_INTAKE_MS, TECHO_ENVIO_META_MS, hayPresupuestoPara, techoPasoSupabaseMs } from '@/lib/cuadra/presupuesto';
 import { conceptoDesdeClave } from '@/lib/cuadra/intake/concepto';
 import { getConfig } from '@/lib/cuadra/config';
 import { emparejarPendiente, emparejarXmlConTicket } from '@/lib/cuadra/intake/emparejar';
@@ -377,7 +377,13 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
     const say = async (text: string): Promise<boolean> => {
       const id = await sendText(msg.from, text);
       if (!id) return false;
-      await registrarCostoWhatsApp(op.tenantId, viajeId);
+      // La contabilidad del mensaje es ACCESORIA frente al mensaje mismo: el
+      // envío ya ocurrió, y gastar aquí el techo de una consulta cuando ya no
+      // queda presupuesto se lleva por delante el paso siguiente, que puede ser
+      // el PDF. Se salta con rastro en vez de morir sin ninguno.
+      if (hayPresupuestoPara(reloj, techoPasoSupabaseMs(), 'registrarCostoWhatsApp')) {
+        await registrarCostoWhatsApp(op.tenantId, viajeId);
+      }
       return true;
     };
 
@@ -1275,11 +1281,25 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
       agentTools = res.toolCalls;
       closed = res.toolCalls.some((t) => t.toolName === 'guardar_liquidacion' && !t.error);
       ctxCerro = closed;
-      await registrarCosto({ tenantId: op.tenantId, viajeId, fase: faseDeModelo(res.model, 'cuadre'), modelo: res.model, tokensIn: res.tokensIn, tokensOut: res.tokensOut, costoUsd: res.costUsd });
+      // EL CIERRE MIRA EL RELOJ (auditoría 10, ALTO). De aquí en adelante corren
+      // los trece pasos de `PASOS_CIERRE`, con un techo sumado de 125 000 ms
+      // contra un `maxDuration` de 120 000. Hasta la ronda 10 ninguno consultaba
+      // el presupuesto: cuando reventaba, la liquidación ya estaba escrita, el
+      // operador no recibía nada y no quedaba ni una línea de log.
+      //
+      // La contabilidad de costo es de los pasos que ceden: sin ella el costo
+      // unitario de ESTA liquidación queda sin medir, que es malo — pero morir
+      // aquí deja además al operador sin resumen y sin PDF sobre una liquidación
+      // ya cerrada, que es peor y no se puede reparar por reintento.
+      if (hayPresupuestoPara(reloj, techoPasoSupabaseMs(), 'registrarCosto del turno')) {
+        await registrarCosto({ tenantId: op.tenantId, viajeId, fase: faseDeModelo(res.model, 'cuadre'), modelo: res.model, tokensIn: res.tokensIn, tokensOut: res.tokensOut, costoUsd: res.costUsd });
+      }
       if (closed) {
         const call = res.toolCalls.find((t) => t.toolName === 'guardar_liquidacion' && !t.error);
         const liqId = (call?.result as { liquidacion_id?: string } | undefined)?.liquidacion_id;
-        if (liqId) await vincularCostosALiquidacion(op.tenantId, viajeId, liqId);
+        if (liqId && hayPresupuestoPara(reloj, techoPasoSupabaseMs(), 'vincularCostosALiquidacion')) {
+          await vincularCostosALiquidacion(op.tenantId, viajeId, liqId);
+        }
       }
       logger.info('agent.run', { tenant: op.tenantId, viaje: viajeId, tools: res.toolCalls.map((t) => t.toolName), costUsd: res.costUsd });
     } catch (e) {
@@ -1464,7 +1484,11 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
     // clase de mentira que `guardiaEstado` existe para tapar, solo que este
     // texto no pasa por ninguna guardia. Se bifurca la frase ENTERA por
     // `closed`, no solo el consejo (que ya se bifurcaba desde la ronda 8).
-    if (!intakeOk) {
+    // El aviso es accesorio y cuesta tres pasos de red (getGastos + sendText +
+    // su contabilidad): 9 500 + 10 000 + 9 500 = 29 000 ms de techo, casi un
+    // cuarto del presupuesto de la invocación entera, y va ANTES del PDF. Si ya
+    // no hay tiempo, el operador prefiere el PDF sin la nota a la nota sin PDF.
+    if (!intakeOk && hayPresupuestoPara(reloj, techoPasoSupabaseMs() + TECHO_ENVIO_META_MS, 'aviso de barrera')) {
       try {
         const n = (await getGastos(viajeId, op.tenantId)).length;
         const aviso = closed
@@ -1586,6 +1610,11 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
         : 'Perdón, se me trabó tantito. ¿Me reenvías tu último mensaje? 🙏';
     try { await sendText(msg.from, aviso); } catch { /* best-effort */ }
   } finally {
-    if (lockedViaje) await releaseViajeLock(lockedViaje);
+    // El único paso del cierre que se puede omitir sin consecuencia: el lease
+    // tiene TTL de 60 s y expira solo. Soltarlo a mano ahorra esa espera, pero
+    // no vale colgarse 9 500 ms más cuando el presupuesto ya se acabó.
+    if (lockedViaje && hayPresupuestoPara(reloj, techoPasoSupabaseMs(), 'releaseViajeLock')) {
+      await releaseViajeLock(lockedViaje);
+    }
   }
 }

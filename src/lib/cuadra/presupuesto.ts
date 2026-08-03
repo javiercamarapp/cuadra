@@ -18,40 +18,127 @@ import { logger } from '@/lib/logger';
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * LOS PASOS DE RED DEL CIERRE, UNO POR UNO.
+ * TECHO DURO DE UNA CONSULTA A SUPABASE. Lo impone `repo.ts` en cada llamada.
+ *
+ * Va al principio del archivo porque `PASOS_CIERRE` —la tabla de techos del
+ * cierre, más abajo— lo usa al construirse.
+ *
+ * `supabaseAdmin()` construye el cliente sin `fetch` propio, así que hasta aquí
+ * NINGUNA consulta ni RPC del sistema llevaba señal de aborto. El default del
+ * `fetch` global de Node (undici) es `headersTimeout`/`bodyTimeout` de 300 000
+ * ms: un socket aceptado que no contesta bloquea 300s. Medido en esta máquina
+ * contra un servidor que acepta y calla, `fetch` seguía bloqueado a los 20s sin
+ * el menor síntoma.
+ *
+ * Vercel mata la función a los 120s (`route.ts:27`), o sea 180s ANTES de que ese
+ * fetch se rinda. Y morir así es el peor final posible: la liquidación ya quedó
+ * escrita en la base, el operador no recibe ni resumen ni PDF, el
+ * `logger.error('pdf.no_entregado')` tampoco se escribe porque el proceso muere
+ * antes del `catch`, y Meta —que recibió su 200 en `route.ts:78`— no reintenta.
+ *
+ * ¿Por qué 8s y no menos? Una consulta de este sistema cuesta ~0.3s en la
+ * contabilidad de arriba, así que 8s son 26× lo típico: ninguna consulta sana lo
+ * toca ni con un p99 diez veces peor. Y ¿por qué no más? Porque el peor caso
+ * sumado de la ruta son ~90.8s contra 120: cada consulta colgada gasta
+ * `TOPE − 0.3`s de esa holgura, y con 8s la invocación sobrevive a TRES colgadas
+ * antes de tocar el límite. Con el default de undici no sobrevive a una.
+ *
+ * Se puede subir por entorno sin desplegar (`CUADRA_TOPE_CONSULTA_MS`): la
+ * latencia real Vercel ↔ Supabase no está medida, y si resulta peor que la
+ * documentada hay que poder aflojarlo desde el panel y no desde un commit.
+ */
+export const TOPE_CONSULTA_MS = Number(process.env.CUADRA_TOPE_CONSULTA_MS) || 8_000;
+
+/** Margen sobre el tope antes de que dispare la red de seguridad. */
+const GRACIA_TOPE_MS = 1_500;
+
+/**
+ * TECHO DE UN PASO DE RED DEL CIERRE QUE VA A SUPABASE.
+ *
+ * No es el costo típico (0.3 s): es lo que ese paso puede tardar como MÁXIMO sin
+ * que nada lo interrumpa, y lo fija este mismo archivo:
+ * `TOPE_CONSULTA_MS` + `GRACIA_TOPE_MS`.
+ *
+ * Se define como función porque `TOPE_CONSULTA_MS` se lee de entorno: si alguien
+ * lo afloja desde el panel, el techo del cierre tiene que moverse con él y no
+ * quedarse en un literal viejo.
+ */
+export function techoPasoSupabaseMs(): number { return TOPE_CONSULTA_MS + GRACIA_TOPE_MS; }
+
+/**
+ * TECHO DE UN ENVÍO A META (`sendText` / `sendDocument`).
+ *
+ * Es `SEND_TIMEOUT_MS` de `src/lib/meta/client.ts:17`. Está copiado y no
+ * importado a propósito —importar `meta/client` desde aquí arrastraría el
+ * cliente entero y su lectura de entorno a un módulo que solo hace aritmética—,
+ * así que `presupuesto.test.ts` lee aquel archivo y falla si los dos se
+ * separan. Mismo mecanismo que ya sincroniza `PRESUPUESTO_WEBHOOK_MS` con el
+ * `maxDuration` de la ruta.
+ */
+export const TECHO_ENVIO_META_MS = 10_000;
+
+/**
+ * LOS PASOS DE RED DEL CIERRE, UNO POR UNO — CON SU TECHO, NO SOLO SU PROMEDIO.
  *
  * Esto era un comentario, y el comentario mentía: enumeraba SEIS pasos y sumaba
  * "~7s en un día malo". Contados contra `processor.ts` después de que `runAgent`
- * devuelve, son TRECE viajes de red secuenciales y suman 8.9s. La cuenta seguía
- * cabiendo en los 12s reservados, pero con 3.1s de holgura y no con los ~5s que
- * sugería. Nadie se enteró porque una lista en prosa no se puede verificar.
+ * devuelve, son TRECE viajes de red secuenciales.
  *
- * Ahora es una tabla, y `presupuesto.test.ts` compara su suma contra
- * `MARGEN_CIERRE_MS`. Meter un paso más al cierre sin ampliar el margen deja de
- * ser un descuido silencioso y pasa a ser una prueba en rojo — el mismo
- * mecanismo que ya protege la sincronía con `maxDuration`.
+ * AUDITORÍA 10, ALTO: la tabla se pobló con el costo NOMINAL de cada paso (0.3 s
+ * una consulta, 1.5 s un `sendText`) y `presupuesto.test.ts` comparaba esa suma
+ * —8 900 ms— contra `MARGEN_CIERRE_MS`. Era la suma del promedio, no la del peor
+ * caso. Con el techo que el propio repo le impone a cada paso, los mismos trece
+ * suman **125 000 ms**: 10.4× la reserva de 12 000 y 1.04× el `maxDuration` de
+ * 120 000 ELLOS SOLOS. Una tabla de promedios no puede verificar un modo de
+ * fallo que solo ocurre en el peor caso.
  *
- * Los costos unitarios son los que este archivo ya usaba: 0.3s una consulta,
- * 1.5s un `sendText`, 2.5s un `sendDocument`, 0.5s una URL firmada.
+ * `ms` sigue siendo el costo nominal (para dimensionar la reserva, que es un
+ * promedio y está bien que lo sea). `techo` es lo que ese paso puede tardar como
+ * máximo. `opcional` marca los que `processor.ts` SALTA cuando el reloj dice que
+ * ya no hay presupuesto: lo que no es el entregable —la respuesta y el PDF— ni
+ * una guardia de corrección.
  */
-export const PASOS_CIERRE: ReadonlyArray<{ paso: string; donde: string; ms: number }> = [
-  { paso: 'registrarCosto del turno',              donde: 'processor.ts:591',  ms: 300 },
-  { paso: 'vincularCostosALiquidacion',            donde: 'processor.ts:595',  ms: 300 },
-  { paso: 'guardiaCifras → cuadrarDesdeDB',        donde: 'processor.ts:658',  ms: 300 },
-  { paso: 'sendText de la respuesta',              donde: 'processor.ts:715',  ms: 1_500 },
-  { paso: 'registrarCostoWhatsApp de la respuesta', donde: 'costos.ts',        ms: 300 },
-  { paso: 'getGastos para el aviso de barrera',    donde: 'processor.ts:734',  ms: 300 },
-  { paso: 'sendText del aviso de barrera',         donde: 'processor.ts:735',  ms: 1_500 },
-  { paso: 'registrarCostoWhatsApp de ese aviso',   donde: 'costos.ts',         ms: 300 },
-  { paso: 'createSignedUrl del PDF',               donde: 'processor.ts:755',  ms: 500 },
-  { paso: 'sendDocument del PDF',                  donde: 'processor.ts:757',  ms: 2_500 },
-  { paso: 'registrarCostoWhatsApp del PDF',        donde: 'processor.ts:758',  ms: 300 },
-  { paso: 'saveConversation',                      donde: 'processor.ts:774',  ms: 500 },
-  { paso: 'releaseViajeLock',                      donde: 'processor.ts:814',  ms: 300 },
+export const PASOS_CIERRE: ReadonlyArray<{
+  paso: string; donde: string; ms: number; techo: number; opcional: boolean;
+}> = [
+  { paso: 'registrarCosto del turno',              donde: 'processor.ts:1278', ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
+  { paso: 'vincularCostosALiquidacion',            donde: 'processor.ts:1282', ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
+  { paso: 'guardiaCifras → cuadrarDesdeDB',        donde: 'processor.ts:1351', ms: 300,   techo: techoPasoSupabaseMs(), opcional: false },
+  { paso: 'sendText de la respuesta',              donde: 'processor.ts:1436', ms: 1_500, techo: TECHO_ENVIO_META_MS,   opcional: false },
+  { paso: 'registrarCostoWhatsApp de la respuesta', donde: 'processor.ts:380', ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
+  { paso: 'getGastos para el aviso de barrera',    donde: 'processor.ts:1470', ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
+  { paso: 'sendText del aviso de barrera',         donde: 'processor.ts:1474', ms: 1_500, techo: TECHO_ENVIO_META_MS,   opcional: true },
+  { paso: 'registrarCostoWhatsApp de ese aviso',   donde: 'processor.ts:380',  ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
+  { paso: 'createSignedUrl del PDF',               donde: 'processor.ts:1522', ms: 500,   techo: techoPasoSupabaseMs(), opcional: false },
+  { paso: 'sendDocument del PDF',                  donde: 'processor.ts:1524', ms: 2_500, techo: TECHO_ENVIO_META_MS,   opcional: false },
+  { paso: 'registrarCostoWhatsApp del PDF',        donde: 'processor.ts:380',  ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
+  { paso: 'saveConversation',                      donde: 'processor.ts:1551', ms: 500,   techo: techoPasoSupabaseMs(), opcional: false },
+  { paso: 'releaseViajeLock',                      donde: 'processor.ts:1589', ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
 ];
 
-/** Suma de la tabla de arriba. 8.9s con los costos unitarios de este archivo. */
+/** Suma de los costos NOMINALES. 8.9s con los costos unitarios de este archivo. */
 export const COSTO_CIERRE_MS = PASOS_CIERRE.reduce((s, p) => s + p.ms, 0);
+
+/**
+ * Suma de los TECHOS: lo que el cierre entero puede tardar si todo sale mal.
+ * 10 pasos de Supabase × 9 500 + 3 envíos a Meta × 10 000 = **125 000 ms**.
+ * Es el número del hallazgo, y no cabe en ningún presupuesto: por eso hay
+ * pasos `opcional`.
+ */
+export const TECHO_CIERRE_MS = PASOS_CIERRE.reduce((s, p) => s + p.techo, 0);
+
+/**
+ * Lo que el cierre puede tardar DESPUÉS de que `processor.ts` salta lo opcional:
+ * la guardia de cifras, la respuesta, la URL firmada, el PDF y la conversación.
+ * 9 500 + 10 000 + 9 500 + 10 000 + 9 500 = **48 500 ms**.
+ *
+ * No es una garantía de que quepa —un cierre que arranca con 20 s de
+ * presupuesto sigue pudiendo morir—; es la diferencia entre morir con el 100 %
+ * del peor caso encima y morir con el 39 %, y entre morir mudo y dejar
+ * `cierre.sin_presupuesto` escrito antes.
+ */
+export const TECHO_CIERRE_OBLIGATORIO_MS = PASOS_CIERRE
+  .filter((p) => !p.opcional).reduce((s, p) => s + p.techo, 0);
 
 /**
  * Tiempo que se aparta para CERRAR, o sea para todo lo que va DESPUÉS del
@@ -61,13 +148,22 @@ export const COSTO_CIERRE_MS = PASOS_CIERRE.reduce((s, p) => s + p.ms, 0);
  * 12s contra los 8.9s de `COSTO_CIERRE_MS`: 3.1s de holgura. El coste es que el
  * agente pasa de 52s a 48s de techo, y el turno típico usa ~20s.
  *
- * OJO CON LO QUE ESTE NÚMERO **NO** ES: no es un tope. Es una RESERVA, y una
- * reserva solo vale lo que valga el techo de cada paso que la consume. De los
- * trece, los que van a Supabase pasan por `repo.ts` y ahí sí llevan
- * `TOPE_CONSULTA_MS` impuesto; los `sendText`/`sendDocument` de `meta/client.ts`
- * siguen usando `fetch` pelado, y ahí el techo es el default de undici: 300s
- * contra un `maxDuration` de 120. Un solo envío colgado se lleva la invocación
- * entera sin dejar rastro, tenga esta reserva el valor que tenga.
+ * OJO CON LO QUE ESTE NÚMERO **NO** ES: no es un tope. Es una RESERVA
+ * dimensionada contra el costo NOMINAL. El peor caso de los trece pasos es
+ * `TECHO_CIERRE_MS` = 125 000 ms, o sea 10.4× esta reserva: ningún valor de esta
+ * constante puede impedir que un cierre desafortunado se pase.
+ *
+ * Lo que sí lo acota es que el cierre CONSULTE EL RELOJ, que hasta la auditoría
+ * 10 no hacía ni una vez: `processor.ts` salta los pasos `opcional` cuando
+ * `reloj.restanteDuro()` ya no da para su techo, y deja
+ * `cierre.paso_omitido` / `cierre.sin_presupuesto` escritos ANTES de que Vercel
+ * pueda matar la función. Con lo opcional fuera el peor caso baja a
+ * `TECHO_CIERRE_OBLIGATORIO_MS` = 48 500 ms.
+ *
+ * (El párrafo anterior de este comentario decía que `sendText`/`sendDocument`
+ * "siguen usando `fetch` pelado, y ahí el techo es el default de undici: 300s".
+ * Dejó de ser cierto: `meta/client.ts:17` les puso `SEND_TIMEOUT_MS = 10 000`.
+ * El comentario era el que estaba viejo, no el código.)
  */
 export const MARGEN_CIERRE_MS = 12_000;
 
@@ -121,37 +217,6 @@ const MARGEN_INTAKE_ESCRITURA_MS = 5_000;
  */
 export const TOPE_BARRERA_INTAKE_MS = TECHO_OCR_MS + MARGEN_INTAKE_ESCRITURA_MS;
 
-/**
- * TECHO DURO DE UNA CONSULTA A SUPABASE. Lo impone `repo.ts` en cada llamada.
- *
- * `supabaseAdmin()` construye el cliente sin `fetch` propio, así que hasta aquí
- * NINGUNA consulta ni RPC del sistema llevaba señal de aborto. El default del
- * `fetch` global de Node (undici) es `headersTimeout`/`bodyTimeout` de 300 000
- * ms: un socket aceptado que no contesta bloquea 300s. Medido en esta máquina
- * contra un servidor que acepta y calla, `fetch` seguía bloqueado a los 20s sin
- * el menor síntoma.
- *
- * Vercel mata la función a los 120s (`route.ts:27`), o sea 180s ANTES de que ese
- * fetch se rinda. Y morir así es el peor final posible: la liquidación ya quedó
- * escrita en la base, el operador no recibe ni resumen ni PDF, el
- * `logger.error('pdf.no_entregado')` tampoco se escribe porque el proceso muere
- * antes del `catch`, y Meta —que recibió su 200 en `route.ts:78`— no reintenta.
- *
- * ¿Por qué 8s y no menos? Una consulta de este sistema cuesta ~0.3s en la
- * contabilidad de arriba, así que 8s son 26× lo típico: ninguna consulta sana lo
- * toca ni con un p99 diez veces peor. Y ¿por qué no más? Porque el peor caso
- * sumado de la ruta son ~90.8s contra 120: cada consulta colgada gasta
- * `TOPE − 0.3`s de esa holgura, y con 8s la invocación sobrevive a TRES colgadas
- * antes de tocar el límite. Con el default de undici no sobrevive a una.
- *
- * Se puede subir por entorno sin desplegar (`CUADRA_TOPE_CONSULTA_MS`): la
- * latencia real Vercel ↔ Supabase no está medida, y si resulta peor que la
- * documentada hay que poder aflojarlo desde el panel y no desde un commit.
- */
-export const TOPE_CONSULTA_MS = Number(process.env.CUADRA_TOPE_CONSULTA_MS) || 8_000;
-
-/** Margen sobre el tope antes de que dispare la red de seguridad. */
-const GRACIA_TOPE_MS = 1_500;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TODA CONSULTA DE ESTE ARCHIVO TIENE TECHO.
@@ -237,9 +302,48 @@ export async function acotada<T>(consulta: PromiseLike<T>, etiqueta: string): Pr
  */
 export const PRESUPUESTO_WEBHOOK_MS = 120_000;
 
+/**
+ * ¿QUEDA PRESUPUESTO PARA UN PASO OPCIONAL DEL CIERRE?
+ *
+ * AUDITORÍA 10, ALTO: el cierre corría sin consultar el reloj ni una sola vez —
+ * `processor.ts:1158` (el `timeoutMs` del agente) era la última línea del archivo
+ * que mencionaba `reloj`, y después venían los trece pasos de `PASOS_CIERRE`, con
+ * un techo sumado de 125 000 ms contra una reserva de 12 000. Cuando eso
+ * reventaba, la liquidación ya estaba escrita, el operador no recibía nada, no
+ * quedaba ni una línea de log —el proceso muere antes de cualquier `catch`— y
+ * Meta no reintentaba.
+ *
+ * Esto no acelera nada: decide QUÉ se sacrifica cuando ya no hay tiempo, en vez
+ * de dejar que lo decida el hacha de Vercel. Lo accesorio (contabilidad de
+ * costo, avisos, soltar el mutex que igual expira por TTL) cede el paso al
+ * entregable: la respuesta y el PDF.
+ *
+ * Y sobre todo: **deja rastro**. `cierre.paso_omitido` se escribe ANTES de que
+ * la función pueda morir, así que el caso deja de ser invisible.
+ *
+ * @param techoMs  el TECHO del paso, no su costo nominal. El paso que mata la
+ *                 invocación es el lento, no el promedio.
+ */
+export function hayPresupuestoPara(reloj: Presupuesto, techoMs: number, paso: string): boolean {
+  const quedan = reloj.restanteDuro();
+  if (quedan >= techoMs) return true;
+  logger.warn('cierre.paso_omitido', { paso, techoMs, restanteMs: quedan });
+  return false;
+}
+
 export interface Presupuesto {
   /** Milisegundos utilizables que quedan, ya descontado el margen de cierre. */
   restante(): number;
+  /**
+   * Milisegundos que quedan de la invocación ENTERA, sin descontar el margen de
+   * cierre. Es lo que hay que mirar DENTRO del cierre: ahí `restante()` ya vale
+   * 0 por definición —el margen es justo lo que se está consumiendo— y usarlo
+   * haría que el cierre se saltara todo siempre.
+   *
+   * Se compara contra el TECHO del paso que viene, no contra su costo nominal:
+   * el modo de fallo que mata la invocación es el paso lento, no el promedio.
+   */
+  restanteDuro(): number;
   /** `true` si ya no queda tiempo para trabajo nuevo. */
   agotado(): boolean;
   /** El tope que pide una etapa, recortado a lo que de verdad queda. */
@@ -265,6 +369,7 @@ export function crearPresupuesto(totalMs: number, reloj: () => number = Date.now
   const restante = () => Math.max(0, totalMs - MARGEN_CIERRE_MS - (reloj() - inicio));
   return {
     restante,
+    restanteDuro: () => Math.max(0, totalMs - (reloj() - inicio)),
     agotado: () => restante() <= 0,
     acotar: (topeDeseado: number) => Math.min(topeDeseado, restante()),
     alcanza: (costoMs: number) => restante() >= costoMs,
