@@ -8,6 +8,7 @@ import { supabaseServer } from '@/lib/supabase/server';
 import { getSessionTenant } from '@/lib/auth/session';
 import { logger } from '@/lib/logger';
 import { destinoSeguro } from '@/lib/auth/destino';
+import { revertirAltaEspontanea } from '@/lib/auth/autoregistro';
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
@@ -21,6 +22,15 @@ export async function GET(req: NextRequest) {
       const sb = await supabaseServer();
       const { error } = await sb.auth.exchangeCodeForSession(code);
       if (!error) {
+        // «Nadie se da de alta solo» — la mitad que faltaba. El camino del
+        // correo lo cierra `shouldCreateUser:false` en `login/page.tsx`; el
+        // botón de Google no tiene equivalente porque `signInWithOAuth` no
+        // acepta esa bandera, así que hasta aquí lo único que lo impedía era
+        // una casilla del dashboard de Supabase (auditoría 10, MEDIO de
+        // seguridad). Este es el único punto por el que pasan los DOS caminos.
+        if (await revertirAltaEspontanea()) {
+          return NextResponse.redirect(new URL('/sin-acceso', req.url));
+        }
         // Sin `next` explícito, superadmin aterriza en SU consola (/admin),
         // no en el panel del tenant demo — antes de esto no tenía a dónde
         // ir que fuera suyo. Un `next` explícito (un link a /dashboard/[id]

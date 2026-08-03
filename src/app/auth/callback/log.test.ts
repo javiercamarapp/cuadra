@@ -26,8 +26,25 @@ const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 vi.mock('@/lib/logger', () => ({ logger }));
 
 const exchangeCodeForSession = vi.fn();
-const supabaseServer = vi.fn(async () => ({ auth: { exchangeCodeForSession } }));
+const getUser = vi.fn();
+const signOut = vi.fn();
+// `getUser`/`signOut` y el cliente admin entraron a este mock en la auditoría
+// 10: tras el intercambio, `/auth/callback` comprueba que la sesión recién
+// creada tenga alta en `app_user` y deshace el autoregistro si no la tiene
+// (`lib/auth/autoregistro.ts`, el equivalente de `shouldCreateUser:false` para
+// el botón de Google). Sin estas tres piezas el handler no llega a su camino
+// feliz y el CONTROL de abajo mediría el mock, no la ruta. Lo que esta prueba
+// afirma no cambió: quién deja testigo y quién no.
+const supabaseServer = vi.fn(async () => ({ auth: { exchangeCodeForSession, getUser, signOut } }));
 vi.mock('@/lib/supabase/server', () => ({ supabaseServer: () => supabaseServer() }));
+
+const maybeSingleAppUser = vi.fn();
+vi.mock('@/lib/supabase/admin', () => ({
+  supabaseAdmin: () => ({
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: maybeSingleAppUser }) }) }),
+    auth: { admin: { deleteUser: vi.fn(async () => ({ error: null })) } },
+  }),
+}));
 
 const getSessionTenant = vi.fn();
 vi.mock('@/lib/auth/session', () => ({ getSessionTenant: (...a: unknown[]) => getSessionTenant(...a) }));
@@ -43,6 +60,11 @@ function pedir(qs: string) {
 beforeEach(() => {
   for (const m of [logger.info, logger.warn, logger.error]) m.mockReset();
   exchangeCodeForSession.mockReset();
+  // Por default, el usuario que entra SÍ tiene alta: es el camino normal y el
+  // único en el que estas cuatro afirmaciones sobre los logs tienen sentido.
+  getUser.mockReset(); getUser.mockResolvedValue({ data: { user: { id: 'u-1' } }, error: null });
+  signOut.mockReset(); signOut.mockResolvedValue({ error: null });
+  maybeSingleAppUser.mockReset(); maybeSingleAppUser.mockResolvedValue({ data: { id: 'u-1' }, error: null });
   getSessionTenant.mockReset();
   getSessionTenant.mockResolvedValue({ userId: 'u-1', tenantId: 't-1', rol: 'flota_admin' });
 });
