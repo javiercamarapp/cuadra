@@ -105,6 +105,24 @@ const PRICES: Record<string, [number, number]> = {
 };
 
 /**
+ * El slug SIN el sufijo de proveedor con el que OpenRouter a veces responde
+ * (`:nitro`, `:floor`).
+ *
+ * El precio ya lo ignoraba; la IDENTIDAD no. Como el slug que se guarda en
+ * `llm_costo.modelo` salía tal cual de `res.model`, dos liquidaciones idénticas
+ * —una respondida como `anthropic/claude-sonnet-5` y otra como
+ * `anthropic/claude-sonnet-5:floor`— producían DOS renglones del mismo modelo en
+ * Model Ops, y lo mismo dentro de cada fase en `getCostoPorFaseModelo` (llave
+ * `fase::modelo`). El total no cambia; el desglose sí, que es justo la columna
+ * con la que se va a fijar el precio por liquidación.
+ *
+ * `:floor` y `:nitro` son enrutamiento del gateway, no modelos distintos.
+ */
+export function normalizarSlug(model: string): string {
+  return model.split(':')[0];
+}
+
+/**
  * Costo en USD de una llamada.
  *
  * Un modelo sin precio NO cuesta $0. Antes devolvía 0 en silencio, y eso pasa de
@@ -118,7 +136,7 @@ const PRICES: Record<string, [number, number]> = {
  */
 export function calcCost(model: string, tokIn: number, tokOut: number): number {
   // El sufijo de proveedor no cambia el precio del modelo.
-  const limpio = model.split(':')[0];
+  const limpio = normalizarSlug(model);
   const r = PRICES[model] ?? PRICES[limpio];
   if (r) return (tokIn * r[0] + tokOut * r[1]) / 1_000_000;
 
@@ -184,7 +202,7 @@ export async function generateResponse(opts: {
     const text = (res.choices[0]?.message?.content ?? '').trim();
     return {
       text,
-      model: res.model || m,
+      model: normalizarSlug(res.model || m),
       tokensIn: res.usage?.prompt_tokens ?? 0,
       tokensOut: res.usage?.completion_tokens ?? 0,
       cost: calcCost(m, res.usage?.prompt_tokens ?? 0, res.usage?.completion_tokens ?? 0),
@@ -346,7 +364,7 @@ export async function generateStructured<T>(opts: {
     // contador por liquidación no reporte $0 en los intentos fallidos.
     const tokIn = res.usage?.prompt_tokens ?? 0;
     const tokOut = res.usage?.completion_tokens ?? 0;
-    const usage = { model: res.model || m, tokensIn: tokIn, tokensOut: tokOut, cost: calcCost(m, tokIn, tokOut) };
+    const usage = { model: normalizarSlug(res.model || m), tokensIn: tokIn, tokensOut: tokOut, cost: calcCost(m, tokIn, tokOut) };
     // Se cobra AQUÍ, antes de cualquier salida: pase lo que pase debajo —
     // truncado, JSON roto, schema inválido— esta llamada ya se pagó.
     cobrar(usage);
@@ -647,7 +665,7 @@ export async function generateWithTools(opts: {
       // al fallback antes de devolver.
       const costoRonda = calcCost(activeModel, rIn, rOut);
       costo += costoRonda;
-      used = res.model || activeModel;
+      used = normalizarSlug(res.model || activeModel);
       sumarUso(uso, { model: used, tokensIn: rIn, tokensOut: rOut, cost: costoRonda });
       const choice = res.choices[0];
       const calls = choice?.message?.tool_calls;
