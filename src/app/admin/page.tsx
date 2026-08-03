@@ -5,9 +5,10 @@ import { fechaMx } from '../dashboard/formato';
 import Link from 'next/link';
 import {
   Truck, DollarSign, Cpu, CheckCircle2, BarChart3, UserPlus2, MessageCircle,
-  Sparkles, ChevronDown, ScanText, Calculator, Flag, MessageSquareText, Shuffle, Smartphone,
+  Sparkles, ChevronDown, Smartphone,
 } from 'lucide-react';
 import { Sparkline, Tendencia, Dona, BarChartSimple } from './charts';
+import { etiquetaFase, ICONO_POR_FASE } from './fases';
 import GraficaCostoConRango from './rango-costo';
 import AsistenteExpandible from './asistente-expandible';
 import ContadorRetro from './contador-retro';
@@ -34,15 +35,6 @@ const SALUDO = () => {
 const FECHA_HOY = () => fechaMx(new Date().toISOString());
 
 export const dynamic = 'force-dynamic';
-
-const FASE_LABEL: Record<string, string> = {
-  ocr: 'Agente OCR', cuadre: 'Agente de Cuadre', escalacion: 'Agente de Escalación',
-  chat: 'Agente de Chat', router: 'Agente Router', whatsapp: 'Agente de WhatsApp',
-};
-
-const FASE_ICONO: Record<string, typeof ScanText> = {
-  ocr: ScanText, cuadre: Calculator, escalacion: Flag, chat: MessageSquareText, router: Shuffle, whatsapp: Smartphone,
-};
 
 /** Insignia monocromo — badge cuadrado con un ícono lucide adentro, sustituye
  *  todos los emoji que había antes (🚛💵🧮✅ etc.): mismas tonalidades de
@@ -113,8 +105,8 @@ export default async function Admin() {
   ]);
   const chipsCosto = r.porDia.slice(-8).map((d) => d.costoUsd);
   const chipsTokens = r.porDia.slice(-8).map((d) => d.tokens);
-  const topFase = r.porFase[0] ? (FASE_LABEL[r.porFase[0].fase] ?? r.porFase[0].fase) : null;
-  const TopFaseIcono = r.porFase[0] ? (FASE_ICONO[r.porFase[0].fase] ?? Sparkles) : Sparkles;
+  const topFase = r.porFase[0] ? etiquetaFase(r.porFase[0].fase) : null;
+  const TopFaseIcono = ICONO_POR_FASE[r.porFase[0]?.fase ?? ''] ?? Sparkles;
 
   const recomendaciones = [
     { href: '#agentes', Icono: BarChart3, titulo: 'Costo por agente', subtitulo: 'Desglose por fase de IA' },
@@ -241,7 +233,7 @@ export default async function Admin() {
                     <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--muted)' }}>
                       Agentes — costo por fase
                     </h3>
-                    <Dona segmentos={r.porFase.map((f) => ({ etiqueta: FASE_LABEL[f.fase] ?? f.fase, valor: f.costoUsd }))} />
+                    <Dona segmentos={r.porFase.map((f) => ({ etiqueta: etiquetaFase(f.fase), valor: f.costoUsd }))} />
                   </div>
                 ) : (
                   <div className="card p-4 flex items-center text-sm" style={{ color: 'var(--muted)' }}>Todavía no hay actividad de IA registrada.</div>

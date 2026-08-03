@@ -2,15 +2,9 @@ import { getResumenNegocio } from '@/lib/admin/negocio';
 import { usd } from '@/lib/utils';
 import { DollarSign, Smartphone } from 'lucide-react';
 import { AreaChartSimple, Dona } from '../charts';
+import { etiquetaFase } from '../fases';
 
 export const dynamic = 'force-dynamic';
-
-// Mismo diccionario de admin/page.tsx (no se exporta de ahí) — solo las
-// etiquetas legibles para la dona de "Costo por fase".
-const FASE_LABEL: Record<string, string> = {
-  ocr: 'Agente OCR', cuadre: 'Agente de Cuadre', escalacion: 'Agente de Escalación',
-  chat: 'Agente de Chat', router: 'Agente Router', whatsapp: 'Agente de WhatsApp',
-};
 
 /** Ícono antes del nombre en "Costo por modelo" — mismo patrón de
  *  admin/page.tsx, recreado aquí porque no se exporta de ahí. */
@@ -92,7 +86,7 @@ export default async function CostosFacturacionPage() {
           </h2>
           {r.porFase.length > 0 ? (
             <div className="card p-4 mt-3">
-              <Dona segmentos={r.porFase.map((f) => ({ etiqueta: FASE_LABEL[f.fase] ?? f.fase, valor: f.costoUsd }))} />
+              <Dona segmentos={r.porFase.map((f) => ({ etiqueta: etiquetaFase(f.fase), valor: f.costoUsd }))} />
             </div>
           ) : (
             <div className="card p-4 mt-3 text-sm" style={{ color: 'var(--muted)' }}>Todavía no hay actividad de IA registrada.</div>

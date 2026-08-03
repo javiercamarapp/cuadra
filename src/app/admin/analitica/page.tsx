@@ -3,13 +3,9 @@ import { usd } from '@/lib/utils';
 import { LineChart, Smartphone } from 'lucide-react';
 import { AreaChartSimple, Dona, BarChartSimple } from '../charts';
 import ContadorRetro from '../contador-retro';
+import { etiquetaFase } from '../fases';
 
 export const dynamic = 'force-dynamic';
-
-const FASE_LABEL: Record<string, string> = {
-  ocr: 'Agente OCR', cuadre: 'Agente de Cuadre', escalacion: 'Agente de Escalación',
-  chat: 'Agente de Chat', router: 'Agente Router', whatsapp: 'Agente de WhatsApp',
-};
 
 /** Título de sección — mismo patrón que admin/page.tsx: SIEMPRE dentro de
  *  un `.glass-panel`, nunca suelto sobre el fondo difuminado (el gris de
@@ -95,7 +91,7 @@ export default async function AnaliticaPage() {
                 Costo por fase
               </h3>
               {r.porFase.length > 0 ? (
-                <Dona segmentos={r.porFase.map((f) => ({ etiqueta: FASE_LABEL[f.fase] ?? f.fase, valor: f.costoUsd }))} />
+                <Dona segmentos={r.porFase.map((f) => ({ etiqueta: etiquetaFase(f.fase), valor: f.costoUsd }))} />
               ) : (
                 <div className="flex items-center text-sm" style={{ color: 'var(--muted)', height: 60 }}>
                   Todavía no hay actividad de IA registrada.

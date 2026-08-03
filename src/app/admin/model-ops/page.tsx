@@ -1,7 +1,9 @@
 import { getResumenNegocio, getCostoPorFaseModelo } from '@/lib/admin/negocio';
 import { usd } from '@/lib/formato';
-import { Settings2, ScanText, Calculator, Smartphone } from 'lucide-react';
+import { Settings2, Smartphone } from 'lucide-react';
 import { Dona } from '../charts';
+import { FASE_LABEL, FASE_ICONO, etiquetaFase } from '../fases';
+import type { FaseCosto } from '@/lib/cuadra/costos';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,17 +47,22 @@ function TituloSeccion({ children }: { children: React.ReactNode }) {
   );
 }
 
-const FASE_LABEL: Record<string, string> = { ocr: 'Agente OCR', cuadre: 'Agente de Cuadre', whatsapp: 'Agente de WhatsApp' };
-
 /** Las TRES fases reales del pipeline — en ese orden, porque es el orden en
  *  el que de verdad corren para cada viaje. No hay una cuarta fase, ni un
  *  "crear agente nuevo": Likida no tiene tool-calling configurable, son
- *  pasos fijos en código. */
-const FASES = [
-  { fase: 'ocr', nombre: 'Agente OCR', Icono: ScanText, queHace: 'Lee la foto de un comprobante (diésel, caseta, factura) y extrae monto, folio y CFDI.' },
-  { fase: 'cuadre', nombre: 'Agente de Cuadre', Icono: Calculator, queHace: 'Compara los gastos ya capturados contra el anticipo y la política de la flota.' },
-  { fase: 'whatsapp', nombre: 'Agente de WhatsApp', Icono: Smartphone, queHace: 'Lleva la conversación con el operador de principio a fin: recibe fotos, confirma y cierra la liquidación.' },
-] as const;
+ *  pasos fijos en código. Son las tres de `FaseCosto` que algún
+ *  `registrarCosto` escribe hoy; `chat` y `router` existen en el tipo y
+ *  ningún camino las produce, así que no se listan como agentes.
+ *
+ *  El NOMBRE y el ÍCONO salen de `admin/fases.ts`, no de un literal local:
+ *  eran el séptimo y el sexto sitio donde había que acordarse de la misma
+ *  traducción (auditoría 10, MEDIO). Aquí solo queda lo que es de esta
+ *  pantalla y de ninguna otra: qué hace cada agente. */
+const REGISTRO: Array<{ fase: FaseCosto; queHace: string }> = [
+  { fase: 'ocr', queHace: 'Lee la foto de un comprobante (diésel, caseta, factura) y extrae monto, folio y CFDI.' },
+  { fase: 'cuadre', queHace: 'Compara los gastos ya capturados contra el anticipo y la política de la flota.' },
+  { fase: 'whatsapp', queHace: 'Lleva la conversación con el operador de principio a fin: recibe fotos, confirma y cierra la liquidación.' },
+];
 
 /**
  * Model Ops — registro real de las 3 fases fijas del pipeline de Likida, no
@@ -82,7 +89,9 @@ export default async function ModelOpsPage() {
         <section className="p-5">
           <TituloSeccion>Registro de agentes</TituloSeccion>
           <div className="space-y-3 mt-3">
-            {FASES.map(({ fase, nombre, Icono, queHace }) => {
+            {REGISTRO.map(({ fase, queHace }) => {
+              const nombre = FASE_LABEL[fase];
+              const Icono = FASE_ICONO[fase];
               const datos = porFaseMap.get(fase);
               const modelos = porFaseModelo.filter((m) => m.fase === fase);
               return (
@@ -124,7 +133,7 @@ export default async function ModelOpsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
             {r.porFase.length > 0 ? (
               <div className="card p-4">
-                <Dona segmentos={r.porFase.map((f) => ({ etiqueta: FASE_LABEL[f.fase] ?? f.fase, valor: f.costoUsd }))} />
+                <Dona segmentos={r.porFase.map((f) => ({ etiqueta: etiquetaFase(f.fase), valor: f.costoUsd }))} />
               </div>
             ) : (
               <div className="card p-4 flex items-center text-sm" style={{ color: 'var(--muted)' }}>Todavía no hay actividad de IA registrada.</div>
