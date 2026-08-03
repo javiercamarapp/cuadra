@@ -1,11 +1,28 @@
 import { NextResponse } from 'next/server';
 import { cuadrarViaje, type PoliticaGasto } from '@/lib/cuadra/cuadre/engine';
+import { DEMO_CONFIG } from '@/lib/cuadra/config';
 import { rateLimit, bodyExcede, clientIp } from '@/lib/ratelimit';
 import { envHealth } from '@/lib/env';
+import { getSessionTenant } from '@/lib/auth/session';
 import type { Gasto } from '@/types/cuadra';
 
-// Health del demo (config detectada, sin exponer valores).
+// Health del despliegue (qué integraciones están puestas, sin exponer valores).
+//
+// BAJO REINCIDENTE de las rondas 8, 9 y 10 (seguridad): esto era público.
+// `/api` está fuera del matcher del proxy (`proxy.ts:81`), así que esta función
+// ERA la única puerta y no comprobaba nada: `curl https://app.likida.ai/api/demo`
+// devolvía `{"config":{"llm":true,"whatsapp":true,"supabase":true}}` — el mapa
+// de qué mitad del despliegue quedó a medias, gratis y sin cuenta.
+//
+// No se retira, porque es el único health-check de configuración que hay: se le
+// pone dueño. `envHealth()` describe el despliegue de LIKIDA, no el tenant de
+// nadie, así que el rol que corresponde es `superadmin` y no `flota_admin`.
+//
+// Responde 404 y no 401 a propósito: un 401 confirma que la ruta existe, que es
+// exactamente el reconocimiento que se está cerrando.
 export async function GET() {
+  const s = await getSessionTenant();
+  if (s?.rol !== 'superadmin') return new NextResponse('Not found', { status: 404 });
   return NextResponse.json({ ok: true, config: envHealth() });
 }
 

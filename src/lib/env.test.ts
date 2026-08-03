@@ -57,9 +57,9 @@ describe('faltantes', () => {
 
 describe('envHealth', () => {
   it('sigue devolviendo los tres grupos como booleanos', () => {
-    // Lo consume `GET /api/demo`, que es público: la forma no cambia y no se
-    // añaden grupos nuevos ahí. Lo que un anónimo puede preguntar sigue siendo
-    // lo mismo que antes.
+    // Lo consume `GET /api/demo`, que desde la auditoría 10 exige sesión de
+    // superadmin (antes era público y ese era el hallazgo). La forma no cambia
+    // y no se añaden grupos nuevos ahí.
     ponerTodas();
     expect(envHealth()).toEqual({ llm: true, whatsapp: true, supabase: true });
     vi.stubEnv('OPENROUTER_API_KEY', '');
