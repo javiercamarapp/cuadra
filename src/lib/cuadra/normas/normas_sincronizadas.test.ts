@@ -97,6 +97,52 @@ describe('índice de normas vs fichas', () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDITORÍA 10 · BAJO (fiscal) — `usado_en_codigo` es el campo con el que se
+// calcula el RADIO DE IMPACTO cuando una norma cambia (`normas/README.md`,
+// "Cómo se usa": «apunta a los archivos y líneas que dependen de la ficha. Si
+// cambias la norma, ese es tu impacto»). Si miente, una reforma se evalúa
+// contra el archivo equivocado — o contra ninguno.
+//
+// `lfpdppp-2-XII-XX.yaml` decía `usado_en_codigo: []` mientras
+// `FISCAL_LEGAL.md §2.3` —el documento con el que el equipo le habla a los
+// clientes— construye la sección entera sobre ella y la nombra por archivo:
+// «Fuente de verdad de este párrafo: `normas/lfpdppp-2-XII-XX.yaml`». Es la
+// ficha que CORRIGE el análisis anterior (la figura de "remisión" no existe en
+// la ley vigente): si vuelve a moverse y nadie sabe que ese párrafo cuelga de
+// ella, el documento comercial queda citando derecho derogado otra vez.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('usado_en_codigo dice la verdad sobre quién depende de la ficha', () => {
+  const DOC = readFileSync(new URL('../../../../FISCAL_LEGAL.md', import.meta.url), 'utf8');
+
+  /** Los renglones de la lista `usado_en_codigo`, sea en bloque o en línea. */
+  function usadoEnCodigo(txt: string): string[] {
+    const enLinea = /^usado_en_codigo:\s*(\[.*\])\s*$/m.exec(txt);
+    if (enLinea) { try { return JSON.parse(enLinea[1].replace(/'/g, '"')); } catch { return []; } }
+    // En bloque: todo lo indentado (renglones de lista, sus continuaciones y
+    // los comentarios) hasta la siguiente llave de primer nivel.
+    const bloque = /^usado_en_codigo:\s*$\n((?:(?:\s+.*)?\n)*)/m.exec(txt);
+    if (!bloque) return [];
+    return bloque[1].split('\n')
+      .filter((l) => !/^\s*#/.test(l))
+      .join('\n')
+      .split(/^\s*-\s*/m)
+      .map((l) => l.replace(/\s+/g, ' ').trim().replace(/^["']|["']$/g, ''))
+      .filter(Boolean);
+  }
+
+  it('toda ficha que FISCAL_LEGAL.md nombra por archivo lo declara, con su sección', () => {
+    const citadas = fichas.filter((f) => DOC.includes(`normas/${f.archivo}`));
+    // Si nadie nombra fichas en el documento, esta prueba no prueba nada.
+    expect(citadas.length, 'FISCAL_LEGAL.md dejó de nombrar fichas por archivo').toBeGreaterThan(0);
+    for (const f of citadas) {
+      const usos = usadoEnCodigo(f.txt).join(' | ');
+      expect(usos, `${f.archivo} sostiene un párrafo de FISCAL_LEGAL.md y no lo declara en usado_en_codigo`)
+        .toMatch(/FISCAL_LEGAL\.md §\d/);
+    }
+  });
+});
+
 describe('esVinculante', () => {
   it('ley, reglamento, regla general y anexo obligan', () => {
     for (const j of [1, 2, 3, 4] as Jerarquia[]) expect(esVinculante(j)).toBe(true);
