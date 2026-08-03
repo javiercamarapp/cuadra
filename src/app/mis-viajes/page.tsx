@@ -37,7 +37,19 @@ function esDelContralor(diferencias: Array<{ tipo?: string }> | null): boolean {
 /** Lo que ve el chofer cuando la revisión no es cosa suya. Ni rojo, ni culpa. */
 const EN_REVISION_EMPRESA = { label: 'En revisión por tu empresa', color: 'var(--muted)' };
 
-interface ViajeChofer { id: string; folio: string; creadoEn: string; comprobado: number; estatus: string | null; soloContralor: boolean }
+/**
+ * `comprobado` es `number | null`, y el `null` NO es un cero.
+ *
+ * El viaje abierto del demo (`VJ-2026-0847`) ya tiene $5,600 en `gasto` y
+ * todavía no tiene fila en `liquidacion`: el motor no ha cuadrado nada. Con
+ * `?? 0` la columna de dinero imprimía «$0.00 comprobado» para el viaje al que
+ * el chofer acababa de mandarle catorce fotos — y el chofer que lee eso
+ * concluye que su envío se perdió y las reenvía (auditoría 10, frontend,
+ * MEDIO). La columna de estatus, tres celdas a la derecha, ya distinguía los
+ * dos casos y pintaba «Sin liquidar»; la de dinero no recibió la misma
+ * distinción.
+ */
+interface ViajeChofer { id: string; folio: string; creadoEn: string; comprobado: number | null; estatus: string | null; soloContralor: boolean }
 
 /**
  * Cliente CON sesión (`supabaseServer`), no `supabaseAdmin`: aquí el
@@ -61,7 +73,9 @@ async function getMisViajes(): Promise<ViajeChofer[]> {
       id: v.id as string,
       folio: (v.folio as string) || (v.id as string).slice(0, 8),
       creadoEn: v.created_at as string,
-      comprobado: Number(liq?.total_comprobado ?? 0),
+      // Ausencia y cero son cosas distintas: sin fila de liquidación —o con
+      // `total_comprobado` vacío— no hay nada medido que imprimir.
+      comprobado: liq?.total_comprobado == null ? null : Number(liq.total_comprobado),
       estatus: liq?.estatus ?? null,
       soloContralor: esDelContralor(liq?.diferencias ?? null),
     };
@@ -113,7 +127,14 @@ export default async function MisViajes() {
                     <tr key={v.id} className="border-t" style={{ borderColor: 'var(--line)' }}>
                       <td className="px-6 py-4 font-medium">{v.folio}</td>
                       <td className="px-6 py-4" style={{ color: 'var(--muted)' }}>{fechaMx(v.creadoEn)}</td>
-                      <td className="px-6 py-4 text-right tabular">{mxn(v.comprobado)}</td>
+                      {/* Un cero medido SÍ se imprime; la ausencia no se
+                          disfraza de cero. Mismo criterio que la tarjeta de
+                          litros del panel del contralor (`acred.tsx`). */}
+                      <td className="px-6 py-4 text-right tabular">
+                        {v.comprobado === null
+                          ? <span style={{ color: 'var(--muted)' }} title="Se cuenta cuando se cierra el viaje">—</span>
+                          : mxn(v.comprobado)}
+                      </td>
                       <td className="px-6 py-4">
                         {e ? (
                           <>
@@ -130,6 +151,16 @@ export default async function MisViajes() {
               </tbody>
             </table>
           </div>
+        )}
+        {/* El renglón que evita el reenvío. El guion «—» dice que no hay
+            medición; esto dice por qué y que lo suyo no se perdió. Solo
+            aparece cuando hay un viaje sin liquidar: una nota permanente se
+            aprende a ignorar. */}
+        {viajes.some((v) => v.comprobado === null) && (
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+            El monto comprobado de un viaje sin liquidar aparece como «—»: se cuenta al cerrarlo.
+            Los comprobantes que ya mandaste por WhatsApp están guardados — no hace falta reenviarlos.
+          </p>
         )}
         {/* El aviso que le toca al chofer es el INTEGRAL DE SU FLOTA, no el de
             Likida: el responsable de sus datos es la empresa, y Likida es
