@@ -199,6 +199,37 @@ describe('cuando por fin hay viaje, se pregunta antes de adjuntar', () => {
     expect(marcarHuerfanosOfrecidos).toHaveBeenCalledWith('t1', ['a', 'b']);
   });
 
+  // ── ALTO de la auditoría 10 (agéntico) ───────────────────────────────────
+  //
+  // La constancia de «ya se le preguntó» se escribía ANTES del envío, y la
+  // re-oferta está condicionada a que NO haya ninguna fila marcada. Juntas,
+  // las dos cosas hacían la oferta de un solo tiro: si Meta rebotaba el
+  // mensaje (131047, ventana de 24 h cerrada; 131030, destinatario fuera de
+  // la lista — los dos vistos el 1-ago), la base quedaba diciendo que se le
+  // preguntó y ningún mensaje posterior volvía a ofrecer. $16,244.00 en
+  // comprobantes guardados, invisibles para el chofer y para el contralor.
+  //
+  // Es la misma lección que este archivo ya pagó dos veces: la constancia del
+  // aviso de privacidad va DESPUÉS del envío, y el turno del asistente solo se
+  // guarda si `say` devolvió id.
+  it('si el envío de la oferta rebota, NO se marca como preguntada y se vuelve a ofrecer', async () => {
+    getHuerfanos.mockResolvedValue([HUERFANO('a', 8412), HUERFANO('b', 312)]);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ error: { code: 131047, message: 'ventana de 24h cerrada' } }),
+      { status: 400, headers: { 'content-type': 'application/json' } })));
+    await processInbound(texto('hola'));
+    expect(marcarHuerfanosOfrecidos, 'nadie leyó la pregunta: la base no puede decir que sí')
+      .not.toHaveBeenCalled();
+
+    // Segundo turno, con el envío funcionando: la oferta se vuelve a hacer.
+    vi.stubGlobal('fetch', fetchSpy);
+    salientes.length = 0;
+    await processInbound(texto('buenas'));
+    expect(salientes.join(' '), 'la oferta que rebotó tiene que volver a salir')
+      .toMatch(/¿Los agrego a este viaje\?/);
+    expect(marcarHuerfanosOfrecidos).toHaveBeenCalledWith('t1', ['a', 'b']);
+  });
+
   it('con un «sí» los adjunta y los marca DESPUÉS de insertarlos', async () => {
     getHuerfanos.mockResolvedValue([HUERFANO('a', 2890, true), HUERFANO('b', 980, true)]);
     await processInbound(texto('sí'));

@@ -1071,9 +1071,33 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
       // paga quien de verdad tiene comprobantes esperando.
       if (!ofrecidos.length) {
         const viaje = await getViaje(viajeId, op.tenantId).catch(() => null);
+        // LA CONSTANCIA VA DESPUÉS DEL ENVÍO, y no antes.
+        //
+        // `ofrecido_en` no es un contador anti-repetición: es el ÚNICO registro
+        // de que esta conversación preguntó algo, y la re-oferta cuelga de que
+        // no exista (`!ofrecidos.length`). Marcarlo antes de entregar hacía la
+        // oferta de un solo tiro: si `sendText` devolvía null —Meta rechaza con
+        // `131047` (ventana de 24 h cerrada) o `131030`, los dos vistos el
+        // 1-ago— la base decía «ya se le preguntó» sobre una pregunta que nadie
+        // hizo, y ningún mensaje posterior volvía a ofrecer. $16,244.00 de
+        // comprobantes guardados, invisibles para el chofer y para el
+        // contralor, y la liquidación cerrando sin ellos (auditoría 10, ALTO).
+        //
+        // Misma lección que este archivo ya pagó dos veces al lado: la
+        // constancia del aviso de privacidad va después del envío, y el turno
+        // del asistente solo se guarda si `say` devolvió id.
+        //
+        // Al revés el peor caso es preguntar de más —lo que `repo.ts` ya
+        // documenta como aceptable—, y esa asimetría es la del resto del
+        // módulo: una oferta repetida cuesta un mensaje, una perdida cuesta la
+        // liquidación.
+        const entregada = await say(mensajeOfrecer(comoLista(enEspera), viaje?.destino ? `${viaje.origen ?? ''}${viaje.origen ? '→' : ''}${viaje.destino}` : undefined));
+        if (!entregada) {
+          logger.warn('huerfano.oferta_no_entregada', { viaje: viajeId, cuantos: enEspera.length });
+          return;  // sin marcar: el siguiente mensaje vuelve a ofrecer
+        }
         await marcarHuerfanosOfrecidos(op.tenantId, enEspera.map((h) => h.id));
         logger.info('huerfano.ofrecidos', { viaje: viajeId, cuantos: enEspera.length });
-        await say(mensajeOfrecer(comoLista(enEspera), viaje?.destino ? `${viaje.origen ?? ''}${viaje.origen ? '→' : ''}${viaje.destino}` : undefined));
         return;
       }
     }
