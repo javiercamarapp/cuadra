@@ -2,6 +2,7 @@ import { requireOperador } from '@/lib/auth/guard';
 import { supabaseServer } from '@/lib/supabase/server';
 import { mxn } from '@/lib/utils';
 import { fechaMx } from '../dashboard/formato';
+import { SOLO_CONTRALOR } from '@/lib/cuadra/cuadre/resumen';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,32 @@ const ESTATUS: Record<string, { label: string; color: string }> = {
   revisar: { label: 'Por revisar', color: 'var(--color-bad)' },
 };
 
-interface ViajeChofer { id: string; folio: string; creadoEn: string; comprobado: number; estatus: string | null }
+/**
+ * El semáforo del chofer no es el del contralor.
+ *
+ * `SOLO_CONTRALOR` (`cuadre/resumen.ts`) existe con esta regla escrita:
+ * «veredictos que el operador no puede arreglar y que se leen como si se le
+ * estuviera auditando. Van al contralor, que sí puede hacer algo. Al operador
+ * se le pide lo que falta; no se le juzga.» WhatsApp ya la aplica; esta
+ * pantalla nació después y no (auditoría 10, MEDIO de agéntico).
+ *
+ * El caso concreto: `cfdi_efos` está en esa lista Y en `REVISAR`, así que al
+ * chofer se le pintaba «Por revisar» en rojo porque el proveedor de diésel de
+ * su empresa está en la lista negra del SAT — un hecho que él no causó, no
+ * puede arreglar, y que además es información fiscal de su patrón.
+ *
+ * Basta UNA causa que sí sea suya para que el aviso siga siendo suyo: aquí no
+ * se apaga el estado, se decide de quién es.
+ */
+function esDelContralor(diferencias: Array<{ tipo?: string }> | null): boolean {
+  if (!diferencias?.length) return false;
+  return diferencias.every((d) => SOLO_CONTRALOR.includes(d.tipo as never));
+}
+
+/** Lo que ve el chofer cuando la revisión no es cosa suya. Ni rojo, ni culpa. */
+const EN_REVISION_EMPRESA = { label: 'En revisión por tu empresa', color: 'var(--muted)' };
+
+interface ViajeChofer { id: string; folio: string; creadoEn: string; comprobado: number; estatus: string | null; soloContralor: boolean }
 
 /**
  * Cliente CON sesión (`supabaseServer`), no `supabaseAdmin`: aquí el
@@ -24,19 +50,20 @@ async function getMisViajes(): Promise<ViajeChofer[]> {
   const sb = await supabaseServer();
   const { data, error } = await sb
     .from('viaje')
-    .select('id, folio, created_at, liquidacion(total_comprobado, estatus)')
+    .select('id, folio, created_at, liquidacion(total_comprobado, estatus, diferencias)')
     .order('created_at', { ascending: false })
     .limit(20);
   if (error) throw new Error(`getMisViajes: ${error.message}`);
   return (data ?? []).map((v) => {
     const liq = (Array.isArray(v.liquidacion) ? v.liquidacion[0] : v.liquidacion) as
-      { total_comprobado?: number; estatus?: string } | null;
+      { total_comprobado?: number; estatus?: string; diferencias?: Array<{ tipo?: string }> } | null;
     return {
       id: v.id as string,
       folio: (v.folio as string) || (v.id as string).slice(0, 8),
       creadoEn: v.created_at as string,
       comprobado: Number(liq?.total_comprobado ?? 0),
       estatus: liq?.estatus ?? null,
+      soloContralor: esDelContralor(liq?.diferencias ?? null),
     };
   });
 }
@@ -77,7 +104,11 @@ export default async function MisViajes() {
               </thead>
               <tbody>
                 {viajes.map((v) => {
-                  const e = v.estatus ? (ESTATUS[v.estatus] ?? { label: v.estatus, color: 'var(--muted)' }) : null;
+                  // Solo `revisar` cambia de dueño: `cuadrada` y
+                  // `con_diferencias` son del chofer igual que siempre.
+                  const e = v.estatus === 'revisar' && v.soloContralor
+                    ? EN_REVISION_EMPRESA
+                    : v.estatus ? (ESTATUS[v.estatus] ?? { label: v.estatus, color: 'var(--muted)' }) : null;
                   return (
                     <tr key={v.id} className="border-t" style={{ borderColor: 'var(--line)' }}>
                       <td className="px-6 py-4 font-medium">{v.folio}</td>
