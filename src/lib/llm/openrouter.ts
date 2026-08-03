@@ -401,13 +401,34 @@ export async function generateStructured<T>(opts: {
         if (eT instanceof TruncatedError) { eT.usage = { model: ultimoModelo, ...gastado, porModelo: [...uso.values()] }; throw eT; }
       }
     }
+    // PRIMERO POR COSTO DEL REINTENTO, DESPUÉS POR TIPO DE FALLO.
+    //
+    // La escalera estaba ordenada al revés (formato → proveedor): tras un 503
+    // se ejecutaba `attempt(model, note)`, una segunda llamada COMPLETA —con la
+    // imagen del ticket adjunta— al MISMO proveedor caído, y sólo si ésa también
+    // fallaba se miraba el fallback. `getClient()` no fija `maxRetries`, así que
+    // cada `attempt()` son hasta 3 peticiones con backoff: ~2.2s tirados por
+    // foto, dentro de una invocación de 60s que ya reserva 12s para el cierre.
+    //
+    // Un 503 no se arregla repitiéndole la petición al que lo devolvió. La nota
+    // sigue viajando por si el otro proveedor es laxo con el formato.
+    if (fallback && isTransientError(e1)) {
+      logger.warn('llm.fallback', { fn: 'generateStructured', from: model, to: fallback, motivo: 'transitorio' });
+      try {
+        return await attempt(fallback, note);
+      } catch (eF) {
+        throw conGastado(eF, 'Falló generación estructurada (fallback)');
+      }
+    }
     // Reintento con el MISMO modelo + nota (típicamente errores de formato JSON).
     try {
       return await attempt(model, note);
     } catch (e2) {
       // CR-5: si el fallo es transient (provider caído/429/timeout) y hay
       // fallback cross-provider, intentar con OTRO proveedor antes de rendirse.
-      if (fallback && (isTransientError(e1) || isTransientError(e2))) {
+      // Aquí sólo puede serlo `e2`: un `e1` transitorio ya salió por el atajo de
+      // arriba sin gastar esta llamada.
+      if (fallback && isTransientError(e2)) {
         logger.warn('llm.fallback', { fn: 'generateStructured', from: model, to: fallback });
         try {
           return await attempt(fallback, note);
