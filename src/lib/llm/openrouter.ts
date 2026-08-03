@@ -421,7 +421,19 @@ export async function generateStructured<T>(opts: {
 }
 
 // ── generateWithTools: ciclo agéntico completo ──────────────────────────────
-export type ToolExecResult = { success: boolean; result: unknown; error?: string; durationMs: number };
+/**
+ * `result` es para el LLAMADOR; `paraModelo`, si existe, es lo único que ve el
+ * MODELO.
+ *
+ * Un solo `result` servía a dos consumidores con necesidades opuestas: la
+ * guardia de cifras necesita el snapshot completo del cierre (lo REUSA para no
+ * recalcular y narrar dos cuadres distintos del mismo cierre) y el modelo
+ * necesita cinco campos. Como el canal era uno, el snapshot entero —15.6 KB con
+ * 12 comprobantes: RFC de emisor y receptor, UUID de CFDI y rutas de foto— se
+ * serializaba en el `content` del mensaje `role:'tool'` y se pagaba en cada
+ * ronda posterior al cierre.
+ */
+export type ToolExecResult = { success: boolean; result: unknown; paraModelo?: unknown; error?: string; durationMs: number };
 export type ToolExecutor = (name: string, args: Record<string, unknown>) => Promise<ToolExecResult>;
 export type ToolCallRecord = { toolName: string; args: Record<string, unknown>; result: unknown; durationMs: number; error?: string };
 
@@ -474,6 +486,15 @@ export class PartialExecutionError extends Error {
 // ejercicio, que barre el año entero del tenant.
 const READ_PREFIXES = ['get_', 'check_', 'list_', 'find_', 'consultar_', 'validar_', 'cuadrar_'];
 const isReadOnly = (n: string) => READ_PREFIXES.some((p) => n.startsWith(p));
+
+/**
+ * Lo que se le sirve al MODELO de un resultado exitoso.
+ *
+ * Si la tool declaró un resumen (`paraModelo`), es ése y sólo ése; si no, el
+ * resultado tal cual, que es el comportamiento de siempre. El llamador sigue
+ * recibiendo `result` completo por `ToolCallRecord`.
+ */
+const paraElModelo = (r: ToolExecResult): unknown => (r.paraModelo !== undefined ? r.paraModelo : r.result);
 
 /**
  * Nombres de tools cuyo schema NO declara ni un solo parámetro.
@@ -639,7 +660,7 @@ export async function generateWithTools(opts: {
           if (isReadOnly(call.function.name) && crossRound.has(key)) {
             const c = crossRound.get(key)!;
             executed.push({ toolName: call.function.name, args, result: c.result, durationMs: c.durationMs, error: c.error });
-            return { role: 'tool' as const, tool_call_id: call.id, content: JSON.stringify(c.success ? c.result : { error: c.error }) };
+            return { role: 'tool' as const, tool_call_id: call.id, content: JSON.stringify(c.success ? paraElModelo(c) : { error: c.error }) };
           }
           let p = inRound.get(key);
           if (!p) { p = opts.toolExecutor(call.function.name, args); inRound.set(key, p); }
@@ -651,7 +672,7 @@ export async function generateWithTools(opts: {
           // una base que ya se curó sola.
           if (isReadOnly(call.function.name) && exec.success) crossRound.set(key, exec);
           executed.push({ toolName: call.function.name, args, result: exec.result, durationMs: exec.durationMs, error: exec.error });
-          return { role: 'tool' as const, tool_call_id: call.id, content: JSON.stringify(exec.success ? exec.result : { error: exec.error }) };
+          return { role: 'tool' as const, tool_call_id: call.id, content: JSON.stringify(exec.success ? paraElModelo(exec) : { error: exec.error }) };
         }),
       );
       convo.push(...results);

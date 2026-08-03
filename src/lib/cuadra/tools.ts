@@ -166,6 +166,23 @@ registerTool('cuadrar_viaje', {
 // ── guardar_liquidacion (MUTACIÓN) ──────────────────────────────────────────
 registerTool('guardar_liquidacion', {
   isMutation: true,
+  // ── EL SNAPSHOT ES PARA LA GUARDIA, NO PARA EL MODELO ──────────────────────
+  //
+  // AUDITORÍA 10, MEDIO. `liq` tiene que viajar (ver el comentario del `return`),
+  // pero viajaba por el MISMO canal que alimenta el prompt: con 12 comprobantes
+  // son 15,649 bytes (~4,000 tokens) serializados en el mensaje `role:'tool'`
+  // para que el modelo use 132 —los cinco campos de aquí abajo—, pagados otra
+  // vez en cada ronda posterior al cierre (~$0.008 por ronda a $2/1M de entrada,
+  // 16-27% del objetivo de $0.03-0.05 por liquidación de `models.ts`), y con 12
+  // RFC de emisor, 12 de receptor, 12 UUID y 12 rutas de foto saliendo al
+  // proveedor sin que nadie los lea. ZDR no es minimización; `models.ts` fija
+  // las dos.
+  // Lista BLANCA y no `delete liq`: así, el día que el cierre devuelva un campo
+  // nuevo, ese campo no se cuela al prompt sólo por existir.
+  paraModelo: (r) => {
+    const { liquidacion_id, estatus, diferencia, pdf_generado, pdf_contralor_generado } = r as Record<string, unknown>;
+    return { liquidacion_id, estatus, diferencia, pdf_generado, pdf_contralor_generado };
+  },
   schema: {
     type: 'function',
     function: {

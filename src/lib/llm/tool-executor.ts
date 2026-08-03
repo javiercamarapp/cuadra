@@ -22,6 +22,18 @@ export interface RegisteredTool {
   schema: OpenAI.Chat.ChatCompletionTool;
   handler: (args: Record<string, unknown>, ctx: ToolContext) => Promise<unknown>;
   isMutation?: boolean;
+  /**
+   * Qué parte del resultado ve el MODELO (el resto sigue yendo al llamador).
+   *
+   * Existe porque un solo `result` servía a dos consumidores con necesidades
+   * opuestas: la guardia de cifras reusa el snapshot completo del cierre y el
+   * modelo usa cinco campos. Sin separación, los 15.6 KB del snapshot —RFC,
+   * UUID y rutas de foto de cada comprobante— se serializaban en el mensaje
+   * `role:'tool'` y se pagaban en cada ronda posterior.
+   *
+   * Si no se declara, el modelo ve el resultado tal cual.
+   */
+  paraModelo?: (result: unknown) => unknown;
 }
 
 const REGISTRY = new Map<string, RegisteredTool>();
@@ -51,7 +63,12 @@ export async function executeTool(
   }
   try {
     const result = await tool.handler(args, ctx);
-    return { success: true, result, durationMs: Date.now() - started };
+    return {
+      success: true,
+      result,
+      ...(tool.paraModelo ? { paraModelo: tool.paraModelo(result) } : {}),
+      durationMs: Date.now() - started,
+    };
   } catch (err) {
     logger.error('tool.error', { name, err: err instanceof Error ? err.message : String(err) });
     return {
