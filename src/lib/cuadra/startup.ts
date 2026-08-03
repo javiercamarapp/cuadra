@@ -124,6 +124,41 @@ export async function verificarMigracionesCriticas(): Promise<void> {
       reportarProbe(e45, 'FALTA la migración 0045 (app_user.operador_id): NADIE puede entrar al panel —ni el contralor ni el superadmin—, porque el select de la sesión pide esa columna y falla entero; todos acaban en /sin-acceso como si no tuvieran alta. Y la RLS del chofer tampoco está. Corre `supabase db push`.');
       faltan = true;
     }
+    // ── EL PAPEL DEL GASTO: BUCKET (0039) Y SALA DE ESPERA (0040) ───────────
+    //
+    // AUDITORÍA 10, MEDIO. Las dos se pierden EN SILENCIO, que es el criterio
+    // de este archivo, y ninguna se sondeaba.
+    //
+    // 0039 — sin el bucket `comprobantes`, `subirComprobante` (intake/almacen.ts)
+    // deja `warn` y sigue, a propósito: perder el comprobante por no poder
+    // guardar su retrato sería cambiar un problema chico por el grande. El
+    // efecto es que el gasto entra con monto y folio y SIN el papel, una foto a
+    // la vez, en el turno de un operador. Y ese papel es lo que el CFF art. 30
+    // obliga a conservar cinco años y lo único que dirime un OCR mal leído.
+    const { error: e39 } = await admin.storage.getBucket('comprobantes');
+    if (e39) {
+      reportarProbe(e39, 'FALTA la migración 0039 (bucket privado `comprobantes`): CADA foto de ticket se está tirando después de leerla. El gasto entra con monto y folio pero SIN el papel, que es lo que el CFF art. 30 obliga a conservar cinco años y lo único que dirime un OCR mal leído. Corre `supabase db push`.');
+      faltan = true;
+    }
+    // 0040 — sin `comprobante_huerfano` no hay sala de espera: la foto que llega
+    // sin viaje abierto (el chofer que termina la ruta y manda once de golpe) o
+    // después de emitida la liquidación no se puede guardar. `guardarHuerfano`
+    // devuelve false y al operador se le dice que no se pudo — una vez por foto,
+    // en su turno, nunca en el arranque.
+    const { error: e40 } = await admin.from('comprobante_huerfano').select('id').limit(1);
+    if (e40) {
+      reportarProbe(e40, 'FALTA la migración 0040 (comprobante_huerfano): no hay sala de espera, así que todo comprobante que llegue SIN viaje abierto —o después de liquidar— se pierde en vez de quedar guardado para adjuntarlo. Corre `supabase db push`.');
+      faltan = true;
+    }
+    // NO se sondean la 0038 ni la 0044, y es una decisión, no un olvido: la 0038
+    // (`foto_pendiente`) la REVIERTE la 0041 con un `drop table`, así que
+    // buscarla sería gritar por una tabla que tiene que faltar; y la 0044 solo
+    // extiende el dominio de `app_user_rol_dominio` con `encargado`, cuya
+    // ausencia falla ruidosamente y en el sitio exacto (el insert de
+    // `/admin/usuarios/nuevo` rebota con un check violation delante del
+    // superadmin). Además PostgREST no expone `pg_constraint`: sondearla pediría
+    // una migración nueva para cubrir un fallo que ya se ve solo.
+
     // Las dos migraciones nuevas del camino del dinero. La 0017 hace el merge de
     // ocr_extra con claim (sin ella se pisan los folios de portal entre fotos de
     // una misma ráfaga); la 0019 impide que el mismo CFDI se liquide dos veces.

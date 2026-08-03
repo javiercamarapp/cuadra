@@ -17,7 +17,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const rpc = vi.fn();
 const from = vi.fn();
-vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: () => ({ rpc, from }) }));
+const getBucket = vi.fn();
+vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: () => ({ rpc, from, storage: { getBucket } }) }));
 
 const error = vi.fn();
 const warn = vi.fn();
@@ -42,6 +43,10 @@ const okTabla = tabla();
 beforeEach(() => {
   rpc.mockReset(); from.mockReset(); error.mockReset(); warn.mockReset(); info.mockReset();
   from.mockReturnValue(okTabla);
+  // Bucket presente por default: lo contrario haría que TODA prueba de este
+  // archivo midiera además el sondeo de la 0039.
+  getBucket.mockReset();
+  getBucket.mockResolvedValue({ data: { id: 'comprobantes' }, error: null });
 });
 
 describe('diagnóstico de migraciones', () => {
@@ -322,5 +327,96 @@ describe('el TTL del contador de la barrera (0031)', () => {
     porTabla({});
     await verificarMigracionesCriticas();
     expect(info).toHaveBeenCalledWith('startup.migraciones', { ok: true });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDITORÍA 10, MEDIO · LO QUE EL PROBE TODAVÍA NO MIRABA.
+//
+// `grep -n "0038\|0039\|0040\|0044"` sobre startup.ts daba cero. De esas
+// cuatro, dos merecen sonda y dos NO — y decirlo importa tanto como añadirlas:
+//
+//   · 0038 (`foto_pendiente`) la REVIERTE la 0041 con un `drop table`. Sondear
+//     su presencia sería gritar por una tabla que tiene que NO existir.
+//   · 0044 solo extiende el dominio de `app_user_rol_dominio` con `encargado`.
+//     Su ausencia falla RUIDOSAMENTE y en el sitio exacto: el insert de
+//     `/admin/usuarios/nuevo` rebota con un check violation que el superadmin
+//     ve en pantalla. Además PostgREST no expone `pg_constraint`, así que
+//     sondearla pediría una migración nueva (`restricciones_faltantes`) para
+//     cubrir un fallo que ya se ve solo.
+//
+// Las otras dos son de las que se pierden en silencio, que es el criterio de
+// este archivo.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('el bucket de comprobantes (0039) y la sala de espera (0040)', () => {
+  const porTabla = (mapa: Record<string, { error: unknown }>) =>
+    from.mockImplementation((t: string) => tabla(mapa[t] ?? { error: null }));
+
+  it('sin el bucket `comprobantes`, el arranque lo dice — y dice que se pierden los tickets', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    porTabla({});
+    getBucket.mockResolvedValue({ data: null, error: { message: 'Bucket not found', status: 404 } });
+    await verificarMigracionesCriticas();
+
+    const mensajes = error.mock.calls.map((c) => (c[1] as { msg: string }).msg).join(' | ');
+    expect(mensajes).toContain('0039');
+    // La consecuencia, no solo el número. `subirComprobante` no tumba el
+    // intake a propósito: el gasto entra igual y la foto se pierde, con un
+    // `warn` por foto en el turno del operador. Cinco años de conservación del
+    // CFF art. 30 dependen de que ese bucket exista.
+    expect(mensajes).toMatch(/foto|comprobante|ticket/i);
+    expect(info).not.toHaveBeenCalledWith('startup.migraciones', { ok: true });
+  });
+
+  it('un fallo de RED sobre el bucket no se reporta como migración faltante', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    porTabla({});
+    getBucket.mockResolvedValue({ data: null, error: { message: 'TypeError: fetch failed' } });
+    await verificarMigracionesCriticas();
+
+    expect(error).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith('startup.migraciones_sin_verificar', expect.anything());
+  });
+
+  it('sin `comprobante_huerfano`, el arranque lo dice — el chofer sin viaje abierto pierde sus fotos', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    porTabla({ comprobante_huerfano: { error: { code: '42P01', message: 'relation "comprobante_huerfano" does not exist' } } });
+    await verificarMigracionesCriticas();
+
+    const mensajes = error.mock.calls.map((c) => (c[1] as { msg: string }).msg).join(' | ');
+    expect(mensajes).toContain('0040');
+    expect(mensajes).toMatch(/sin viaje|sala de espera|se pierde/i);
+    expect(info).not.toHaveBeenCalledWith('startup.migraciones', { ok: true });
+  });
+
+  it('un fallo de RED sobre esa tabla tampoco', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    porTabla({ comprobante_huerfano: { error: { code: '', message: 'TypeError: fetch failed' } } });
+    await verificarMigracionesCriticas();
+
+    expect(error).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith('startup.migraciones_sin_verificar', expect.anything());
+  });
+
+  // CONTROL: con las dos aplicadas el arranque no inventa nada y sigue diciendo
+  // `ok: true` — un probe que grita de más entrena a ignorar el que grita bien.
+  it('CONTROL: con las dos aplicadas no inventa un faltante', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    porTabla({});
+    await verificarMigracionesCriticas();
+    expect(error).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith('startup.migraciones', { ok: true });
+  });
+
+  // Y la 0038 al revés: la 0041 la revierte, así que `foto_pendiente` NO tiene
+  // que existir. Si alguien añade la sonda "por completar la lista", esta
+  // prueba lo detiene.
+  it('CONTROL: la 0038 está revertida (0041) y NO se sondea su tabla', async () => {
+    const tablas: string[] = [];
+    rpc.mockResolvedValue({ data: [], error: null });
+    from.mockImplementation((t: string) => { tablas.push(t); return okTabla; });
+    await verificarMigracionesCriticas();
+    expect(tablas, '`drop table foto_pendiente` (0041): sondearla gritaría por una tabla que debe faltar')
+      .not.toContain('foto_pendiente');
   });
 });
