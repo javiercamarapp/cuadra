@@ -147,7 +147,7 @@ const NO_DEDUCIBLE_ISR: TipoDiferencia[] = ['rfc_receptor', 'cfdi_cancelado', 'c
 // con su IVA acreditable, sobre un comprobante que el SAT sí marcó. Se había
 // pasado de "siempre duro" a "nunca duro". El tercer estado es el correcto:
 // ni fraude declarado, ni deducción afirmada.
-const POR_CONFIRMAR: TipoDiferencia[] = ['combustible_efectivo', 'rfc_receptor_no_verificable', 'cfdi_efos_indeterminado'];
+const POR_CONFIRMAR: TipoDiferencia[] = ['combustible_efectivo', 'medio_pago_sobre_tope', 'rfc_receptor_no_verificable', 'cfdi_efos_indeterminado'];
 
 /**
  * LA ÚNICA definición de en qué cubeta cae un gasto. Vive aquí, exportada, para
@@ -359,9 +359,38 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
       // El nombre del tipo se quedó corto (vive en `types/cuadra.ts`); lo que el
       // contralor lee es la nota, y esa sí nombra el medio real.
       diferencias.push({ tipo: 'combustible_efectivo', concepto: g.concepto, monto: 0, nota: `${etiquetaConcepto(g.concepto, g.ocrExtra as Record<string, unknown> | undefined)} ${g.formaPago === '01' ? 'pagado en EFECTIVO' : `pagado con una forma que no es medio de pago de LISR 27-III (FormaPago ${g.formaPago}${nombreFormaPago(g.formaPago as string)}): la ley pide transferencia, cheque nominativo, tarjeta de crédito, débito o servicios, o monedero electrónico autorizado`} — cuenta contra el tope del 15% del combustible del ejercicio (RFA 2026 regla 2.9). Dentro del 15% sigue siendo deducible; el excedente no. No acredita IEPS en ningún caso.`, gastoId: g.id });
-    } else if (g.formaPago === '01' && !esCombustible && g.monto > topeEfectivo) {
-      // Regla 6: gasto no-combustible en efectivo > tope → no deducible.
-      diferencias.push({ tipo: 'efectivo_sobre_tope', concepto: g.concepto, monto: 0, nota: `${etiquetaConcepto(g.concepto, g.ocrExtra as Record<string, unknown> | undefined)} de ${mxn(g.monto)} en efectivo excede el tope de ${mxn(topeEfectivo)} (LISR 27-III) — no deducible.`, gastoId: g.id });
+    } else if (!esCombustible && medioFueraDeLista && g.monto > topeEfectivo) {
+      // Regla 6: gasto NO combustible de más del tope, pagado fuera de la lista
+      // cerrada del 1er párrafo de LISR 27-III.
+      //
+      // AUDITORÍA 10 (deuda del ALTO del medio de pago): esto era
+      // `g.formaPago === '01'` —"no es efectivo"— igual que la rama del
+      // combustible antes de su arreglo, y los otros 29 códigos de
+      // `c_FormaPago` pasaban como si cumplieran. Medido con el hospedaje del
+      // hallazgo ($5,000, timbrado, XML verificado, IVA $689.66, `FormaPago 17`
+      // — compensación): CERO diferencias, "Deducible para ISR $5,000" en verde
+      // y "IVA acreditable $689.66" en verde.
+      //
+      // DOS VEREDICTOS, NO UNO, y ésa es la razón del tipo nuevo. El efectivo es
+      // un hecho consumado y fuera de la lista: sigue siendo DURO
+      // (`NO_DEDUCIBLE_ISR`). `99` —«Por definir», obligatorio en todo CFDI con
+      // `MetodoPago = PPD`— significa que el pago TODAVÍA NO OCURRIÓ y que el
+      // medio real llegará en el complemento de recepción de pagos: declararlo
+      // no deducible le quitaría al cliente una deducción que va a tener. Los
+      // demás (12, 15, 17, 23, 30) se tratan como el PPD y no como el efectivo,
+      // por el mismo criterio que gobierna todo este archivo: no se declara
+      // perdido lo que no se puede verificar. Van a POR CONFIRMAR: ni afirmado
+      // ni perdido, y sin acreditar el IVA mientras tanto (LIVA 5-I ata el
+      // acreditamiento a la deducción para ISR).
+      if (g.formaPago === '01') {
+        diferencias.push({ tipo: 'efectivo_sobre_tope', concepto: g.concepto, monto: 0, nota: `${etiquetaConcepto(g.concepto, g.ocrExtra as Record<string, unknown> | undefined)} de ${mxn(g.monto)} en efectivo excede el tope de ${mxn(topeEfectivo)} (LISR 27-III) — no deducible.`, gastoId: g.id });
+      } else {
+        const fp = g.formaPago as string;
+        const cierre = fp === '99'
+          ? 'El CFDI dice que el pago AÚN NO OCURRE (MetodoPago PPD): la deducción se sostiene cuando se pague por uno de esos medios y llegue el complemento de recepción de pagos. No se declara perdida — queda por confirmar.'
+          : 'Mientras no se acredite un pago por uno de esos medios, la deducción no se puede afirmar. No se declara perdida — queda por confirmar; confírmalo con tu contador.';
+        diferencias.push({ tipo: 'medio_pago_sobre_tope', concepto: g.concepto, monto: 0, nota: `${etiquetaConcepto(g.concepto, g.ocrExtra as Record<string, unknown> | undefined)} de ${mxn(g.monto)} excede ${mxn(topeEfectivo)} y se pagó con FormaPago ${fp}${nombreFormaPago(fp)}: LISR 27-III exige transferencia electrónica, cheque nominativo de la cuenta del contribuyente, tarjeta de crédito, de débito o de servicios, o monedero electrónico autorizado por el SAT. ${cierre}`, gastoId: g.id });
+      }
     }
 
     // B5: el intake ya detectó que el total del CÓDIGO y el del OCR no coinciden
@@ -1045,7 +1074,7 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
   // renta". Si la deducción para ISR quedó por confirmar, el acreditamiento del
   // IVA está en la misma duda; afirmarlo en verde era prometer $1,600
   // recuperables sobre un comprobante que el SAT marcó.
-  const SIN_ACREDITAMIENTO: TipoDiferencia[] = ['rfc_receptor', 'rfc_receptor_no_verificable', 'cfdi_cancelado', 'cfdi_efos', 'cfdi_efos_indeterminado', 'cfdi_no_encontrado', 'complemento_hidrocarburos', 'combustible_efectivo', 'efectivo_sobre_tope', 'monto_invalido'];
+  const SIN_ACREDITAMIENTO: TipoDiferencia[] = ['rfc_receptor', 'rfc_receptor_no_verificable', 'cfdi_cancelado', 'cfdi_efos', 'cfdi_efos_indeterminado', 'cfdi_no_encontrado', 'complemento_hidrocarburos', 'combustible_efectivo', 'medio_pago_sobre_tope', 'efectivo_sobre_tope', 'monto_invalido'];
   const peajeFactor = input.estimulos?.peajeFactor ?? 0.5;
   // `iepsAcreditable` se queda en 0 a propósito y por eso es const: el estímulo
   // del LIF 20-A no es una cifra que este motor pueda calcular (necesita la cuota
@@ -1232,7 +1261,7 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
   // central del demo. El requisito sigue avisado —ahora con tono `condicionado`
   // en el renglón de deducibilidad, ver `liquidacion/deducibilidad.ts`— pero ya
   // no puede bajar un estatus que nunca podría volver a subir.
-  const REVISAR: TipoDiferencia[] = ['ocr_baja_confianza', 'sin_cfdi', 'rfc_receptor', 'cfdi_cancelado', 'cfdi_efos', 'cfdi_efos_indeterminado', 'cfdi_no_encontrado', 'cfdi_pendiente', 'monto_invalido', 'complemento_hidrocarburos', 'complemento_no_verificable', 'combustible_efectivo', 'efectivo_sobre_tope', 'viatico_excede_fiscal', 'factura_por_vencer', 'alimentacion_sin_soporte', 'alimentacion_transporte_sin_tarjeta_credito', 'viatico_rfc_operador', 'monto_discrepante', 'texto_sospechoso', 'fecha_sospechosa', 'folio_verificar', 'comprobante_no_fiscal', 'diesel_desviacion'];
+  const REVISAR: TipoDiferencia[] = ['ocr_baja_confianza', 'sin_cfdi', 'rfc_receptor', 'cfdi_cancelado', 'cfdi_efos', 'cfdi_efos_indeterminado', 'cfdi_no_encontrado', 'cfdi_pendiente', 'monto_invalido', 'complemento_hidrocarburos', 'complemento_no_verificable', 'combustible_efectivo', 'medio_pago_sobre_tope', 'efectivo_sobre_tope', 'viatico_excede_fiscal', 'factura_por_vencer', 'alimentacion_sin_soporte', 'alimentacion_transporte_sin_tarjeta_credito', 'viatico_rfc_operador', 'monto_discrepante', 'texto_sospechoso', 'fecha_sospechosa', 'folio_verificar', 'comprobante_no_fiscal', 'diesel_desviacion'];
   const hayRevisar = diferencias.some((d) => REVISAR.includes(d.tipo));
   const hayDif = diferencias.some((d) => d.tipo === 'sobre_politica' || d.tipo === 'duplicado' || d.tipo === 'diesel_desviacion') || Math.abs(diferencia) >= 0.5;
   const estatus: EstatusLiquidacion = hayRevisar ? 'revisar' : hayDif ? 'con_diferencias' : 'cuadrada';
