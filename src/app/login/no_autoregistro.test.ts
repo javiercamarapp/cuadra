@@ -38,4 +38,26 @@ describe('/login no se autoregistra ni se queda sin límite', () => {
     expect(PAGINA).toMatch(/esCorreoSinCuenta/);
     expect(PAGINA).toMatch(/otp_disabled/);
   });
+
+  // CRÍTICO de la auditoría 10 (operabilidad). Se registraba SOLO el caso
+  // benigno (`login.otp_sin_cuenta`, un correo que no tiene cuenta). El fallo
+  // que de verdad importa —cuota de SMTP agotada, config rota, proyecto
+  // caído— salía sin una sola línea, y el SMTP de hoy es el sandbox de
+  // Supabase, del que ya se sabe que rebota. El 6-ago, un contralor que no
+  // pueda entrar dejaría cero rastro.
+  //
+  // ADVERTENCIA HONESTA sobre esta prueba: lee el fuente, no ejecuta. Los
+  // server actions viven dentro del componente y no se pueden importar
+  // sueltos. El auditor de pruebas de esta misma ronda mostró que este idioma
+  // deja pasar mutaciones; anclar esto de verdad exige extraer el manejo de
+  // error a un módulo propio, que es un cambio de forma y no cabía en el
+  // alcance de este arreglo. Queda anotado como deuda.
+  it('el fallo REAL de envío del magic link se registra, no solo el correo sin cuenta', () => {
+    expect(PAGINA).toMatch(/logger\.error\('login\.otp_error'/);
+  });
+
+  it('y lo registrado no arrastra el correo del usuario', () => {
+    const linea = PAGINA.match(/logger\.error\('login\.otp_error',[^)]*\)/)?.[0] ?? '';
+    expect(linea).not.toMatch(/\bemail\b/);
+  });
 });

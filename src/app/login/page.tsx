@@ -92,7 +92,16 @@ export default async function Login({
     // fallo de otra naturaleza (cuota de correo, correo malformado, config rota)
     // sale como error.
     if (error) {
-      if (!esCorreoSinCuenta(error)) redirect(`/login?next=${encodeURIComponent(dest)}&error=1`);
+      if (!esCorreoSinCuenta(error)) {
+        // ESTE es el fallo que importa y el que no dejaba rastro: cuota de
+        // correo agotada, SMTP mal configurado, proyecto de Supabase caído. El
+        // usuario ve `error=1` y se acabó; sin esta línea, el único testigo era
+        // su navegador (auditoría 10, CRÍTICO de operabilidad). Sin el correo:
+        // el código y el status distinguen una cuota agotada de una config
+        // rota, y el correo es dato personal que no hace falta para eso.
+        logger.error('login.otp_error', { code: error.code, status: error.status });
+        redirect(`/login?next=${encodeURIComponent(dest)}&error=1`);
+      }
       // El usuario ve "enviado"; el motivo real solo queda aquí. Sin correo en el
       // log: el código y el status bastan para distinguirlo de una cuota agotada.
       logger.warn('login.otp_sin_cuenta', { code: error.code, status: error.status });
