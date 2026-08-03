@@ -36,6 +36,29 @@ export interface RegisteredTool {
   paraModelo?: (result: unknown) => unknown;
 }
 
+/**
+ * Fallo cuyo mensaje SÍ puede leer el modelo, porque lo escribimos nosotros.
+ *
+ * `executeTool` ponía `err.message` tal cual en `ToolExecResult.error`, y
+ * `openrouter.ts` lo serializa en el `content` del mensaje `role:'tool'`. El
+ * ejemplo directo es `guardar_liquidacion`, que llama `saveLiquidacion` sin
+ * try/catch propio: un error del RPC llega como
+ * `saveLiquidacion: duplicate key value violates unique constraint
+ * "liquidacion_viaje_id_key"` —nombre de función plpgsql, constraint, columna—
+ * y entra al contexto del modelo en la tool que cierra el dinero. Y como en ese
+ * turno `cerro`/`cuadro` son false, la guardia no sustituye el texto: el chofer
+ * puede recibir "se trabó por un problema con liquidacion_viaje_id_key".
+ *
+ * Con esto la regla es explícita: lo que el handler quiere DECIRLE al modelo se
+ * lanza así; lo demás es infraestructura y sale opaco (al log va completo).
+ */
+export class ToolErrorVisible extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ToolErrorVisible';
+  }
+}
+
 const REGISTRY = new Map<string, RegisteredTool>();
 
 export function registerTool(name: string, tool: RegisteredTool): void {
@@ -89,7 +112,9 @@ export async function executeTool(
     return {
       success: false,
       result: null,
-      error: err instanceof Error ? err.message : String(err),
+      // El diagnóstico completo ya quedó en el log de arriba. Lo que cruza al
+      // contexto del modelo es sólo lo que se escribió PARA él.
+      error: err instanceof ToolErrorVisible ? err.message : `la tool ${name} falló`,
       durationMs: Date.now() - started,
     };
   }

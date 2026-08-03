@@ -7,7 +7,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { randomUUID } from 'crypto';
-import { registerTool } from '@/lib/llm/tool-executor';
+import { registerTool, ToolErrorVisible } from '@/lib/llm/tool-executor';
 import { cuadrarDesdeDB } from './cuadre/desde_db';
 import { getViaje, getOperador, saveLiquidacion } from './repo';
 import { getConfig } from './config';
@@ -118,7 +118,7 @@ registerTool('cuadrar_viaje', {
   },
   handler: async (_args, ctx) => {
     ctx.signal?.throwIfAborted();
-    if (!ctx.viajeId) throw new Error('sin viaje activo');
+    if (!ctx.viajeId) throw new ToolErrorVisible('sin viaje activo');
     const liq = await computeCuadre(ctx.tenantId, ctx.viajeId);
 
     // LA CAPA DE PERIODO. El motor es puro y evalúa UN viaje, así que marca el
@@ -204,7 +204,7 @@ registerTool('guardar_liquidacion', {
     // que `saveLiquidacion` corrió, abortar no desharía nada y sí convertiría un
     // cierre bueno en un error.
     ctx.signal?.throwIfAborted();
-    if (!ctx.viajeId) throw new Error('sin viaje activo');
+    if (!ctx.viajeId) throw new ToolErrorVisible('sin viaje activo');
     const [liq, viaje, operador] = await Promise.all([
       computeCuadre(ctx.tenantId, ctx.viajeId),
       getViaje(ctx.viajeId, ctx.tenantId),
