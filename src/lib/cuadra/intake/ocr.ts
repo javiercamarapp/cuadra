@@ -9,6 +9,7 @@
 //   3. Validar RFC/UUID por regex (el JSON válido no garantiza el valor).
 // ═══════════════════════════════════════════════════════════════════════════
 
+import sharp from 'sharp';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { logger } from '@/lib/logger';
@@ -198,6 +199,65 @@ function normalizarUrl(v: string | null | undefined): string | undefined {
   return `https://${t}`;
 }
 
+/**
+ * TOPE DE RESOLUCIÓN DE LA IMAGEN QUE PAGA TOKENS. (auditoría 10, MEDIO)
+ *
+ * El mismo buffer seguía dos caminos y solo se acotaba el barato. El GRATIS
+ * —zxing, CPU local— se reduce a 1 600 px desde julio porque el repo midió que a
+ * resolución nativa «cuesta segundos y no encuentra nada que no encuentre la de
+ * 1 600 px», con el caso real nombrado en el comentario: «una foto de 24 Mpx».
+ * El CARO —esta llamada de visión— recibía el original, en base64 (33 % más de
+ * cuerpo), dentro de un `reloj.senal(25_000)`.
+ *
+ * Por qué 2 000 y no 1 600: la cuenta que este número tiene que respetar es la
+ * del presupuesto de tokens. La estimación escrita en el repo es $0.015 por
+ * visión; a `PRICES['google/gemini-3.6-flash'] = [1.5, 7.5]` USD/1M, los
+ * 1 000–1 800 tokens de razonamiento medidos (`openrouter.ts:41-45`) más ~100 de
+ * JSON ya cuestan $0.0083–$0.0143 SOLO de salida, así que a la entrada le quedan
+ * entre 500 y 4 500 tokens. A ~258 tokens por tesela de 768×768, 2 000 px de lado
+ * mayor son ~6 teselas ≈ 1 550 tokens — dentro del rango. Una foto de 5 657×4 243
+ * son ~48 teselas ≈ 12 400: fuera por casi 3×, y con 8 comprobantes por viaje el
+ * error se multiplica por 8 contra los $0.03–0.05 por liquidación de
+ * `models.ts:17`.
+ *
+ * `withoutEnlargement` y `fit: 'inside'`: la foto típica que entrega WhatsApp
+ * Cloud API ya llega recomprimida (tope de 5 MB) y pasa INTACTA — ni se reescala
+ * ni se vuelve a comprimir. Lo que se acota es el caso patológico, que es el
+ * único que rompe la cuenta. Bajar de aquí sería cambiar lectura de comprobantes
+ * por ahorro de tokens, y un ticket mal leído cuesta más que la llamada entera.
+ *
+ * `.rotate()` es obligatorio al reencodear: sharp trabaja sobre píxeles crudos y
+ * las fotos de iPhone vienen con orientación EXIF 3 (180°). Sin él, el ticket le
+ * llegaría de cabeza al modelo — el mismo motivo por el que `cfdi.ts` lo aplica.
+ */
+const TOPE_PX_VISION = 2_000;
+
+/**
+ * Devuelve la imagen acotada, o la original si no se pudo tocar.
+ *
+ * Nunca lanza: antes de ahorrar tokens está leer el comprobante. Si sharp no
+ * puede abrir el buffer —o si la imagen ya cabe—, se manda lo que llegó, que es
+ * el comportamiento de siempre.
+ */
+async function paraVision(dataUrl: string): Promise<string> {
+  try {
+    const buf = bufferFromDataUrl(dataUrl);
+    const meta = await sharp(buf).metadata();
+    const lado = Math.max(meta.width ?? 0, meta.height ?? 0);
+    if (!lado || lado <= TOPE_PX_VISION) return dataUrl;
+    const chico = await sharp(buf).rotate()
+      .resize({ width: TOPE_PX_VISION, height: TOPE_PX_VISION, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 85 }).toBuffer();
+    logger.info('ocr.imagen_acotada', {
+      dePx: lado, aPx: TOPE_PX_VISION, deBytes: buf.length, aBytes: chico.length,
+    });
+    return `data:image/jpeg;base64,${chico.toString('base64')}`;
+  } catch (e) {
+    logger.warn('ocr.imagen_no_acotada', { err: e instanceof Error ? e.message : String(e) });
+    return dataUrl;
+  }
+}
+
 export interface ExtraerResultado {
   gasto: Gasto;
   legible: boolean;
@@ -260,7 +320,7 @@ export async function extraerComprobante(
   // La foto sin código es la del ticket completo (el acercamiento se tomó PARA
   // el código, así que trae poco texto). Si todas traen código, la primera.
   const iSinCodigo = codigosPorFoto.findIndex((c) => c.length === 0);
-  const principal = fotos[iSinCodigo >= 0 ? iSinCodigo : 0];
+  const principal = await paraVision(fotos[iSinCodigo >= 0 ? iSinCodigo : 0]);
 
   let res: Awaited<ReturnType<typeof generateStructured<z.infer<typeof ExtraccionSchema>>>>;
   try {
