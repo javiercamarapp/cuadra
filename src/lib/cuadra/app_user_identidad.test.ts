@@ -134,3 +134,49 @@ describe('la identidad del chofer se nota entera o no se nota', () => {
     expect(prov).toMatch(/rol === 'operador' && !operadorId/);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BAJO de la auditoría 10 (modelo de datos) — `app_user.id` no tenía FK a
+// `auth.users`: la relación 1-a-1 vivía en un comentario de la 0001
+// (`id uuid primary key, -- = auth.users.id`) y `grep "auth.users"` sobre
+// `supabase/` devolvía esa línea y ninguna más.
+//
+// Escenario: se borra un usuario de prueba desde la consola de Auth (la vía
+// documentada para revocar acceso). Su fila de `app_user` sobrevive. Se vuelve
+// a dar de alta el mismo correo: `createUser` funciona y devuelve un id NUEVO,
+// y el insert truena con `23505` contra el `unique(email)` de la fila muerta.
+// Queda un usuario de Auth sin alta que pide magic link, obtiene sesión válida
+// y sale a /sin-acceso para siempre, mientras la fila del id muerto sigue ahí.
+//
+// La mitad de aplicación se cerró aparte (`provisionarUsuario` compensa). Esto
+// es la mitad de esquema. Misma advertencia: es ESTRUCTURAL — lo demuestra el
+// bloque 34 de `supabase/verificaciones.sql`.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('`app_user` no sobrevive a su usuario de Auth', () => {
+  const m0053 = readFileSync(join(DIR, '0053_app_user_id_auth_users.sql'), 'utf8');
+
+  it('la FK a `auth.users` existe y es `on delete cascade`', () => {
+    expect(m0053).toMatch(/foreign key\s*\(\s*id\s*\)\s*references\s+auth\.users\s*\(\s*id\s*\)\s*on delete cascade/i);
+  });
+
+  it('deja de ser un comentario: la 0001 lo decía y no lo imponía', () => {
+    const m0001 = readFileSync(join(DIR, '0001_init.sql'), 'utf8');
+    // La premisa medida, no supuesta: si algún día la 0001 sí escribe la FK,
+    // esta prueba deja de aplicar y hay que reescribirla.
+    expect(m0001, 'la 0001 ya escribe la FK: esta prueba sobra').not.toMatch(/references\s+auth\.users/i);
+    expect(m0001).toContain('= auth.users.id');
+  });
+
+  it('no aplica a ciegas: cuenta las filas huérfanas y aborta con el número', () => {
+    expect(m0053).toMatch(/not exists \(select 1 from auth\.users/i);
+    expect(m0053).toMatch(/raise exception/i);
+  });
+
+  it('avisa de lo que no puede saber sin base: el permiso sobre el esquema `auth`', () => {
+    // `supabase db push` corre como dueño del proyecto y debería poder
+    // referenciar `auth.users`, pero eso no se puede comprobar desde aquí. Una
+    // migración que puede fallar con 42501 tiene que decirlo en su cabecera.
+    expect(m0053).toContain('VERIFICAR ANTES DE CONFIAR');
+    expect(m0053).toContain('42501');
+  });
+});

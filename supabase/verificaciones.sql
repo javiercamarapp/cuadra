@@ -1365,3 +1365,51 @@ begin
   raise exception E'SONDA_TRIGGERS_CUERPO  vieja_ve=%  nueva_ve=%  tras_restaurar=%   (esperado 0 / 1 / 0 — la vieja es ciega al reemplazo, que es el hallazgo)',
     vieja_ve, nueva_ve, tras_restaurar;
 end $$;
+
+-- ── 34. `app_user` no sobrevive a su usuario de Auth (mig. 0053) ─────────────
+--
+-- La 0001 dejó la relación 1-a-1 en un comentario (`id uuid primary key, -- =
+-- auth.users.id`) y nunca en una restricción. Borrar un usuario en la consola
+-- de Auth —la vía documentada para revocar acceso— dejaba su fila viva, y el
+-- mismo correo ya no se podía volver a dar de alta desde el producto: el insert
+-- chocaba con el `unique(email)` de la fila muerta (auditoría 10, BAJO).
+--
+-- Esperado: huerfanas=0 (no se pueden crear) · tras_borrar=0 (el DELETE en auth
+-- se lleva la fila) · viva=1 (control: con su usuario de Auth, la fila existe).
+--
+-- ⚠️  NO SE HA CORRIDO. La 0053 se escribió sin base contra la cual ejercerla,
+--     y además toca el esquema `auth`: si el `alter table` de la migración
+--     falló con `42501`, este bloque va a dar huerfanas=1.
+do $$
+declare
+  v_t uuid; v_u uuid := gen_random_uuid();
+  huerfanas int := 0; tras_borrar int; viva int;
+begin
+  insert into tenant (nombre) values ('ZZZ VERIF AUTH FK') returning id into v_t;
+
+  -- 1. Una fila de app_user sin usuario de Auth detrás.
+  begin
+    insert into app_user (id, tenant_id, email, rol)
+      values (v_u, v_t, 'zzz-verif-auth-huerfana@likida.test', 'contador');
+    huerfanas := 1;                     -- pasó: la FK no está
+    delete from app_user where id = v_u;
+  exception when foreign_key_violation then
+    huerfanas := 0;
+  end;
+
+  -- 2 y 3. Con usuario de Auth de verdad. `auth.users` tiene columnas NOT NULL
+  -- que Supabase llena desde GoTrue; se ponen las mínimas a mano.
+  insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at)
+    values (v_u, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+            'zzz-verif-auth@likida.test', now(), now());
+  insert into app_user (id, tenant_id, email, rol)
+    values (v_u, v_t, 'zzz-verif-auth@likida.test', 'contador');
+
+  select count(*) into viva from app_user where id = v_u;
+
+  delete from auth.users where id = v_u;
+  select count(*) into tras_borrar from app_user where id = v_u;
+
+  raise exception E'APP_USER_AUTH_FK  huerfanas=%  viva=%  tras_borrar=%   (esperado 0 / 1 / 0 — antes de la 0053 daba 1 / 1 / 1)',
+    huerfanas, viva, tras_borrar;
+end $$;
