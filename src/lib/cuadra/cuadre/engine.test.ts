@@ -453,9 +453,18 @@ describe('cuadrarViaje', () => {
     // AUDITORÍA 9, ALTO (fiscal): sin CFDI, el excedente no puede ser "no
     // deducible" — no es deducción de nadie hasta que se timbre (cae en
     // por_confirmar). `monto` refleja eso; la nota informa igual.
+    //
+    // AUDITORÍA 10, BAJO (fiscal): el fixture decía `concepto: 'viaticos'` y con
+    // eso fijaba de paso la premisa de que el cajón genérico lleva el tope de la
+    // alimentación. Dejó de sostenerse —`lisr-28-V.yaml` topa la ALIMENTACIÓN y
+    // el hospedaje nacional no lleva tope, así que sobre un `viaticos` el motor
+    // no puede afirmar cuál es—. Lo que esta prueba afirma es otra cosa (que sin
+    // timbrar el excedente no es de nadie todavía), y para eso el concepto
+    // correcto siempre fue `alimentacion`. El genérico tiene su propia prueba en
+    // `viaticos_generico_sin_tope.test.ts`.
     const r = cuadrarViaje({
       viajeId: 'a6', anticipo: 900, politica, estimulos: EST,
-      gastos: [g({ concepto: 'viaticos', monto: 900, folio: 'V1' })],
+      gastos: [g({ concepto: 'alimentacion', monto: 900, folio: 'V1' })],
     });
     const d = r.diferencias.find((x) => x.tipo === 'viatico_excede_fiscal');
     expect(d).toBeTruthy();
@@ -503,9 +512,14 @@ describe('cuadrarViaje — totales de deducibilidad', () => {
     // LISR 28-V topa la alimentación en $750/día. Un viático de $900 no se pierde
     // completo: se pierden $150. Mandar los $900 a no deducible es el error que
     // más dinero le cuesta al cliente en esta lista.
+    //
+    // AUDITORÍA 10, BAJO (fiscal): mismo caso que 1.10 — el fixture era
+    // `concepto: 'viaticos'` y fijaba con eso una premisa que la ficha desmiente
+    // (el tope es de la ALIMENTACIÓN; el hospedaje nacional no lo lleva). Lo que
+    // la prueba afirma —que solo se pierde el excedente— no cambió.
     const r = cuadrarViaje({
       viajeId: 't3', anticipo: 900, politica: [], estimulos: EST,
-      gastos: [g({ concepto: 'viaticos', monto: 900, folio: 'V1', formaPago: '04', cfdiUuid: 'f4' })],
+      gastos: [g({ concepto: 'alimentacion', monto: 900, folio: 'V1', formaPago: '04', cfdiUuid: 'f4' })],
     });
     expect(r.totalNoDeducible).toBe(150);
     expect(r.totalDeducible).toBe(750);

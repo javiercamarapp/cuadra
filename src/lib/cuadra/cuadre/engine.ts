@@ -905,10 +905,19 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
 
   const topeAlimentacion = input.estimulos?.viaticosTopeFiscalDiarioMxn;
   if (topeAlimentacion != null) {
-    // 'viaticos' a secas entra por compatibilidad: es lo que emitía el OCR viejo
-    // y esos gastos ya guardados no se pueden reclasificar solos. Criterio
-    // conservador: se le sigue aplicando el tope.
-    const conTope = (c: string) => c === 'alimentacion' || c === 'viaticos';
+    // AUDITORÍA 10, BAJO (fiscal): 'viaticos' a secas entraba aquí "por
+    // compatibilidad, criterio conservador". No lo era. `viaticos` es el cajón
+    // del OCR viejo —una noche de hotel se guardaba así— y la ficha es
+    // explícita: «Tratándose de gastos de viaje destinados a LA ALIMENTACIÓN,
+    // éstos sólo serán deducibles hasta por un monto que no exceda de $750.00
+    // diarios», con `confirmado_del_codigo`: «Solo alimentación; el hospedaje
+    // nacional NO tiene tope». Medido: un hotel de $2,000 del 1-ago guardado
+    // como `viaticos` salía "totalDeducible 750 · totalNoDeducible 1,250" y el
+    // papel lo llamaba "Alimentación del 2026-08-01". El lado conservador para
+    // el contribuyente es NO declararle perdida una deducción que la ley le
+    // concede. La señal no se pierde: los genéricos se avisan abajo, sin
+    // afirmar la pérdida.
+    const conTope = (c: string) => c === 'alimentacion';
     const porDia = new Map<string, Gasto[]>();
     for (const g of input.gastos) {
       if (duplicados.has(g.id) || !(g.monto > 0) || !conTope(g.concepto)) continue;
@@ -982,6 +991,35 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
         tipo: 'viatico_excede_fiscal', concepto: ancla.concepto,
         esperado: topeAlimentacion, real: round2(total), monto: montoNoDeducible,
         nota,
+        gastoId: ancla.id,
+      });
+    }
+
+    // ── El cajón genérico `viaticos`: se avisa, no se descuenta ───────────────
+    //
+    // AUDITORÍA 10, BAJO (fiscal). Un gasto guardado con este concepto puede ser
+    // comida (con tope) u hospedaje (sin tope, ficha `lisr-28-V.yaml`), y el
+    // motor no puede saber cuál. Las dos afirmaciones posibles son falsas la
+    // mitad de las veces; la única honesta es la tercera: decir que el dato no
+    // alcanza. Por eso `monto: 0` —igual que `alimentacion_sin_soporte`, y por
+    // la misma razón: ponerle el total en la columna de importes lo declararía
+    // no deducible— y por eso la nota no empieza con "Alimentación".
+    const genericos = new Map<string, Gasto[]>();
+    for (const g of input.gastos) {
+      if (duplicados.has(g.id) || !(g.monto > 0) || g.concepto !== 'viaticos') continue;
+      const dia = g.fecha ? g.fecha.slice(0, 10) : `sin-fecha:${g.id}`;
+      genericos.set(dia, [...(genericos.get(dia) ?? []), g]);
+    }
+    for (const [dia, delDia] of genericos) {
+      const total = delDia.reduce((s, x) => s + x.monto, 0);
+      if (total <= topeAlimentacion) continue;
+      const ancla = delDia[delDia.length - 1];
+      const cuantos = delDia.length > 1 ? ` (${delDia.length} comprobantes del día)` : '';
+      const cuando = dia.startsWith('sin-fecha') ? 'sin fecha' : dia;
+      diferencias.push({
+        tipo: 'viatico_excede_fiscal', concepto: ancla.concepto,
+        esperado: topeAlimentacion, real: round2(total), monto: 0,
+        nota: `Viáticos del ${cuando}: ${mxn(total)}${cuantos} rebasan el tope de ${mxn(topeAlimentacion)} por día que LISR 28-V pone a la ALIMENTACIÓN. Este comprobante está guardado con el concepto genérico "viáticos" y no se puede saber si es comida o hospedaje —el hospedaje nacional no lleva tope—, así que no se descuenta nada: reclasifícalo o confírmalo con tu contador.`,
         gastoId: ancla.id,
       });
     }
