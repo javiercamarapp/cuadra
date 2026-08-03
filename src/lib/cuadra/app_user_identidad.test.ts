@@ -87,3 +87,50 @@ describe('la cuenta web del chofer y su operador son de la misma flota', () => {
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MEDIO de la auditoría 10 (modelo de datos) — `rol='operador'` con
+// `operador_id` NULL era un estado que la base aceptaba, que el producto no
+// sabe usar, y que era el ÚNICO que la aplicación sabía crear.
+//
+// La 0045 declaró la invariante en un COMENTARIO («Solo se llena cuando rol =
+// ''operador'' … NULL para los otros 4 roles») y no la impuso en ninguna
+// dirección. En el ensayo del demo, Javier crea al chofer desde
+// /admin/usuarios/nuevo, la fila queda `rol='operador', operador_id=null`, y el
+// chofer entra con su magic link para aterrizar en /sin-acceso — la pantalla
+// que le dice «pídele a tu proveedor que te dé de alta», justo después de
+// dársela.
+//
+// Misma advertencia que arriba: esto es ESTRUCTURAL. No ejecuta el CHECK. Lo
+// que lo demuestra es el bloque 32 de `supabase/verificaciones.sql`.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('la identidad del chofer se nota entera o no se nota', () => {
+  const m0051 = readFileSync(join(DIR, '0051_app_user_operador_coherente.sql'), 'utf8');
+
+  it('el CHECK va en las DOS direcciones, no solo en una', () => {
+    // `(a) = (b)` y no `(a) implica (b)`: la dirección contraria —un
+    // `operador_id` colgado de un contador— deja la columna mintiendo sobre lo
+    // que significa, y el día que alguien la lea sin mirar `rol`, ese es el bug.
+    expect(m0051).toContain('app_user_operador_id_coherente');
+    expect(m0051).toMatch(/check\s*\(\s*\(rol = 'operador'\)\s*=\s*\(operador_id is not null\)\s*\)/i);
+  });
+
+  it('no aplica a ciegas: cuenta las filas que ya lo violan y aborta con el número', () => {
+    expect(m0051).toMatch(/n_sin_ligar/);
+    expect(m0051).toMatch(/n_de_mas/);
+    expect(m0051).toMatch(/raise exception/i);
+  });
+
+  it('es idempotente: re-aplicarla no falla con 42710/42P16', () => {
+    expect(m0051).toMatch(/if not exists\s*\(\s*select 1 from pg_constraint/i);
+  });
+
+  it('y el único escritor de `app_user` ya escribe la columna: la base no queda sola', () => {
+    // Un CHECK que la aplicación no sabe satisfacer convierte el alta de un
+    // chofer en un error permanente. `provisionarUsuario` recibe `operador_id`
+    // desde esta misma auditoría y lo exige antes de tocar Auth.
+    const prov = readFileSync(join(process.cwd(), 'src/lib/auth/provisionar.ts'), 'utf8');
+    expect(prov).toContain('operador_id');
+    expect(prov).toMatch(/rol === 'operador' && !operadorId/);
+  });
+});

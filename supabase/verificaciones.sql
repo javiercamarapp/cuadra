@@ -1248,3 +1248,54 @@ begin
   raise exception E'APP_USER_OPERADOR_FK  cruzado=%  sin_tenant=%  propio=%   (esperado 0 / 0 / 1 — antes de la 0050 daba 1 / 1 / 1)',
     cruzado, sin_tenant, propio;
 end $$;
+
+-- ── 32. La identidad del chofer se nota entera o no se nota (mig. 0051) ──────
+--
+-- La 0045 declaró la invariante en un comentario y no la impuso: la base
+-- aceptaba `rol='operador'` con `operador_id` NULL —la cuenta que la consola
+-- creaba y que /mis-viajes rebota a /sin-acceso con «pide tu alta»— y también
+-- `operador_id` colgado de un rol que no es chofer.
+--
+-- Esperado: sin_ligar=0 · de_mas=0 · completo=1 (control: la cuenta con las dos
+-- mitades sí entra, si no esto dejaría al producto sin poder dar de alta a un
+-- chofer).
+--
+-- ⚠️  NO SE HA CORRIDO. La 0051 se escribió sin base contra la cual ejercerla.
+do $$
+declare
+  v_t uuid; v_o uuid;
+  sin_ligar int := 0; de_mas int := 0; completo int := 0;
+begin
+  insert into tenant (nombre) values ('ZZZ VERIF COHERENTE') returning id into v_t;
+  insert into operador (tenant_id, nombre, telefono) values (v_t, 'Chofer', '520000009080') returning id into v_o;
+
+  -- 1. Chofer sin ligar: lo que la consola creaba en cada alta.
+  begin
+    insert into app_user (id, tenant_id, email, rol)
+      values (gen_random_uuid(), v_t, 'zzz-verif-coh-1@likida.test', 'operador');
+    sin_ligar := 1;
+  exception when check_violation then
+    sin_ligar := 0;
+  end;
+
+  -- 2. `operador_id` colgado de un rol que no es chofer.
+  begin
+    insert into app_user (id, tenant_id, email, rol, operador_id)
+      values (gen_random_uuid(), v_t, 'zzz-verif-coh-2@likida.test', 'contador', v_o);
+    de_mas := 1;
+  exception when check_violation then
+    de_mas := 0;
+  end;
+
+  -- 3. CONTROL: las dos mitades juntas sí entran.
+  begin
+    insert into app_user (id, tenant_id, email, rol, operador_id)
+      values (gen_random_uuid(), v_t, 'zzz-verif-coh-3@likida.test', 'operador', v_o);
+    completo := 1;
+  exception when others then
+    completo := 0;
+  end;
+
+  raise exception E'APP_USER_OPERADOR_COHERENTE  sin_ligar=%  de_mas=%  completo=%   (esperado 0 / 0 / 1 — antes de la 0051 daba 1 / 1 / 1)',
+    sin_ligar, de_mas, completo;
+end $$;
