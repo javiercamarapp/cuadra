@@ -1,279 +1,434 @@
-# Cumplimiento fiscal — auditoría 10
+# Cumplimiento fiscal — auditoría 10 (continuación 3-ago)
 
-**Nota: 6/10** (antes 7). Razón del movimiento: **mirada más profunda (el código no
+**Nota: 5/10** (antes 6). Razón del movimiento: **mirada más profunda (el código no
 cambió, la nota anterior estaba inflada)**.
 
-Tres de los cuatro altos de la ronda 9 anclaron de verdad y lo verifiqué
-ejecutando el motor. El cuarto —EFOS— cerró el falso positivo y abrió el falso
-negativo: hoy **ningún camino del código puede poner `efos: true`**, así que un
-CFDI que el SAT marca sale impreso "Deducible para ISR" en verde con su IVA
-acreditable. Y al abrir las 21 fichas, la trazabilidad que el ancla de 8+ exige
-no se sostiene: las dos fichas que respaldan las cifras impresas están marcadas
-`verificado_fuente_primaria` mientras su propia `nota_verificacion` admite que el
-texto salió de reproducciones secundarias.
+Los dos altos que se cerraron el 2-ago **anclaron de verdad** y lo verifiqué
+ejecutando `cuadrarViaje`, no leyendo el commit: un CFDI que el SAT marca ya no
+sale "Deducible para ISR", y un diésel con `FormaPago 99` ya no acredita litros.
+Eso, solo, subiría la nota. Baja porque al abrir el mismo eje una capa más
+adentro salieron dos cosas que ya existían el 2-ago y no vi:
 
-**El riesgo mayor del rubro, hoy:** el producto ya no puede declarar no deducible
-un comprobante de un EFOS —lo declara *deducible*— y ese es el veredicto que un
-contador revisa primero.
+1. el arreglo del medio de pago se aplicó al beneficiario **chico** (los litros
+   del estímulo del LIF) y no al **grande** (la deducción para ISR del mismo
+   diésel), donde la condición sigue siendo "no es efectivo";
+2. el tenant del demo trae un RFC que **nuestro propio validador rechaza**, así
+   que la liquidación del 6-ago imprime `Deducible para ISR $0.00`, sin sección
+   ACREDITABLE / RECUPERABLE, sobre dos CFDI impecables.
+
+Y siguen vivos los seis pendientes de la ronda anterior, verificados uno por uno.
+
+**El riesgo mayor del rubro, hoy:** el papel del demo, tal como está sembrado,
+no imprime ni una sola cifra fiscal distinta de cero — y la única línea que sí
+imprime le echa la culpa a algo falso ("Falta timbrar la factura", sobre dos
+comprobantes timbrados).
 
 ---
 
-## Cómo está marcada la verificación (lo que el ancla de 8+ pide, medido)
+## Cómo verifiqué
 
-Ninguna ficha tiene un campo booleano `verificado_fuente_primaria: true`. Lo que
-existe es `estado_verificacion:` con uno de tres valores. Conteo real sobre las 21
-fichas de `normas/`:
+Motor bundleado fuera del repo con `esbuild` (`--alias:@=./src`) y ejecutado con
+node. Todos los "sale" de abajo son salida medida de `cuadrarViaje`,
+`filasDeducibilidad` y `filasAcreditables`, no lectura de código. Compuerta de
+partida verificada: `npm test` → 173 archivos / 1629 pruebas verdes.
 
-| `estado_verificacion` | fichas | de ellas, con `texto_vigente: null` |
-|---|:--:|:--:|
-| `verificado_fuente_primaria` | 14 (10 fiscales + 4 de LFPDPPP) | 0 |
-| `evidencia_corroborante` | 6 | 4 |
-| `sin_verificar` | 1 | 1 |
+Conteo de fichas de hoy: **21** en `normas/` (el MAPA dice 22; sobra una).
+`verificado_fuente_primaria` 14 · `evidencia_corroborante` 6 · `sin_verificar` 1.
 
-`src/lib/cuadra/normas/normas_sincronizadas.test.ts:45-51` verifica que el índice
-de TS copie ese estado, **pero nada verifica que el estado corresponda a la
-evidencia que la propia ficha declara**. Ese es el hueco del hallazgo 5.
+---
+
+## Los dos arreglos del 2-ago: SÍ anclaron
+
+**FISCAL-1 (`65b90eb`) — cerrado.** `intake/sat.ts:80-86` sigue sin poder emitir
+`efos: true`, pero ahora `engine.ts:96` mete `cfdi_efos_indeterminado` en
+`POR_CONFIRMAR` y `engine.ts:882` en `SIN_ACREDITAMIENTO`. El camino de falla ya
+no existe: la cadena `sat.efosDesconocido` → `ocr.ts:356` → `gasto.efos_revisar`
+→ `repo.ts:528` → `engine.ts:417` está completa. Medido con el CFDI del hallazgo
+(11,600, XML verificado, receptor OK, `estadoSat: 'vigente'`, `efosRevisar: true`):
+
+```
+antes → Deducible para ISR $11,600 · IVA acreditable $1,600
+hoy   → deducible 0 · por confirmar 11,600 · IVA acreditable 0 · estatus revisar
+        DEDUC: [{ label:'Por confirmar', tono:'pendiente' }]   ACRED: null
+```
+
+**FISCAL-2 (`0d1fe65`+`de4b945`) — cerrado en su mitad.** `engine.ts:961-969`
+sustituyó la negación del efectivo por la lista cerrada `MEDIOS_LIF_20A`
+(`02,03,04,05,28,29`). Medido: diésel de $5,400 / 200 L con `FormaPago 99` →
+`litrosDieselAcreditables: 0`; con `03` → `200 L`. El renglón de litros
+desaparece del PDF. **La otra mitad del hallazgo sigue abierta** (ver
+[ALTO] #2 y [BAJO] #9).
 
 ---
 
 ## Hallazgos
 
-### [ALTO] Después del arreglo de EFOS, un CFDI que el SAT marca sale "Deducible para ISR" en verde con su IVA acreditable
+### [CRÍTICO] El tenant del demo trae un RFC que nuestro propio validador rechaza: la liquidación del 6-ago imprime `Deducible para ISR $0.00` y no imprime la sección ACREDITABLE
 
-`src/lib/cuadra/intake/sat.ts:80-84` · `src/lib/cuadra/cuadre/engine.ts:85,405-408,866`
+`supabase/seed.sql:26` (`tenant.rfc = 'TIN010101AAA'`) · `src/lib/cuadra/config.ts:186-215`
+· `src/lib/cuadra/cuadre/engine.ts:198-241` · `deducibilidad.ts:74-80`
 
-La ficha `normas/cff-69-B.yaml` (`estado_verificacion: verificado_fuente_primaria`,
-transcrita del PDF de diputados.gob.mx) dice **literal**:
-
-> «Los efectos de la publicación de este listado serán considerar, con efectos
-> generales, que las operaciones contenidas en los comprobantes fiscales expedidos
-> por el contribuyente en cuestión **no producen ni produjeron efecto fiscal
-> alguno**.»
-
-El commit `4d8b4f4` eliminó `EFOS_EN_LISTA = new Set(['100'])` y dejó esto:
-
-```ts
-const EFOS_LIMPIO = new Set(['200', '201']);
-const efos = !efosCode ? null : EFOS_LIMPIO.has(efosCode) ? false : null;
-const efosDesconocido = !!efosCode && !EFOS_LIMPIO.has(efosCode);
-```
-
-`efos` ya no puede valer `true` desde ningún camino. Grepeé los cuatro
-consumidores (`intake/ocr.ts:355`, `repo.ts:102/495`, `engine.ts:405`) y no hay
-otra fuente. En consecuencia `cfdi_efos` —el único tipo EFOS que está en
-`NO_DEDUCIBLE_ISR` (`engine.ts:85`) y en `SIN_ACREDITAMIENTO` (`engine.ts:866`)—
-es hoy **código muerto**, y todo EFOS entra por `cfdi_efos_indeterminado`, que no
-está en ninguna de las dos listas.
-
-**Escenario (ejecutado contra `cuadrarViaje` real):** CFDI de $11,600, XML
-verificado, receptor = RFC de la flota, `estadoSat: 'vigente'`, `ivaTraslado: 1600`,
-y el SAT devuelve `ValidacionEFOS = 100` (el código que hasta el 1-ago significaba
-"en lista"). Salida medida:
-
-```
-diferencias: ['cfdi_efos_indeterminado']
-totalDeducible: 11600 · totalNoDeducible: 0 · ivaAcreditable: 1600
-```
-
-`liquidacion/deducibilidad.ts:72` emite `{ label: 'Deducible para ISR', monto: 11600,
-tono: 'bueno' }` y `pdf.ts:295` pinta `tono: 'bueno'` en **GREEN**;
-`liquidacion/acreditable.ts` emite `IVA acreditable (LIVA art. 5) $1,600.00` también
-en verde. La única señal contraria es un renglón que dice «La validación EFOS ... no
-fue concluyente», que es además una afirmación falsa: el SAT sí fue concluyente.
-
-**Consecuencia:** el contralor archiva un papel que afirma $11,600 de deducción y
-$1,600 de IVA acreditable sobre un comprobante que, si el emisor está en el listado
-definitivo, no produce efecto fiscal alguno. Quien lo acredita en su declaración es
-la flota, y el papel se lo dio Likida — que es exactamente el supuesto del art. 89
-fr. I del CFF que `cuadre/leyendas.ts` existe para mitigar.
-
-**Causa raíz probable:** el arreglo cambió "siempre duro" por "nunca duro" en vez de
-usar el tercer estado que este mismo archivo celebra haber inventado para el RFC
-(`engine.ts:195-211`): `POR_CONFIRMAR` + `SIN_ACREDITAMIENTO`, ni deducible ni
-acreditable, a revisión.
-
----
-
-### [ALTO] Los litros del estímulo de diésel se cuentan con cualquier forma de pago que no sea efectivo, y el requisito que el código cita es una lista cerrada de cuatro
-
-`src/lib/cuadra/cuadre/engine.ts:929-930`
-
-```ts
-const pagoElectronico = !!g.formaPago && g.formaPago !== '01';
-if (pagoElectronico && Number.isFinite(litros) && litros > 0) { ... litrosDieselAcreditables += litros; }
-```
-
-El comentario inmediatamente anterior (`engine.ts:922-925`) dice qué requisito está
-implementando:
-
-> «El medio de pago es requisito del 4º párrafo de la LIF 20-A-IV (**monedero,
-> tarjeta, cheque nominativo o transferencia**) y NO tiene la válvula del 15% que la
-> RFA 2.9 sí concede para ISR: la facilidad salva la deducción, no el
-> acreditamiento.»
-
-Cuatro medios nombrados; el código acepta 30 (todo `c_FormaPago` salvo `01`).
-
-**Escenario (ejecutado):** CFDI de diésel de $5,400, clave `15101505`, XML
-verificado, complemento presente, `ocrExtra.litros = 200`, **`FormaPago = '99'`** —
-que no es un caso exótico: `99 (Por definir)` es el valor obligatorio en todo CFDI
-con `MetodoPago = PPD`, y una flota que compra diésel a crédito en la estación
-factura exactamente así. Salida medida: `litrosDieselAcreditables: 200`, sin una sola
-diferencia sobre el medio de pago. `liquidacion/acreditable.ts` lo imprime como
-«Diésel elegible para el estímulo de IEPS (LIF 2026 art. 20, ap. A) — 210 L» (200 L
-en este caso) y el pie invita al contador a multiplicarlo por la cuota del DOF.
-Lo mismo pasa con `12` (dación en pago), `17` (compensación), `23` (novación) y
-`30` (aplicación de anticipos).
-
-**Y no hay ficha que respalde el requisito.** Abrí `normas/lif-2026-20-A.yaml`
-completo: transcribe dos fragmentos del estímulo de diésel y las condiciones del de
-peaje, pero **el 4º párrafo del medio de pago no está transcrito en ninguna parte del
-repo**. El código cita un párrafo que ninguna ficha contiene.
-
-**Consecuencia:** el contador de la flota multiplica 200 L × cuota semanal y acredita
-un estímulo cuyo requisito de medio de pago nadie verificó. Con la cuota alta de 2026
-($7.3634/L, la que la propia ficha `criterio-1-LIF-PI` cita) son ~$1,473 por ticket,
-y la ficha estima ~$1M mensuales de exposición para una flota de 200,000 L/mes.
-
-**Causa raíz probable:** "electrónico" se implementó como negación del efectivo en vez
-de como la lista cerrada que la ley enumera — y el párrafo que la enumera no está
-transcrito, así que nadie podía cotejarlo.
-
----
-
-### [MEDIO] (REINCIDENTE) Un hospedaje de $1 sin timbrar apaga las DOS advertencias de LISR 28-V del mismo viaje
-
-`src/lib/cuadra/cuadre/engine.ts:681` y `:730`
-
-```ts
-const haySoporte = vivos.some((g) => g.concepto === 'hospedaje' || g.concepto === 'transporte');
-...
-const hayHospedaje = vivos.some((g) => g.concepto === 'hospedaje');
-```
-
-`normas/lisr-28-V.yaml` (`verificado_fuente_primaria`) dice literal:
-
-> «...y el contribuyente acompañe **el comprobante fiscal o la documentación
-> comprobatoria** que ampare el hospedaje o transporte.»
-
-El motor no exige comprobante *fiscal* ni monto: le basta un `Gasto` con
-`concepto === 'hospedaje'`.
-
-**Escenario (ejecutado):** comida de $700 timbrada + un renglón de hospedaje de $1
-sin UUID, sin RFC, sin XML.
-
-```
-solo la comida              → ['anticipo', 'alimentacion_sin_soporte']
-comida + hospedaje de $1    → ['anticipo']
-```
-
-La advertencia desaparece. El mismo renglón de $1 apaga además la condición de
-tarjeta de crédito (`hayHospedaje` en `:730`), que es justo el alto que la ronda 9
-cerró con `c64c74c`: basta un hospedaje de $1 para volver a apagarlo.
-
-**Consecuencia:** el contralor deja de ver la única señal de que una comida no está
-amparada, sobre un dato que el operador controla (mandar una foto etiquetada
-"hospedaje"). Es la advertencia que el motor emite en vez de quitar la deducción,
-así que apagarla no deja rastro en ninguna cifra.
-
-**Causa raíz probable:** el soporte se modela por existencia de un concepto, no por
-que el comprobante ampare algo.
-
----
-
-### [MEDIO] (REINCIDENTE) 33 de 37 comercios caen en la rama que afirma una fecha límite sin decir que el plazo legal es todo el ejercicio
-
-`src/lib/cuadra/cuadre/engine.ts:623-625,645` · `src/lib/cuadra/facturacion/comercios.ts`
-
-Conteo de hoy: 37 entradas en `COMERCIOS`, `plazoVerificado: true` en 4 (`g500` :191,
-`office_depot` :280, `megasur` :375, `la_gas` :404) y `false` en 33.
-
-`normas/politica-portales-plazos.yaml`, `advertencia_de_jerarquia`, literal:
-
-> «ESTO NO ES UNA NORMA FISCAL. Es la política interna de un tercero y tiene CERO
-> fuerza legal. **El plazo LEGAL para pedir factura es todo el ejercicio** (el SAT lo
-> dice expresamente)... El producto NUNCA debe presentar estos plazos como una
-> obligación fiscal.»
-
-Las dos ramas de cierre (`:623-625`):
-
-```ts
-const cierreComercio = comercio?.plazoVerificado
-  ? ` (plazo del portal de ${comercio.nombre}, no de la ley: legalmente puedes exigir la factura dentro del ejercicio)`
-  : ', y la ventana del comercio puede ser menor';
-```
-
-**Escenario (ejecutado):** ticket de diésel de $3,200 del 1-ago-2026, emisor Shell
-(`plazoVerificado: false`), `hoy = 2026-08-02`. Texto impreso medido:
-
-> «Combustible de $3,200.00 sigue sin factura: **puedes timbrarlo hasta el 2026-08-31
-> (29 días)**, y la ventana del comercio puede ser menor. Portal de Shell México:
-> https://facturacion.shell.com.mx/.»
-
-La rama vencida y la rama verificada sí nombran el ejercicio; ésta —la de 33 de 37
-comercios, y la que se lee **antes**— no.
-
-**Consecuencia:** el contralor lee una fecha límite con la autoridad de un cálculo y
-concluye que el 1-sep perdió el CFDI. No lo perdió: puede exigirlo dentro del
-ejercicio y tiene la Conciliación de Factura del SAT. Es el error de confundir niveles
-que `normas/README.md` llama «el más caro del dominio», cometido por el papel que
-vendemos.
-
-**Causa raíz probable:** el matiz legal se escribió como propiedad del `cierreComercio`
-(que depende de `plazoVerificado`) en vez de como propiedad del aviso.
-
----
-
-### [MEDIO] El renglón "IVA acreditable (LIVA art. 5)" sale verde en la misma hoja donde el de ISR sale condicionado por el mismo hecho
-
-`src/lib/cuadra/liquidacion/acreditable.ts` (renglón de IVA, `tono: 'bueno'`) vs
-`src/lib/cuadra/liquidacion/deducibilidad.ts:64-72`
-
-`normas/liva-5.yaml` (`verificado_fuente_primaria`), fracción I, literal:
+Ficha `normas/liva-5.yaml` (`verificado_fuente_primaria`), fracción I, literal:
 
 > «...se consideran estrictamente indispensables las erogaciones efectuadas por el
 > contribuyente **que sean deducibles para los fines del impuesto sobre la renta**,
 > aun cuando no se esté obligado al pago de este último impuesto.»
 
-Y la propia `nota_verificacion` de la ficha lo subraya: «El IVA solo es acreditable si
-la erogación es DEDUCIBLE para ISR. No es un requisito aparte: la ley DEFINE
-"estrictamente indispensable" como "deducible para los fines del ISR"».
+**Código:** `getConfig` toma `tenant.rfc` tal cual (`config.ts:215`), solo lo
+loguea si falla el dígito verificador (`:192-197`). El motor lo descarta
+(`engine.ts:203`), `rfcsOk` queda vacía y `rfcEmpresaInservible` se vuelve `true`
+(`:238`), así que **todo gasto con `rfcReceptor` presente** levanta
+`rfc_receptor_no_verificable`, que está en `POR_CONFIRMAR` (`:96`) y en
+`SIN_ACREDITAMIENTO` (`:882`).
 
-**Escenario (ejecutado):** un diésel de $5,800 (XML verificado, IVA $800) y una caseta
-de $1,160 (IVA $160). El motor levanta `permiso_cre_no_verificable`. Salida medida de
-las dos funciones que alimentan la misma hoja del PDF:
+**Escenario (ejecutado con los dos gastos exactos de `seed.sql:121-130`):**
+diésel $4,200 (`15101505`, complemento HidroYPetro, `FormaPago 03`, IVA $581.38,
+IEPS $408.62, XML verificado) + caseta $1,400 (subtotal $1,206.90, IVA $193.10,
+XML verificado), receptor `TIN010101AAA`, `empresaRfc = 'TIN010101AAA'`. Verifiqué
+antes con nuestro propio `intake/cfdi.ts`: `esRfcValido('TIN010101AAA') = true`,
+`rfcChecksumOk('TIN010101AAA') = false`.
 
 ```
-DEDUC → label: 'Deducible para ISR — sujeto a permiso CRE vigente'  $6,960  tono: 'condicionado'
-        pie:   'LISR 27-III y RFA 2026 regla 2.9 exigen ... El sistema no lo valida'
-ACRED → label: 'IVA acreditable (LIVA art. 5)'                        $960   tono: 'bueno'  pies: []
+difs: sobre_politica, rfc_receptor_no_verificable ×2, permiso_cre_no_verificable, anticipo
+totalDeducible 0 · totalNoDeducible 0 · totalPorConfirmar 5,600
+ivaAcreditable 0 · peajeAcreditable 0 · litrosDieselAcreditables 0
+
+DEDUC → [{ label:'Por confirmar', monto:5600, tono:'pendiente',
+           pie:'Falta timbrar la factura o acreditar el medio de pago. Se puede recuperar.' }]
+ACRED → null
 ```
 
-`pdf.ts:348` pinta `'bueno'` en verde. El mismo hecho —el permiso CRE que el sistema
-no verifica— condiciona una cifra y deja la otra afirmada sin reserva, cuando LIVA 5-I
-las ata: si la deducción para ISR está en duda, el acreditamiento del IVA está en la
-misma duda. El propio encabezado de `acreditable.ts` fija la regla que aquí se rompe:
-«una cifra en el papel con un artículo citado al lado es una AFIRMACIÓN. Si el motor
-no puede sostenerla entera, el renglón tiene que decir qué parte no sostiene».
+Tres consecuencias medidas, todas en el papel que se proyecta:
 
-Aplica igual a `cfdi_efos_indeterminado`, `alimentacion_sin_soporte` y
-`complemento_no_verificable`: ninguno está en `SIN_ACREDITAMIENTO` (`engine.ts:866`) y
-los tres acreditan el IVA al 100%.
+- el renglón `Deducible para ISR` **no se imprime** (está en $0);
+- la sección **ACREDITABLE / RECUPERABLE** —la que `acreditable.ts:1-12` llama
+  "la sección que vende"— devuelve `null` y **desaparece del PDF entero**;
+  en `dashboard/page.tsx:160-161` las tarjetas quedan en `$0.00`, y el bloque
+  "Acreditable (recuperable)" de WhatsApp (`resumen.ts:89-97`) no sale;
+- el único pie que sí se imprime es **falso**: dice "Falta timbrar la factura"
+  sobre dos comprobantes que están timbrados y vigentes ante el SAT. Lo que
+  falta es el RFC de la flota, y el papel no lo dice.
 
-**Consecuencia:** el contralor se lleva $960 en verde como recuperable sobre gastos
-cuya deducibilidad el mismo papel condiciona dos renglones más arriba.
+**Consecuencia:** el 6-ago el contralor ve un documento que, sobre $5,600 de
+comprobantes perfectos —CFDI, XML, complemento de hidrocarburos, IEPS e IVA
+desglosados, pago por transferencia—, no le afirma un solo peso de deducción ni
+de IVA recuperable, y le da una razón que él puede desmentir mirando sus propios
+CFDI. Es exactamente la promesa del producto, en cero, en la sala.
 
-**Causa raíz probable:** `SIN_ACREDITAMIENTO` se construyó como lista de veredictos
-duros y no como "todo lo que condiciona la deducibilidad ISR condiciona el IVA".
+**Causa raíz probable:** el RFC de demo se escribió como texto plausible y nunca
+se pasó por `rfcChecksumOk`; `getConfig` lo detecta y solo lo registra en un log
+del servidor. El motor hace lo correcto — el dato de entrada es el que no sirve.
+
+*(Anoto la mitad honesta: fiscalmente el veredicto del motor es defensible —no se
+puede confirmar el receptor, así que no se afirma la deducción—. Lo que convierte
+esto en crítico es que TODAS las cifras fiscales del demo dependen de ese único
+dato y que el papel explica mal por qué.)*
 
 ---
 
-### [MEDIO] Las dos fichas que respaldan las cifras impresas dicen `verificado_fuente_primaria` y en su propia nota admiten fuente secundaria
+### [ALTO] El requisito de medio de pago de LISR 27-III sigue implementado como "no es efectivo": un diésel con `FormaPago 99` o `17` sale "Deducible para ISR" en verde con su IVA
 
-`normas/lisr-28-V.yaml` · `normas/lif-2026-20-A.yaml` · contraste:
-`normas/lisr-27-III.yaml`
+`src/lib/cuadra/cuadre/engine.ts:281` y `:283` · contraste con el arreglo de ayer
+en el MISMO archivo, `:961-969` · ficha `normas/lisr-27-III.yaml`
+(`evidencia_corroborante`) y `normas/rfa-2026-2.9.yaml` (`verificado_fuente_primaria`)
 
-`lisr-28-V.yaml` — la ficha del **$750/día**, el número más impreso del producto
-(`config.ts:95`, `engine.ts:768-848`):
+`lisr-27-III.yaml`, `texto_vigente`, segundo párrafo, literal:
+
+> «Tratándose de la adquisición de combustibles para vehículos marítimos, aéreos y
+> terrestres, **el pago deberá efectuarse en la forma señalada en el párrafo
+> anterior, aun cuando la contraprestación de dichas adquisiciones no excedan de
+> $2,000.00**...»
+
+y el párrafo anterior, que es el que enumera la lista cerrada:
+
+> «...que los pagos cuyo monto exceda de $2,000.00 se efectúen mediante
+> **transferencia electrónica de fondos**...; **cheque nominativo** de la cuenta del
+> contribuyente, **tarjeta de crédito, de débito, de servicios, o los denominados
+> monederos electrónicos** autorizados por el Servicio de Administración Tributaria.»
+
+`rfa-2026-2.9.yaml`, `texto_vigente`, literal — y esto define el alcance exacto de
+la válvula del 15%:
+
+> «...considerarán cumplida la obligación establecida en el artículo 27, fracción
+> III, segundo párrafo de la Ley del ISR, cuando los pagos por consumo de
+> combustible se realicen **con medios distintos a cheque nominativo de la cuenta
+> del contribuyente; tarjeta de crédito, de débito o de servicios; o monederos
+> electrónicos autorizados por el SAT**, siempre que estos no excedan el 15 por
+> ciento del total de los pagos efectuados por consumo de combustible...»
+
+**Código:** el motor manda a la válvula del 15% (`combustible_efectivo` →
+`POR_CONFIRMAR` + `SIN_ACREDITAMIENTO`) **solo** con `formaPago === '01'`:
+
+```ts
+281:  if (g.formaPago === '01' && esCombustible) { ... combustible_efectivo ... }
+283:  } else if (g.formaPago === '01' && !esCombustible && g.monto > topeEfectivo) { ... }
+```
+
+Los otros 29 códigos de `c_FormaPago` pasan como si cumplieran. Y el propio
+archivo tiene la lista cerrada escrita 680 líneas más abajo (`:961-969`,
+`MEDIOS_LIF_20A`) — el arreglo de ayer la aplicó al estímulo del LIF y no a la
+deducción para ISR del mismo comprobante, que es la cifra grande.
+
+**Escenario (ejecutado).** Diésel de $5,400, clave `15101505`, `tipoComprobante 'I'`,
+complemento presente, XML verificado, receptor = RFC de la flota,
+IVA $744.83, IEPS $400, `ocrExtra.litros = 200`, **`FormaPago = '17'` (compensación)**:
+
+```
+difs: permiso_cre_no_verificable, anticipo   ← ninguna sobre el medio de pago
+totalDeducible 5,400 · totalPorConfirmar 0 · ivaAcreditable 744.83 · litros 0
+DEDUC → 'Deducible para ISR — sujeto a permiso CRE vigente'  $5,400  tono 'condicionado'
+ACRED → 'IVA acreditable (LIVA art. 5)'  $744.83  tono 'bueno'  → GREEN (pdf.ts:348)
+```
+
+Control con `'01'`, mismos datos: `deducible 0 · por confirmar 5,400 · IVA 0`,
+estatus `revisar`, con la nota del 15% de la RFA 2.9. **El mismo hecho jurídico —un
+pago que no está en la lista del 2º párrafo— produce dos veredictos que difieren
+en $5,400 de deducción y $744.83 de IVA según el código de forma de pago.**
+
+Alcance: entran `12` (dación en pago), `15` (condonación), `17` (compensación),
+`23` (novación), `30` (aplicación de anticipos) y sobre todo **`99` (Por definir)**,
+que es el valor obligatorio en todo CFDI con `MetodoPago = PPD` — el caso que el
+propio commit `0d1fe65` describe como "una flota que compra diésel a crédito en la
+estación factura exactamente así". Con `'99'` la salida es la misma: $5,400
+deducibles y $744.83 de IVA en verde.
+
+El mismo hueco en el primer párrafo: hospedaje de $5,000 con `FormaPago 17`
+(medido) → `Deducible para ISR $5,000` tono `bueno` (**verde**, `pdf.ts:295`) +
+`IVA acreditable $689.66` verde, **cero diferencias fiscales**.
+
+**Consecuencia:** el contralor archiva un papel que afirma $5,400 de deducción y
+$744.83 de IVA sobre una compra de combustible cuyo medio de pago no cumple el 2º
+párrafo — o que, en el caso PPD, todavía no se ha pagado. Si el pago cae fuera del
+15% de la RFA 2.9, la deducción no procede y el IVA tampoco (LIVA 5-I: lo
+indispensable **es** lo deducible para ISR). Y el motor ya tiene el tercer estado
+correcto escrito y probado para esto: `combustible_efectivo`.
+
+**Causa raíz probable:** "efectivo" se usó como sinónimo de "medio de pago que no
+cumple", cuando la ley define lo contrario —una lista cerrada de lo que sí
+cumple—; el arreglo del 2-ago corrigió esa misma confusión en el estímulo y no en
+la deducción.
+
+---
+
+### [ALTO] El estímulo de peaje sale afirmado y en verde en el panel y en WhatsApp, citando el artículo, sin ninguna de las cuatro condiciones que el PDF sí imprime
+
+`src/app/dashboard/page.tsx:161` · `src/app/dashboard/[id]/page.tsx:179` +
+`:288-296` (`Tot`, `ok` → `--color-ok`) · `src/lib/cuadra/cuadre/resumen.ts:96` ·
+contraste: `src/lib/cuadra/liquidacion/acreditable.ts:110-119` ·
+ficha `normas/lif-2026-20-A.yaml` (`verificado_fuente_primaria`)
+
+La ficha, `estimulo_peaje.texto_vigente`, literal:
+
+> «Se otorga un estímulo fiscal a las personas contribuyentes que se dediquen
+> **exclusivamente** al transporte terrestre público y privado, de carga o pasaje,
+> así como el turístico, **que utilizan la Red Nacional de Autopistas de Cuota**, que
+> obtengan en el ejercicio fiscal... **ingresos totales anuales para los efectos del
+> impuesto sobre la renta menores a 300 millones de pesos**... **El estímulo no podrá
+> ser aplicable por las personas morales que se consideran partes relacionadas** de
+> acuerdo con el artículo 179 de la Ley del Impuesto sobre la Renta.»
+
+y sus dos hallazgos abiertos, `H5` (`severidad: media`) — *"que_hace_el_motor:
+Aplica el 50% a TODO gasto con concepto 'caseta'"* — y `H6` — *"No conoce los
+ingresos de la flota ni su relación de partes"*.
+
+**Código.** El PDF cumple la regla que `acreditable.ts:9-11` fija: label
+`'Estímulo de peaje 50% (LIF 2026 art. 20, ap. A) — sujeto a elegibilidad'`,
+`tono: 'condicionado'` (tinta neutra, `pdf.ts:348`) y dos pies, uno de los cuales
+transcribe las cuatro condiciones y dice **"Likida NO verifica la elegibilidad"**.
+Las otras dos superficies no:
+
+```tsx
+dashboard/page.tsx:161   <Acred titulo="Peaje (50%)" valor={acred.peaje}
+                                base="Estímulo de autopistas · LIF 2026, Art. 20-A" />
+dashboard/[id]/page.tsx:179   {d.peaje > 0 && <Tot label="Peaje 50%" value={mxn(d.peaje)} ok />}
+resumen.ts:96                 lines.push(`• Peaje 50%: ${mxn(liq.peajeAcreditable)}`)
+```
+
+`Tot` con `ok` pinta el número en `--color-ok` a `text-3xl` (`:289`); `Acred` lo
+pinta a `text-4xl md:text-5xl` (`acred.tsx:70-76`). Ninguna de las tres imprime
+"sujeto a elegibilidad", ni las cuatro condiciones, ni la
+`NOTA_INGRESO_ACUMULABLE` que el PDF sí lleva.
+
+**Escenario (ejecutado):** caseta de $1,400 con XML verificado y subtotal
+$1,206.90 (el gasto exacto de `seed.sql:127-129`) → `peajeAcreditable = 603.45`.
+
+```
+PDF     → 'Estímulo de peaje 50% (LIF 2026 art. 20, ap. A) — sujeto a elegibilidad'
+          $603.45 · tinta neutra · pies: base usada + las 4 condiciones
+Panel   → 'Peaje (50%)  $603.45' en verde, pie: 'Estímulo de autopistas · LIF 2026, Art. 20-A'
+WhatsApp→ '• Peaje 50%: $603.45'
+```
+
+**Consecuencia:** el panel es lo que se proyecta en la sala y el mensaje de
+WhatsApp es lo que el contralor reenvía. Una flota con ingresos ≥ $300M, o parte
+relacionada, o que usó casetas fuera de la Red Nacional, se lleva la cifra
+afirmada con el artículo citado al lado y sin una sola reserva. El criterio
+1/LIF/PI del Anexo 3 alcanza a "quien preste servicios": esa práctica sería de
+Likida, no del cliente — que es literalmente lo que `acreditable.ts:56-62`
+explica que este renglón existe para evitar.
+
+**Causa raíz probable:** la regla se resolvió dentro de `acreditable.ts` (el
+armador de renglones del PDF) y las otras dos superficies leen los números crudos
+de `Liquidacion` sin pasar por ella.
+
+---
+
+### [MEDIO] (REINCIDENTE) Un hospedaje de $1 sin timbrar apaga las DOS advertencias de LISR 28-V del mismo viaje
+
+`src/lib/cuadra/cuadre/engine.ts:691` y `:740` · ficha `normas/lisr-28-V.yaml`
+(`verificado_fuente_primaria`)
+
+Ficha, `texto_vigente`, segundo párrafo, literal:
+
+> «...y el contribuyente acompañe **el comprobante fiscal o la documentación
+> comprobatoria que ampare el hospedaje o transporte**. Cuando a la documentación que
+> ampare el gasto de alimentación el contribuyente únicamente acompañe el
+> comprobante fiscal relativo al transporte, la deducción... **sólo procederá cuando
+> el pago se efectúe mediante tarjeta de crédito de la persona que realiza el
+> viaje**.»
+
+**Código:** las dos condiciones se evalúan por existencia de un `concepto`, sin
+mirar `cfdiUuid` ni monto:
+
+```ts
+691:  const haySoporte = vivos.some((g) => g.concepto === 'hospedaje' || g.concepto === 'transporte');
+740:  const hayHospedaje = vivos.some((g) => g.concepto === 'hospedaje');
+```
+
+**Escenario (ejecutado):**
+
+```
+comida $700 timbrada (IVA $96.55), sola          → ['alimentacion_sin_soporte']  estatus revisar
++ hospedaje de $1 SIN UUID, sin RFC, sin XML     → []                            estatus con_diferencias
+
+comida $700 con formaPago '28' + transporte $450 timbrado, sin hospedaje
+                                                 → ['alimentacion_transporte_sin_tarjeta_credito']
++ el mismo hospedaje de $1 sin timbrar           → []
+```
+
+El mismo renglón de $1 —que el propio motor acaba de clasificar en `por confirmar`
+con el pie "Falta timbrar la factura"— apaga las dos señales. El efecto es
+discontinuo: $0 de hospedaje → advertencia; $1 sin factura → silencio y
+`con_diferencias`.
+
+**Consecuencia:** la única señal que el producto emite sobre el requisito de
+soporte de LISR 28-V se apaga con el gasto más barato y menos formal de la
+liquidación, sobre un dato que el operador controla (mandar una foto etiquetada
+"hospedaje"). Como el motor advierte en vez de quitar deducción, apagarla no deja
+rastro en ninguna cifra: el contralor no puede notar que faltó.
+
+**Causa raíz probable:** el soporte se modela por existencia de un concepto, no
+por que exista un comprobante que ampare algo.
+
+---
+
+### [MEDIO] (REINCIDENTE) 33 de 37 comercios caen en la rama que afirma una fecha límite sin decir que el plazo legal es todo el ejercicio — y esa fecha no la sostiene ninguna ficha
+
+`src/lib/cuadra/cuadre/engine.ts:633-635` y `:655` ·
+`src/lib/cuadra/facturacion/comercios.ts` · `src/lib/cuadra/cuadre/plazo_jerarquia.test.ts:69-73`
+· fichas `normas/politica-portales-plazos.yaml` (`sin_verificar`) y
+`normas/rmf-2026-2.7.1.21.yaml` (`texto_vigente: null`)
+
+Conteo de hoy, contado a mano sobre el archivo: **37** entradas en `COMERCIOS`,
+`plazoVerificado: true` en **4** (`:191`, `:280`, `:375`, `:404`) y `false` en **33**.
+
+`politica-portales-plazos.yaml`, `advertencia_de_jerarquia`, literal:
+
+> «ESTO NO ES UNA NORMA FISCAL. Es la política interna de un tercero y tiene CERO
+> fuerza legal. **El plazo LEGAL para pedir factura es todo el ejercicio** (el SAT lo
+> dice expresamente), y negarla porque "ya pasó el mes" es una práctica indebida
+> listada por el propio SAT, con remedio en la Conciliación de Factura.
+> El producto NUNCA debe presentar estos plazos como una obligación fiscal.»
+
+Y `normas/README.md`, "Cómo se usa", literal:
+
+> «Ninguna ficha `sin_verificar` debe sostener una cifra que el producto imprima.»
+
+**Código:** el matiz legal es propiedad de `cierreComercio`, que solo existe
+cuando el plazo está verificado:
+
+```ts
+633: const cierreComercio = comercio?.plazoVerificado
+634:   ? ` (plazo del portal de ${comercio.nombre}, no de la ley: legalmente puedes exigir la factura dentro del ejercicio)`
+635:   : ', y la ventana del comercio puede ser menor';
+655:   : `puedes timbrarlo hasta el ${c.fechaLimite} (${c.diasRestantes} días)${cierreComercio}`;
+```
+
+**Escenario (ejecutado):** ticket de diésel de $3,200 del 1-ago-2026, emisor Shell
+(`plazoVerificado: false`), `hoy = '2026-08-02'`. Texto impreso medido:
+
+> «Combustible de $3,200.00 sigue sin factura: **puedes timbrarlo hasta el
+> 2026-08-31 (29 días)**, y la ventana del comercio puede ser menor. Portal de Shell
+> México: https://facturacion.shell.com.mx/.»
+
+Ni "no de la ley" ni "dentro del ejercicio" — y las dos únicas ramas que sí lo
+dicen (vencida y verificada) son las de 4 comercios. Además la fecha
+`2026-08-31` es el default `mes_natural` (`engine.ts:610`), cuyas dos fichas son
+`sin_verificar` y `texto_vigente: null`: **el producto imprime una fecha límite
+que ninguna ficha del repo sostiene**, contra la regla explícita del README.
+`plazo_jerarquia.test.ts:72` fija el comportamiento con
+`expect(nota).not.toContain('no de la ley')`.
+
+**Consecuencia:** el contralor lee una fecha con la autoridad de un cálculo y da
+por perdido el 1-sep un CFDI que puede exigir todo el ejercicio, con Conciliación
+de Factura. En diésel eso es la deducción y el IVA del gasto más grande de la
+flota.
+
+**Causa raíz probable:** el matiz legal se escribió como propiedad del
+`cierreComercio` (que depende de `plazoVerificado`) en vez de como propiedad del
+aviso.
+
+---
+
+### [MEDIO] (REINCIDENTE) El renglón "IVA acreditable (LIVA art. 5)" sale verde en la misma hoja donde el de ISR sale condicionado por el mismo hecho
+
+`src/lib/cuadra/liquidacion/acreditable.ts:102-108` vs
+`src/lib/cuadra/liquidacion/deducibilidad.ts:64-72` · `pdf.ts:295` y `:348` ·
+ficha `normas/liva-5.yaml` (`verificado_fuente_primaria`)
+
+Ficha, fracción I, literal:
+
+> «...se consideran estrictamente indispensables las erogaciones efectuadas por el
+> contribuyente **que sean deducibles para los fines del impuesto sobre la renta**,
+> aun cuando no se esté obligado al pago de este último impuesto.»
+
+y su propia `nota_verificacion`: «El IVA solo es acreditable si la erogación es
+DEDUCIBLE para ISR. **No es un requisito aparte**: la ley DEFINE "estrictamente
+indispensable" como "deducible para los fines del ISR"».
+
+**Escenario (ejecutado):** diésel de $5,400 con XML verificado, `tipoComprobante 'I'`,
+clave `15101505` → el motor levanta `permiso_cre_no_verificable`:
+
+```
+DEDUC → 'Deducible para ISR — sujeto a permiso CRE vigente'  $5,400  tono 'condicionado'
+        pie: 'LISR 27-III y RFA 2026 regla 2.9 exigen ... El sistema no lo valida'
+ACRED → 'IVA acreditable (LIVA art. 5)'                      $744.83 tono 'bueno'  pies: []
+```
+
+`pdf.ts:348` pinta `'bueno'` en verde. El mismo hecho condiciona una cifra y deja
+la otra afirmada sin reserva, cuando LIVA 5-I las ata. Aplica igual a
+`complemento_no_verificable` y `alimentacion_sin_soporte`: ninguno está en
+`SIN_ACREDITAMIENTO` (`engine.ts:882`) y los tres acreditan el IVA al 100%.
+Anoto también, y no como hallazgo aparte, que `liva-5.yaml` transcribe **solo las
+fracciones I y II** del artículo mientras el renglón cita "LIVA art. 5" entero —
+la propia ficha lo declara en `riesgo_actual`: *"Si el artículo exige alguna
+condición adicional que hoy no se valida, la cifra impresa está de más."*
+
+**Consecuencia:** el contralor se lleva $744.83 en verde como recuperable sobre un
+gasto cuya deducibilidad el mismo papel condiciona dos renglones más arriba.
+
+**Causa raíz probable:** `SIN_ACREDITAMIENTO` se construyó como lista de
+veredictos duros y no como "todo lo que condiciona la deducibilidad ISR condiciona
+el IVA".
+
+---
+
+### [MEDIO] (REINCIDENTE) Dos fichas que respaldan cifras impresas dicen `verificado_fuente_primaria` y en su propia nota admiten fuente secundaria — y el campo no decide nada en runtime
+
+`normas/lisr-28-V.yaml:30-36` · `normas/lif-2026-20-A.yaml:9-14` · contraste
+`normas/lisr-27-III.yaml:25-32` · `src/lib/cuadra/tools.ts:71`
+
+`lisr-28-V.yaml` — la ficha del **$750/día**, el número más impreso del producto:
 
 ```yaml
 fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LISR.pdf"
@@ -284,90 +439,74 @@ nota_verificacion: >
   mley.mx, tax.com.mx).
 ```
 
-`lif-2026-20-A.yaml` — la ficha de los **litros de diésel** y del **50% de peaje**,
-las dos cifras de la sección "ACREDITABLE / RECUPERABLE":
+`lif-2026-20-A.yaml` — la ficha de los litros de diésel y del 50% de peaje:
 
 ```yaml
-fuente_tipo: diputados_oficial
 estado_verificacion: verificado_fuente_primaria
 nota_verificacion: >
   Texto obtenido de dos reproducciones del articulado (leyes-mx.com y mley.mx) y
   corroborado con el documento de Reducciones y Estímulos Fiscales 2026 de PRODECON.
 ```
 
-`lisr-27-III.yaml` tiene **exactamente la misma clase de evidencia** (Justia + SDV
-Asesores + página del SAT) y está honestamente marcada `evidencia_corroborante`, con
-«NO se leyó en diputados.gob.mx. PARA CERRAR: leer el PDF vigente...». Tres fichas,
-dos etiquetas, la misma calidad de fuente. Las genuinamente primarias se distinguen
-solas: `cff-30`, `cff-69-B`, `cff-89-90` y `lft-110-111-263` dicen «transcrito del PDF
-oficial de la Cámara de Diputados» y `rfa-2026-2.9` dice «Leído en el DOF (SIDOF)».
+`lisr-27-III.yaml` tiene la misma clase de evidencia (Justia + SDV + página del
+SAT) y está honestamente marcada `evidencia_corroborante`, con «NO se leyó en
+diputados.gob.mx». Las genuinamente primarias se distinguen solas: `cff-30`,
+`cff-69-B`, `cff-89-90` dicen «transcrito del PDF oficial de la Cámara de
+Diputados» y `rfa-2026-2.9` dice «Leído en el DOF (SIDOF)».
 
-`normas_sincronizadas.test.ts:45-51` solo comprueba que el índice copie el valor del
-estado; nada comprueba que el estado corresponda a la evidencia declarada dos líneas
-más abajo en la misma ficha.
-
-Al mismo tiempo, tres de los seis veredictos duros de `NO_DEDUCIBLE_ISR`
-(`engine.ts:85`) —`rfc_receptor`, `cfdi_cancelado`, `cfdi_no_encontrado`— se fundan en
-`cff-29-A` (`por_diferencia.ts:39,44,45`), cuya ficha tiene **`texto_vigente: null`**:
-nadie en este repo ha leído el artículo que tres veredictos rojos citan. Y el tope de
-$2,000 (`engine.ts:273-275`) se imprime como «no deducible» sin condición alguna
-apoyado en `lisr-27-III`, que es `evidencia_corroborante` — el `normas/README.md` dice
-que ese estado permite afirmar «Sí, **condicionado**», y aquí no hay condición.
-
-**Consecuencia:** el mecanismo de confianza del rubro entero —el campo que decide si
-el producto puede afirmar algo— no es auditable, porque en las dos fichas que
-importan la etiqueta contradice su propia nota. Un contador que abra `normas/` en la
-sala y lea las dos líneas seguidas concluye que el sistema de verificación es
-decorativo. Es lo que impide que este rubro llegue a 8.
-
-**Causa raíz probable:** el estado se asignó por confianza en la coincidencia de
-fuentes, no por el criterio que `normas/README.md` define («se leyó el texto en el
-DOF, el SAT o diputados.gob.mx»).
-
----
-
-### [MEDIO] `/api/demo` corre el motor real sin ninguna configuración fiscal: el mismo gasto da dos veredictos según la puerta
-
-`src/app/api/demo/route.ts:41` vs `src/lib/cuadra/cuadre/desde_db.ts:44-60`
+**Lo nuevo de esta ronda:** el campo tampoco decide nada donde se usa. Grepeé
+`estado` en `normas/fundamento.ts`: **cero apariciones**. El único consumidor es
+`tools.ts:71`:
 
 ```ts
-const liq = cuadrarViaje({ viajeId: 'demo', anticipo: body.anticipo ?? 0, gastos, politica: POLITICA, ruta: 'Silao-Laredo' });
+verificada: NORMAS[id].estado !== 'sin_verificar',
 ```
 
-Sin `estimulos`, sin `empresaRfc`, sin `hidrocarburos`, sin `hoy`. `engine.ts:768-769`
-condiciona **todo** el bloque del tope de LISR 28-V a
-`if (topeAlimentacion != null)`, así que sin `estimulos` la regla no corre; tampoco
-corre la validación de receptor, ni el complemento, ni el permiso CRE, ni el aviso de
-facturación. `desde_db.ts` sí las pasa todas.
+Un booleano que colapsa los tres estados en dos: `lisr-27-fr-III`
+(`evidencia_corroborante`, la norma que funda `combustible_efectivo`,
+`efectivo_sobre_tope` y `sin_cfdi`) llega al agente como `verificada: true`,
+sin el matiz que `normas/README.md` exige — su tabla dice, literal, que
+`evidencia_corroborante` permite afirmar «**Sí, condicionado**».
 
-**Escenario (ejecutado):** una alimentación de $3,000 del 1-ago-2026, timbrada, con
-IVA de $413.79. Mismo motor, mismos datos, dos puertas:
-
-```
-por /api/demo   → diferencias ['sobre_politica','alimentacion_sin_soporte']
-                  deducible $3,000 · no deducible $0 · IVA acreditable $413.79
-por desde_db    → diferencias ['sobre_politica','alimentacion_sin_soporte','viatico_excede_fiscal']
-                  deducible $750   · no deducible $2,250 · IVA acreditable $103.45
-```
-
-$2,250 de deducción y $310 de IVA de diferencia sobre los mismos hechos. La página
-`/demo` (`src/app/demo/page.tsx:77`) anuncia «El cuadre es real» y sus cuatro presets
-(`page.tsx:12-17`) están marcados «🔴 INVENTADO ... Ajústala con la política real de
-Innovativos»: hoy ninguno es `alimentacion`, así que el camino no se dispara desde la
-UI — pero un preset editado antes del 6-ago lo abre sin que nada falle.
-
-**Consecuencia:** el simulador que el contralor puede abrir en su navegador y el
-producto que le manda el PDF pueden contestar cosas distintas sobre la misma comida,
-y la del simulador es la que promete de más.
-
-**Causa raíz probable:** la ruta construye su propio `CuadreInput` a mano en vez de
-pasar por la única función que lo arma con la config.
+**Consecuencia:** el mecanismo de confianza del rubro no es auditable en la
+ficha ni operante en el código. Un contador que abra `normas/` en la sala y lea
+dos líneas seguidas de `lisr-28-V.yaml` concluye que el sello de verificación es
+decorativo. Es lo que impide que este rubro llegue a 8, y esta ronda tampoco lo
+tocó.
 
 ---
 
-### [BAJO] (REINCIDENTE) Dos fichas declaran mal dónde se usan, y una de las dos ya se había corregido por esto mismo
+### [BAJO] (REINCIDENTE) La lista `MEDIOS_LIF_20A` implementa un párrafo que ninguna ficha del repo transcribe
 
-`normas/rmf-2026-2.7.1.21.yaml` · `normas/politica-portales-plazos.yaml`
+`src/lib/cuadra/cuadre/engine.ts:956-968` · ficha `normas/lif-2026-20-A.yaml`
+
+El comentario del propio arreglo lo declara:
+
+> «OJO CON LA PROCEDENCIA: ninguna ficha de `normas/` transcribe ese 4º párrafo,
+> así que esta lista sale del comentario de este archivo y no de una fuente que el
+> repo pueda citar... queda un hallazgo abierto para transcribir el párrafo en
+> `lif-2026-20-A.yaml`.»
+
+Abrí la ficha completa hoy: transcribe `estimulo_diesel_transporte` (dos
+fragmentos) y `estimulo_peaje`, más los hallazgos H4-H7. **El 4º párrafo del medio
+de pago no está en ninguna parte del repo.** La lista `02,03,04,05,28,29` es una
+decisión de ingeniería sin norma citable detrás.
+
+**Escenario:** un contralor pregunta por qué su diésel de 200 L con `FormaPago 05`
+(monedero) sí acredita y el de `FormaPago 06` (dinero electrónico) no. La única
+respuesta que el repo puede dar es un comentario de código. Y por
+`por_diferencia.ts`, ese veredicto no tiene entrada: el agente no puede citar nada
+al explicarlo.
+
+**Consecuencia:** no mueve una cifra hoy —la lista es conservadora— pero es la
+mitad del hallazgo FISCAL-2 que quedó sin cerrar, y el ancla de 8+ pide
+exactamente lo contrario: que cada cifra fiscal impresa rastree a una ficha.
+
+---
+
+### [BAJO] (REINCIDENTE) Dos fichas declaran mal dónde se usan, y una de las dos afirma de sí misma algo que el código desmiente
+
+`normas/rmf-2026-2.7.1.21.yaml:30-31` · `normas/politica-portales-plazos.yaml:48-50`
 
 `rmf-2026-2.7.1.21.yaml`:
 
@@ -376,159 +515,172 @@ usado_en_codigo:
   - "FISCAL_LEGAL.md §1.6 (documentación, no código)"
 ```
 
-Y `src/lib/cuadra/normas/por_diferencia.ts:50`:
+y `src/lib/cuadra/normas/por_diferencia.ts:50`:
 
 ```ts
 factura_por_vencer: ['rmf-2026-2.7.1.21', 'politica-portales-plazos-facturacion'],
 ```
 
-Sí se usa en código, y además es una de las dos normas que el agente puede citar al
-explicar un aviso de facturación.
+Sí se usa en código, y es una de las dos normas que `guardiaFundamento` autoriza
+al agente a citar sobre un aviso de facturación — con `texto_vigente: null`.
 
-`politica-portales-plazos.yaml` está desincronizada por segunda vez. Dice hoy:
+`politica-portales-plazos.yaml:48-50` dice hoy:
 
 > «`facturacion/comercios.ts` — `plazoVerificado: false` **en 12 de 13 entradas**;
-> `true` SOLO en office_depot (plazo `mes_siguiente`, leído del ticket)»
+> `true` SOLO en office_depot»
+> «`cuadre/engine.ts` — regla factura_por_vencer: ... **en las dos ramas (vencida y
+> no vencida) dice que el plazo LEGAL es todo el ejercicio**»
 
-Son 37 entradas y 4 verificadas (`g500`, `office_depot`, `megasur`, `la_gas`), tres
-de ellas con plazo `mes_natural` y no `mes_siguiente`. La `nota_verificacion` de esa
-misma ficha documenta que ya se corrigió una vez por este motivo el 28-jul: «un
-auditor que rastreara la fecha "2026-08-31" llegaba a un YAML `sin_verificar` que
-decía lo contrario del código».
+Son 37 entradas y 4 verificadas, y la segunda frase es **falsa contra la salida
+medida** del hallazgo anterior: la rama no vencida sin verificar no menciona el
+ejercicio. La `nota_verificacion` de esa misma ficha documenta que ya se corrigió
+una vez por este motivo el 28-jul.
 
 **Consecuencia:** `usado_en_codigo` es el campo con el que se calcula el radio de
-impacto cuando una norma cambia (lo dice `normas/README.md`). Si miente, una reforma
-se evalúa contra el archivo equivocado. Y ninguna prueba lo cubre:
-`normas_sincronizadas.test.ts` compara id, estado, jerarquía, citas, ruta y
-`fecha_vigencia_desde` — nunca `usado_en_codigo`.
+impacto cuando una norma cambia (lo dice `normas/README.md`). Si miente, una
+reforma se evalúa contra el archivo equivocado. `normas_sincronizadas.test.ts`
+compara id, estado, jerarquía, citas, ruta y `fecha_vigencia_desde` — nunca
+`usado_en_codigo`.
 
 ---
 
-### [BAJO] Un hotel guardado con el concepto heredado `viaticos` sale con "$1,250 no deducibles" citando LISR 28-V, y el comentario lo llama "conservador"
+### [BAJO] (REINCIDENTE) Un hotel guardado con el concepto heredado `viaticos` sale con "$1,250 no deducibles" citando LISR 28-V, y el papel lo llama "Alimentación"
 
-`src/lib/cuadra/cuadre/engine.ts:770-773`
+`src/lib/cuadra/cuadre/engine.ts:780-783` · ficha `normas/lisr-28-V.yaml`
 
-```ts
-// 'viaticos' a secas entra por compatibilidad ... Criterio
-// conservador: se le sigue aplicando el tope.
-const conTope = (c: string) => c === 'alimentacion' || c === 'viaticos';
-```
-
-`normas/lisr-28-V.yaml`, literal: «Tratándose de gastos de viaje destinados a la
-**alimentación**, éstos sólo serán deducibles hasta por un monto que no exceda de
-$750.00 diarios...». Y el `confirmado_del_codigo` de la misma ficha: «Solo
-alimentación; **el hospedaje nacional no tiene tope**: CORRECTO».
+Ficha, literal: «Tratándose de gastos de viaje destinados a la **alimentación**,
+éstos sólo serán deducibles hasta por un monto que no exceda de $750.00
+diarios...», y su `confirmado_del_codigo`: «Solo alimentación; **el hospedaje
+nacional no tiene tope**: CORRECTO».
 
 **Escenario (ejecutado):** gasto de $2,000 del 1-ago con `concepto: 'viaticos'`
 (una noche de hotel guardada por el OCR viejo), timbrado, IVA $275.86:
 
-> «**Alimentación** del 2026-08-01: $2,000.00 excede el tope fiscal de $750.00 por día
-> (LISR 28-V) — el excedente de $1,250.00 no es deducible.»
-> `totalDeducible 750 · totalNoDeducible 1250 · ivaAcreditable 103.45`
+```
+totalDeducible 750 · totalNoDeducible 1,250 · ivaAcreditable 103.45
+nota: «Alimentación del 2026-08-01: $2,000.00 excede el tope fiscal de $750.00
+       por día (LISR 28-V) — el excedente de $1,250.00 no es deducible.»
+```
 
-Es el mismo error que el comentario de `:752-755` declara haber arreglado («una noche
-de hotel de $2,000 salía con $1,250 "no deducibles" que sí lo eran»), conservado a
-propósito para una rama. Y no es conservador: el lado conservador para el
-contribuyente es no declararle perdida una deducción que la ley le concede. Encima
-renombra el hotel como "Alimentación" en el papel.
+El comentario de `:780-782` lo llama "criterio conservador". No lo es: el lado
+conservador para el contribuyente es no declararle perdida una deducción que la
+ley le concede. **Alcance honesto:** el OCR de hoy no emite `viaticos`
+(`intake/ocr.ts`), pero `0025_dominios_check.sql` sigue admitiendo el valor y
+`repo.ts` lo lee tal cual.
 
-**Alcance honesto:** hoy el OCR no emite `viaticos` (`intake/ocr.ts:29,101`) y el
-producto es pre-revenue, así que no debería haber filas así. La migración
-`0025_dominios_check.sql:88` sigue admitiendo el valor.
+---
+
+### [BAJO] `/api/demo` corre el motor real sin ninguna configuración fiscal
+
+`src/app/api/demo/route.ts:41` vs `src/lib/cuadra/cuadre/desde_db.ts:44-60`
+
+```ts
+41: const liq = cuadrarViaje({ viajeId:'demo', anticipo: body.anticipo ?? 0, gastos, politica: POLITICA, ruta:'Silao-Laredo' });
+```
+
+Sin `estimulos`, sin `empresaRfc`, sin `hidrocarburos`, sin `hoy`. `engine.ts:779`
+condiciona todo el bloque del tope de LISR 28-V a `if (topeAlimentacion != null)`,
+así que la regla no corre; tampoco la validación de receptor, ni el complemento,
+ni el permiso CRE, ni el aviso de facturación.
+
+**Corrección honesta de mi propio reporte del 2-ago:** dije que las cifras de
+deducibilidad divergían entre las dos puertas. Releído el archivo, `/api/demo`
+**no devuelve** `totalDeducible`, `totalNoDeducible` ni `ivaAcreditable`
+(`:42-48`), y el mapeo de entrada descarta `fecha`, `formaPago`, `xmlVerificado` y
+`rfcReceptor` (`:33-40`). Lo que sí diverge es la **lista de diferencias**: una
+alimentación de $3,000 timbrada sale sin `viatico_excede_fiscal` por esta puerta y
+con ella por `desde_db`. Ninguno de los cuatro presets (`demo/page.tsx:12-17`) es
+`alimentacion`, así que hoy no se dispara desde la UI. Baja de MEDIO a BAJO.
+
+**Consecuencia:** el simulador que la página anuncia como «El cuadre es real»
+(`demo/page.tsx`) puede omitir una observación fiscal que el producto sí emite, si
+alguien edita un preset antes del 6-ago.
 
 ---
 
 ## Lo que revisé y está bien
 
-**Los tres altos de la ronda 9 que sí anclaron** (verificados ejecutando el motor, no
-leyendo el commit):
-
-- **Tope de $750 (`72b565b`)** — `engine.ts:812-842`. Dos tickets sin timbrar de
-  $1,200 y $800 el mismo día: `totalNoDeducible = 0` y la nota dice «Hoy nada de esto
-  es "no deducible" todavía: lo que falta por timbrar sigue por confirmar». El papel
-  ya no se contradice. Además el prorrateo es por proporción del día
-  (`engine.ts:815-816`, `:1008-1011`) y nunca produce un deducible negativo.
-- **Comida amparada solo por transporte (`c64c74c`)** — `engine.ts:730-745`. Comida de
-  $500 con `formaPago: '28'` (débito) + transporte, sin hospedaje → emite
-  `alimentacion_transporte_sin_tarjeta_credito`. La ley pide crédito (`'04'`) y el
-  código exige `'04'`, no "cualquier tarjeta". Coincide con el 2º párrafo, 3ª oración
-  de `lisr-28-V.yaml`.
-- **Permiso CRE (`f25d44f`)** — `permiso_cre_no_verificable` está fuera de `REVISAR`
-  (`engine.ts:1029`), así que ya no manda el viaje demo a rojo; el requisito sigue
-  dicho, con tono `condicionado`, pegado al renglón de ISR
-  (`deducibilidad.ts:64-72`, `pdf.ts:309`).
-
-**El interruptor del complemento de hidrocarburos** — `engine.ts:432-476` +
-`indice.ts:306` (`exigibleDesde: null`) + `normas_sincronizadas.test.ts:86-97`. Con la
-fecha sin respaldo el motor emite `complemento_no_verificable` (revisión) y **no**
-declara no deducible; la fecha que decide dinero sale de la ficha, no de `config.ts`.
-Es el mejor mecanismo del rubro y aguanta la inspección.
-
-**La sección "ACREDITABLE / RECUPERABLE"** — `liquidacion/acreditable.ts` completo.
-Los hallazgos H4 (base `subTotal` vs "gasto total erogado"), H5 (Red Nacional de
-Autopistas) y H6 (ingresos < $300M, partes relacionadas) que `lif-2026-20-A.yaml`
-declara `SIN RESOLVER` están **impresos en el papel**, con las cuatro condiciones
-transcritas literales y la nota de ingreso acumulable. Intenté reportarlos como
-hallazgo y me refuté yo mismo: el papel dice qué base usó y que Likida no verifica la
-elegibilidad. El renglón sale en tinta neutra, no en verde (`pdf.ts:348`).
-
-**El estímulo de IEPS no se calcula con el IEPS trasladado** — `engine.ts:872`
-(`const iepsAcreditable = 0`) y `:928` (se cuentan litros, no pesos). Es exactamente
-lo que `lif-2026-20-A.yaml` pide: «cuota IEPS vigente al momento de la compra ×
-LITROS. No es el IEPS trasladado en el CFDI». El error que el rubro nombra como
-ejemplo canónico no está aquí. La verificación de litros contra precio×litros
-(`engine.ts:939-950`) atrapa el decimal corrido.
-
-**RFA 2026 regla 2.9 aplicada al concepto correcto** — `engine.ts:271-272` manda el
-combustible en efectivo a `POR_CONFIRMAR` (deducible hasta el 15%) y lo deja en
-`SIN_ACREDITAMIENTO` (`:866`), con el comentario de `:860-865` explicando que la
-facilidad salva un beneficio y no los dos. Coincide con el `limite_importante` de la
-ficha. Y `rfa-2026-2.2.yaml` (el 8%) tiene `usado_en_codigo: []` y no se aplica a
-combustible en ningún lado — grepeé "2.2" y no hay uso.
-
-**RLISR 57 y el viático a nombre del operador** — `engine.ts:381-400`. No se rechaza
-el CFDI a nombre de una persona: si coincide con `operadorRfc` no se reporta nada, si
-falta el dato sale `viatico_rfc_operador` (revisión, sin quitar deducción). Coincide
-con el texto transcrito del reglamento.
-
-**La leyenda del PDF cita lo que la norma sí dice** — `cuadre/leyendas.ts:50-59` contra
-`cff-89-90.yaml`. La frase «pueden diferir de los que dé a conocer el SAT» es
-literalmente la conducta que exime del art. 89 último párrafo, y la referencia al art.
-52 CFF («no constituye un dictamen») es correcta. Busqué una cita que no dijera lo
-citado y no la encontré en `leyendas.ts`.
-
-**Las tres cubetas siempre suman el comprobado** — `engine.ts:983-1012` y el portón de
-`deducibilidad.ts:54-55` (si no suman con 1.5 centavos de tolerancia, no se imprime el
-desglose). El contralor no puede sacar la calculadora y encontrar una diferencia.
-
-**Extracción de impuestos del XML** — `intake/cfdi_xml.ts:141-153`. IVA `002` e IEPS
-`003` se suman de `Impuestos/Traslados` del comprobante y nunca se recomputan con una
-tasa asumida (`engine.ts:878-882` exige `xmlVerificado`), así que el 8% fronterizo
-sale tal cual del papel.
+- **Los dos altos del 2-ago anclaron** — verificado ejecutando el motor, no
+  leyendo el commit. Ver la sección de arriba con las salidas medidas.
+- **El estímulo de IEPS no se calcula con el IEPS trasladado.** `engine.ts:888`
+  (`const iepsAcreditable = 0`) y `:970-990` (se cuentan litros, no pesos), con
+  `acreditable.ts:94-100` en `tono: 'condicionado'` y la nota de la cuota semanal.
+  Es literalmente lo que `lif-2026-20-A.yaml` pide: «cuota IEPS vigente al momento
+  de la compra × LITROS. **No es el IEPS trasladado en el CFDI**». El error que el
+  rubro nombra como ejemplo canónico no está aquí. La banda 0.5×–2× de
+  `diesel_desviacion` (`:982`) atrapa el decimal corrido.
+- **RFA 2026 regla 2.9 aplicada al concepto correcto y solo a un beneficio.**
+  `engine.ts:281-282` manda el combustible en efectivo a `POR_CONFIRMAR` y lo deja
+  en `SIN_ACREDITAMIENTO` (`:882`), con el comentario de `:870-875` explicando que
+  la facilidad salva la deducción y no el acreditamiento — coincide con el
+  `limite_importante` de la ficha. `rfa-2026-2.2` (el 8%) tiene `usado_en_codigo: []`
+  y grepeado no se ofrece en ningún lado.
+- **El interruptor del complemento de hidrocarburos.** `engine.ts:442-486` +
+  `indice.ts:306` (`exigibleDesde: null`) + `normas_sincronizadas.test.ts:86-97`.
+  Con la fecha sin respaldo el motor emite `complemento_no_verificable` (revisión)
+  y **no** declara no deducible; la fecha que decide dinero sale de la ficha, no de
+  `config.ts`. Sigue siendo el mejor mecanismo del rubro.
+- **RLISR 57 y el viático a nombre del operador.** `engine.ts:391-410`: si el RFC
+  coincide con `operadorRfc` no se reporta nada; si falta el dato sale
+  `viatico_rfc_operador` (revisión, sin quitar deducción). Coincide con el texto
+  transcrito del reglamento.
+- **Las leyendas citan lo que la norma sí dice.** `cuadre/leyendas.ts:36-58`
+  contra `cff-89-90.yaml`: la frase «pueden diferir de los criterios que dé a
+  conocer el SAT» es la conducta que exime del art. 89 último párrafo, y la
+  referencia al art. 52 CFF («no constituye un dictamen») es correcta. Busqué una
+  cita que no dijera lo citado y no la encontré.
+- **Las tres cubetas siempre suman el comprobado.** `engine.ts:1022-1052` y el
+  portón de `deducibilidad.ts:54-55` (si no suman con 1.5 centavos de tolerancia,
+  no se imprime el desglose). El contralor no puede sacar la calculadora y
+  encontrar una diferencia.
+- **Extracción de impuestos del XML.** `intake/cfdi_xml.ts:141-153`: IVA `002` e
+  IEPS `003` se suman de `Impuestos/Traslados` del comprobante y nunca se
+  recomputan con una tasa asumida (`engine.ts:898` exige `xmlVerificado`), así que
+  el 8% fronterizo sale tal cual del papel. `formaPagoSat` (`:87-91`) normaliza a
+  dos dígitos sin inventar valores.
+- **DEDUCIBLE ≠ PAGADERO sigue cableado.** `laboral/pagadero.ts:196-230` llamado
+  desde `pdf.ts:376-386`, con las cubetas del motor (`cubetaDe`) y con las copias
+  excluidas por `copiasDeComprobante` — el reembolso ya no cuenta tres veces el
+  mismo ticket. LFT 263-I manda sobre la política interna, y `sin_criterio` no
+  descuenta solo.
+- **`SOLO_CONTRALOR`** (`resumen.ts:24-33`) filtra bien: los veredictos que el
+  operador no puede arreglar (EFOS, cancelado, permiso CRE, tarjeta de crédito de
+  LISR 28-V) no le llegan; `complemento_no_verificable` sí, porque es lo único que
+  él puede resolver.
 
 ## Lo que NO alcancé a revisar
 
-- **`facturacion/permiso_cre.ts`** (12,625 permisos): lo leí y confirmé que **no tiene
-  consumidor real** — el único `grep` de `permisoCre` fuera de su propia prueba es la
-  cadena `permiso_cre_no_verificable`. No evalué si la tabla es correcta ni qué haría
-  falta para conectarla; es una pregunta de arquitectura más que de norma.
-- **`liquidacion/omitidos.ts`, `laboral/pagadero.ts` y `cuadre/resumen.ts`**: solo los
-  abrí de paso. `pagadero.ts` cruza LFT 263-I con la deducibilidad y merece una pasada
-  propia que no le di.
-- **`normas/fundamento.ts` (447 líneas)**: solo verifiqué que discrimina por jerarquía
-  (`:357`). No probé si la guardia deja pasar una cita a una ficha
-  `evidencia_corroborante` sin el matiz que `normas/README.md` exige ("Sí,
-  condicionado").
-- **Las 4 fichas de LFPDPPP** (`lfpdppp-*.yaml`): son del rubro legal, no las abrí más
-  allá de contarlas para la tabla de estados.
-- **`intake/decidir.ts`, `emparejar.ts`, `ocr.ts`**: la clasificación de concepto
-  decide qué regla fiscal aplica (un PLUS clasificado como `diesel` invita a un
-  estímulo que no existe, y `etiquetaConcepto` lo mitiga solo en el texto). No audité
-  el prompt del OCR ni sus umbrales.
-- **No verifiqué ninguna norma contra su fuente**: esta ronda corre sin red hacia el
-  DOF, el SAT ni diputados.gob.mx. Todo lo que digo sobre el texto de una ley sale de
-  la transcripción que la ficha declara; el hallazgo 5 es precisamente que esa
-  declaración no es fiable en dos fichas. Cerrar ese hallazgo requiere bajar los PDF,
-  y eso no lo hice.
-- **`FISCAL_LEGAL.md`** (documento comercial de 200+ líneas): no lo audité. Contiene
-  cifras fiscales y es lo que el equipo usa para hablar con clientes.
+- **No verifiqué ninguna norma contra su fuente.** Esta ronda corre sin red hacia
+  el DOF, el SAT ni diputados.gob.mx. Todo lo que digo sobre el texto de una ley
+  sale de la transcripción que la ficha declara. Las fichas
+  `evidencia_corroborante` o con `texto_vigente: null` —`cff-29-A`,
+  `criterio-1-CFF-PI`, `criterio-1-LIF-PI`, `rmf-2026-2.7.1.21`,
+  `rmf-2026-2.7.1.48`, `politica-portales-plazos`— quedan como **no verificables
+  en esta ronda**: no asumo que estén bien ni que estén mal. Anoto que `cff-29-A`
+  funda cinco veredictos en `por_diferencia.ts` y sigue sin texto, y que
+  `rfc_receptor`, `cfdi_cancelado` y `cfdi_no_encontrado` —tres de los seis
+  veredictos duros de `NO_DEDUCIBLE_ISR`— se apoyan en ella.
+- **No generé un PDF.** Verifiqué con el motor real las estructuras que le llegan
+  (`filasDeducibilidad`, `filasAcreditables`, `diferencias` con su `monto`) y leí
+  `pdf.ts`, pero no miré el papel renderizado.
+- **`facturacion/permiso_cre.ts`** (12,625 permisos): sigue sin consumidor real
+  fuera de su propia prueba. No evalué si la tabla es correcta.
+- **Las condiciones 1 y 2 de la RFA 2.9** (dedicación exclusiva al autotransporte
+  de carga federal, régimen del Título II Cap. VII o Título IV Cap. II Secc. I) y
+  **el contador del 15% por ejercicio**: siguen sin capturarse. Es el MEDIO de la
+  ronda 8, abierto por cuarta ronda; no lo repito como hallazgo pero cuenta en la
+  nota.
+- **`normas/fundamento.ts` (447 líneas):** verifiqué que discrimina por jerarquía
+  (`:357`) y que no lee `estado` en absoluto (eso es el MEDIO de arriba). No probé
+  la sustitución de texto ni el detector de siglas.
+- **`intake/decidir.ts`, `emparejar.ts`, `ocr.ts`:** la clasificación de concepto
+  decide qué regla fiscal aplica. No audité el prompt del OCR ni sus umbrales.
+- **Dos deudas menores que anoto sin hallazgo, porque no pude escribir un
+  escenario con valores:** (a) `config.ts:93-103` no define
+  `precioDieselPorDefecto` dentro de `estimulos`, así que `engine.ts:979` siempre
+  cae al literal `27.0` y el `tabulador.precioDieselPorDefecto` del tenant nunca
+  llega a la banda de `diesel_desviacion`; (b) `indice.ts:127` tiene
+  `titulo: ">"`, un resto del YAML colado al índice de `criterio-1-CFF-PI`.
+- **`FISCAL_LEGAL.md`** (documento comercial con cifras fiscales, el que el equipo
+  usa para hablar con clientes): cuarta ronda sin auditar.
+- **Las 4 fichas de LFPDPPP:** son del rubro legal.

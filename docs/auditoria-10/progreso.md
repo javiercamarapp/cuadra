@@ -146,3 +146,18 @@ misma rama, sin abrir PR nuevo.
   Prueba roja primero (`guard.test.ts`, 2 casos: devolvían la sesión del chofer
   en vez de redirigir) → arreglo → verde → suite completa 173/1631 exit 0,
   tsc 0, lint 0.
+- **Vuelta 2 · `8fb74d4`** — CRÍTICO «las rutas de export no autorizan por rol».
+  Hallado por backend, seguridad, arquitectura, datos y frontend. Verificado
+  abriendo las dos rutas y `permisos.ts`. Prueba roja primero
+  (`api/export/rol.test.ts`: rol=operador recibía 200 con el CSV y 302 con la
+  URL firmada) → arreglo → verde → suite 174/1636 exit 0. Lleva casos de
+  control (flota_admin sí baja las dos cosas) para que cerrar de más no pase
+  como arreglo.
+- **Vuelta 3 · `d08db8a`** — CRÍTICO fiscal «el RFC del tenant de demo reprueba
+  nuestro propio validador». Verificado ejecutando `rfcChecksumOk` contra el
+  valor real del seed: `false`. Prueba roja primero (`seed_rfc.test.ts`) →
+  arreglo (`TIN010101AAA` → `TIN010101AA5`, solo en `seed.sql`) → verde →
+  suite 175/1638 exit 0.
+
+**TOPE DE 3 VUELTAS AGOTADO.** Lo demás queda propuesto, incluidos 4 críticos
+verificados que no se arreglaron: se listan en la síntesis con su razón.

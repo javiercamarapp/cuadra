@@ -241,13 +241,13 @@ y se pega en el `addGasto` de allí; la sala de espera se escribió con
 ---
 
 ### [MEDIO] El chofer ve en `/mis-viajes` el semáforo que se construyó para el contralor
-`src/app/mis-viajes/page.tsx:8-12` y `:80` · `src/lib/cuadra/cuadre/engine.ts:1070-1072`
+`src/app/mis-viajes/page.tsx:8-12` y `:80` · `src/lib/cuadra/cuadre/engine.ts:1069-1072`
 · `src/lib/cuadra/cuadre/resumen.ts:24-33`
 
 `SOLO_CONTRALOR` filtra del WhatsApp los veredictos que el chofer no puede
 arreglar y que además lo señalan (`cfdi_efos`, `cfdi_cancelado`,
 `rfc_receptor`…). Esos mismos tipos están en la lista `REVISAR` de
-`engine.ts:1070`, que produce `estatus = 'revisar'`, y `/mis-viajes` pinta ese
+`engine.ts:1069`, que produce `estatus = 'revisar'`, y `/mis-viajes` pinta ese
 estatus con `--color-bad` y la etiqueta **«Por revisar»**.
 
 Escenario, con valores: viaje V1, comprobado $16,244.00, cuadra exacto contra el
@@ -330,7 +330,7 @@ pregunta de destinatario que el resto del sistema sí se hace.
 - **El ciclo de tool-calling de `openrouter.ts`** (loop-guard, rondas,
   construcción de `PartialExecutionError`): lo di por bueno del rubro de tool
   calling, salvo su consumo en `:1187-1231`, que sí recorrí.
-- **La reasignación de chofer** (`repo.ts:110-116`) solo la miré desde el
+- **La reasignación de chofer** (`repo.ts:109-116`) solo la miré desde el
   destinatario: no valida que `operadorId` pertenezca al tenant y la policy
   `operador_ve_su_viaje` (mig. 0045) no lleva predicado de tenant. Es de
   seguridad/backend, no del ciclo agéntico, y lo dejo señalado sin reportarlo
