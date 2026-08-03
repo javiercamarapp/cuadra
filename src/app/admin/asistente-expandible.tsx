@@ -5,7 +5,14 @@ import { Maximize2, Minimize2, Sparkles } from 'lucide-react';
 import ChatNegocio from './chat';
 import type { ResumenNegocio } from '@/lib/admin/negocio';
 
-const ANCHO_ASIDE = 276;
+export const ANCHO_ASIDE = 276;
+const GAP = 16;
+/**
+ * Lo que el panel del Asistente le quita a la columna de contenido: su ancho
+ * más el gap. Solo desde `xl` (1280px), que es donde el `<aside hidden xl:flex>`
+ * empieza a existir — ver la clase de abajo.
+ */
+export const HUECO_ASIDE = ANCHO_ASIDE + GAP; // 292
 const DURACION = '480ms cubic-bezier(0.22, 1, 0.36, 1)'; // easeOutQuint — la misma curva "premium" que usan los paneles de macOS/iOS al expandirse
 
 /**
@@ -26,13 +33,23 @@ export default function AsistenteExpandible({
   const [expandido, setExpandido] = useState(false);
 
   return (
-    <div className="flex items-start relative" style={{ gap: expandido ? 0 : 16, transition: `gap ${DURACION}` }}>
+    <div className="flex items-start relative" style={{ gap: expandido ? 0 : GAP, transition: `gap ${DURACION}` }}>
+      {/* EL ANCHO VA EN CLASES, NO EN UN `style` EN LÍNEA, porque el hueco que
+          descuenta solo existe a partir de `xl`.
+          Esto era `width: calc(100% - 292px)` en línea, sin condición de
+          breakpoint, mientras el `<aside>` de al lado es `hidden xl:flex`. Por
+          debajo de 1280px —un proyector de 1152×864, el navegador sin
+          maximizar en un portátil de 1366— el aside pasaba a `display:none` y
+          la columna seguía midiendo 292px menos: el contenido se encogía al
+          ~68% y quedaba una franja de fondo difuminado con nada encima
+          (auditoría 10, frontend, MEDIO).
+          `w-full` por debajo de xl, el descuento solo desde xl. La clase es
+          estática para que Tailwind la genere, y `columna_muerta.test.tsx`
+          comprueba que su número siga siendo `ANCHO_ASIDE + GAP`. */}
       <div
+        className={expandido ? 'w-0 min-w-0 overflow-hidden' : 'w-full xl:w-[calc(100%-292px)] min-w-0 overflow-hidden'}
         style={{
-          width: expandido ? 0 : `calc(100% - ${ANCHO_ASIDE + 16}px)`,
-          minWidth: 0,
           opacity: expandido ? 0 : 1,
-          overflow: 'hidden',
           transition: `width ${DURACION}, opacity 250ms ease`,
         }}
       >
