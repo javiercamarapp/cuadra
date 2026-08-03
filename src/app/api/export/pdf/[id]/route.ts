@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { rateLimit, clientIp } from '@/lib/ratelimit';
 import { getSessionTenant } from '@/lib/auth/session';
+import { puedeExportar } from '@/lib/auth/permisos';
 import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
@@ -31,6 +32,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const s = await getSessionTenant();
   if (!s || !s.tenantId) return new NextResponse('No autorizado', { status: 401 });
+  // Mismo motivo que en el CSV: service-role (RLS no se evalúa) y fuera del
+  // matcher del proxy. Sin esta línea, el chofer firmaba la URL del PDF de
+  // cualquier liquidación de la flota (auditoría 10, CRÍTICO).
+  if (!puedeExportar(s.rol)) return new NextResponse('No autorizado', { status: 403 });
   const tenantId = s.tenantId;
 
   const { id } = await params;
