@@ -17,7 +17,7 @@ import { describe, it, expect } from 'vitest';
 // observación, y por `desde_db` con `viatico_excede_fiscal`. El mismo hecho,
 // dos veredictos, según qué puerta lo evaluó.
 //
-// `normas/lisr-28-V.yaml` (`verificado_fuente_primaria`), `texto_vigente`,
+// `normas/lisr-28-V.yaml` (`evidencia_corroborante`), `texto_vigente`,
 // literal: «Tratándose de gastos de viaje destinados a la alimentación, éstos
 // sólo serán deducibles hasta por un monto que no exceda de $750.00 diarios por
 // cada beneficiario, cuando los mismos se eroguen en territorio nacional...».

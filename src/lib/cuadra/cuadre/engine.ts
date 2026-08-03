@@ -845,7 +845,7 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
     // AUDITORÍA 9, ALTO (fiscal) — H1b: cuando lo único que ampara la comida es
     // TRANSPORTE (sin hospedaje en el viaje), LISR 28-V exige ADEMÁS que el
     // pago se haya hecho con tarjeta de crédito de quien viaja (2º párrafo,
-    // 3ª oración, verificado_fuente_primaria):
+    // 3ª oración; ficha `evidencia_corroborante`):
     //
     //   "Cuando a la documentación que ampare el gasto de alimentación el
     //   contribuyente únicamente acompañe el comprobante fiscal relativo al
@@ -1088,7 +1088,7 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
     const esDieselIeps = clavesDiesel.includes(g.claveProdServ ?? '');
     if (esDieselIeps) {
       // EL ESTÍMULO NO ES EL IEPS TRASLADADO. `normas/lif-2026-20-A.yaml`
-      // (verificado_fuente_primaria) dice literal: "cuota IEPS vigente al momento
+      // (`evidencia_corroborante`) dice literal: "cuota IEPS vigente al momento
       // de la compra × LITROS. No es el IEPS trasladado en el CFDI."
       //
       // Antes se sumaba el trasladado y el PDF lo imprimía en verde citando ese

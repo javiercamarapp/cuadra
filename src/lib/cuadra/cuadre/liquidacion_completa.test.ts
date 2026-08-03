@@ -112,7 +112,7 @@ describe('liquidación completa de 20 comprobantes', () => {
 
   it('el IEPS trasladado NO se presenta como estímulo acreditable', () => {
     // Fijaba 1520 = 800 + 720, la suma de los IEPS TRASLADADOS de los CFDI.
-    // `normas/lif-2026-20-A.yaml` (verificado_fuente_primaria) dice literal:
+    // `normas/lif-2026-20-A.yaml` (`evidencia_corroborante`) dice literal:
     // "cuota IEPS vigente al momento de la compra × LITROS. No es el IEPS
     // trasladado en el CFDI". Y la decisión D2 del roadmap prohíbe enseñar la
     // cifra en pesos "sin discusión": la cuota pasó de $7.3634 a $2.0925 en

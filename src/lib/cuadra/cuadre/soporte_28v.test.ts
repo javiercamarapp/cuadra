@@ -8,7 +8,7 @@
 //     const haySoporte   = vivos.some((g) => g.concepto === 'hospedaje' || g.concepto === 'transporte');
 //     const hayHospedaje = vivos.some((g) => g.concepto === 'hospedaje');
 //
-// `normas/lisr-28-V.yaml` (`verificado_fuente_primaria`), `texto_vigente`, 2º
+// `normas/lisr-28-V.yaml` (`evidencia_corroborante`), `texto_vigente`, 2º
 // párrafo, literal:
 //
 //   «...y el contribuyente acompañe EL COMPROBANTE FISCAL O LA DOCUMENTACIÓN

@@ -7,11 +7,29 @@ titulo: "Estímulo de IEPS de diésel para transporte, y estímulo del 50% de pe
 citas_en_codigo: ["LIF 2026 Art. 20", "LIF 2026 Art. 20-A", "LIF Art. 20-A fr. IV"]
 fecha_publicacion: 2025-11-07
 fuente_url: "http://www.diputados.gob.mx/LeyesBiblio/pdf/LIF_2026.pdf"
-fuente_tipo: diputados_oficial
-estado_verificacion: verificado_fuente_primaria
+fuente_tipo: fuente_secundaria
+estado_verificacion: evidencia_corroborante
 nota_verificacion: >
   Texto obtenido de dos reproducciones del articulado (leyes-mx.com y mley.mx) y
   corroborado con el documento de Reducciones y Estímulos Fiscales 2026 de PRODECON.
+
+  CORREGIDO el 3-ago-2026 (auditoría 10): esta ficha decía
+  `estado_verificacion: verificado_fuente_primaria` con `fuente_tipo:
+  diputados_oficial` sobre esas dos reproducciones más un documento de PRODECON
+  —que es una corroboración excelente, y aun así secundaria—. `normas/README.md`
+  reserva el estado primario para «se leyó el texto en el DOF, el SAT o
+  diputados.gob.mx». El `fuente_url` se conserva porque es la fuente que hay que
+  abrir para cerrarla, no la que se leyó.
+
+  Lo que cuelga de esta ficha: los litros de diésel del estímulo de IEPS y el 50%
+  del estímulo de peaje, las dos cifras de la sección "ACREDITABLE / RECUPERABLE"
+  del PDF. Las dos ya se imprimen con `tono: 'condicionado'` y con sus
+  condiciones al pie (`liquidacion/acreditable.ts`), que es la presentación que
+  este estado pide.
+
+  PARA CERRAR: leer el PDF de la LIF 2026 en diputados.gob.mx o el DOF del
+  7-nov-2025, confirmar el articulado del apartado A —incluido el 4º párrafo del
+  medio de pago, que hoy ninguna ficha transcribe— y subir el estado.
 
 estimulo_diesel_transporte:
   texto_vigente: >

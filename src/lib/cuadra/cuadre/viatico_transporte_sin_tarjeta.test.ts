@@ -10,7 +10,7 @@ import type { Gasto } from '@/types/cuadra';
 // 'Deducible' en verde, estatus 'cuadrada', y sin una sola observación".
 //
 // Norma comparada — `normas/lisr-28-V.yaml`, tercera oración del segundo
-// párrafo (verificado_fuente_primaria), literal:
+// párrafo (`evidencia_corroborante`), literal:
 //
 //   "Cuando a la documentación que ampare el gasto de alimentación el
 //   contribuyente únicamente acompañe el comprobante fiscal relativo al

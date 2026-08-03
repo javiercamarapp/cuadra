@@ -998,7 +998,8 @@ describe('cuadrarViaje — texto dirigido al lector automático', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 // EL ESTÍMULO DE IEPS NO ES EL IEPS TRASLADADO.
 //
-// `normas/lif-2026-20-A.yaml`, verificada contra fuente primaria, dice literal:
+// `normas/lif-2026-20-A.yaml` (`evidencia_corroborante` desde la auditoría 10:
+// su nota admite dos reproducciones del articulado, no el DOF) dice literal:
 //   "cuota IEPS vigente al momento de la compra × LITROS.
 //    No es el IEPS trasladado en el CFDI."
 //

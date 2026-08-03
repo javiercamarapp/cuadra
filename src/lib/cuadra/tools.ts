@@ -19,7 +19,7 @@ import { normasDe, normasDePolitica } from './normas/por_diferencia';
 import { getAcumuladoCombustible } from './repo';
 import { evaluarTope15 } from './periodo/combustible';
 import { avisoTope15 } from './periodo/aviso';
-import { NORMAS, esVinculante } from './normas/indice';
+import { NORMAS, esVinculante, puedeAfirmar } from './normas/indice';
 import { sanitizarTexto } from './intake/sanitizar';
 
 // ── EL RESULTADO DE UNA TOOL ES CONTEXTO DEL MODELO ─────────────────────────
@@ -97,7 +97,21 @@ registerTool('consultar_politica', {
         norma_id: id,
         cita: NORMAS[id].citas[0],
         jerarquia: NORMAS[id].jerarquia,
-        verificada: NORMAS[id].estado !== 'sin_verificar',
+        // EL CATÁLOGO TIENE TRES ESTADOS Y ESTO MANDABA DOS. Era
+        // `verificada: NORMAS[id].estado !== 'sin_verificar'`, un booleano que
+        // juntaba `verificado_fuente_primaria` con `evidencia_corroborante` — y
+        // el del medio es el que trae el matiz. `normas/README.md` le asigna
+        // «Sí, condicionado», no «Sí»: `lisr-27-fr-III`, que funda
+        // `combustible_efectivo`, `efectivo_sobre_tope` y `sin_cfdi`, dice en su
+        // propia ficha «NO se leyó en diputados.gob.mx» y le llegaba al agente
+        // igual que `cff-30`, transcrita del PDF oficial.
+        //
+        // Van los dos campos a propósito: `verificacion` es el hecho auditable
+        // —el contralor puede abrir el YAML y leer el mismo valor— y `afirmar`
+        // es lo accionable, para que el modelo no tenga que interpretar la tabla
+        // del README por su cuenta.
+        verificacion: NORMAS[id].estado,
+        afirmar: puedeAfirmar(NORMAS[id].estado),
         vinculante: esVinculante(NORMAS[id].jerarquia),
       })),
     };
@@ -157,8 +171,11 @@ registerTool('cuadrar_viaje', {
         cita: NORMAS[id].citas[0],
         jerarquia: NORMAS[id].jerarquia,
         // Que el agente sepa si puede AFIRMAR o tiene que condicionar. Una ficha
-        // sin verificar no sostiene una afirmación tajante.
-        verificada: NORMAS[id].estado !== 'sin_verificar',
+        // sin verificar no sostiene una afirmación tajante — y una corroborada
+        // con fuentes secundarias tampoco la sostiene ENTERA: son tres estados,
+        // no dos (ver el comentario largo en `consultar_politica`).
+        verificacion: NORMAS[id].estado,
+        afirmar: puedeAfirmar(NORMAS[id].estado),
         vinculante: esVinculante(NORMAS[id].jerarquia),
       })),
     };

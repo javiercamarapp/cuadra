@@ -51,7 +51,8 @@ export const BASE_ESTIMULO_PEAJE =
 /**
  * Las cuatro condiciones de elegibilidad del estímulo de peaje, transcritas de
  * `estimulo_peaje.condiciones` en `normas/lif-2026-20-A.yaml`
- * (`verificado_fuente_primaria`).
+ * (`evidencia_corroborante`: su nota admite dos reproducciones del articulado,
+ * no el DOF — auditoría 10).
  *
  * El motor no conoce NINGUNA: no sabe los ingresos de la flota, ni si es parte
  * relacionada, ni si la caseta pertenece a la Red Nacional de Autopistas de

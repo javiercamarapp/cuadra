@@ -143,6 +143,79 @@ describe('usado_en_codigo dice la verdad sobre quién depende de la ficha', () =
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDITORÍA 10 · MEDIO (fiscal, reincidente) — dos fichas que respaldan cifras
+// impresas decían `verificado_fuente_primaria` y en su propia
+// `nota_verificacion` admitían haber leído REPRODUCCIONES.
+//
+// `normas/README.md`, tabla "Estados de verificación", literal:
+//
+//   | `verificado_fuente_primaria` | Se leyó el texto en el DOF, el SAT o
+//   | diputados.gob.mx | **Sí** |
+//   | `evidencia_corroborante` | Varias fuentes secundarias coinciden, sin leer
+//   | el original | Sí, condicionado |
+//
+// `lisr-28-V.yaml` —la ficha del $750/día, el número más impreso del producto—
+// decía «Texto idéntico en cuatro reproducciones independientes (apta.com.mx,
+// leyesmx, mley.mx, tax.com.mx)», y `lif-2026-20-A.yaml` —la de los litros de
+// diésel y el 50% de peaje— «Texto obtenido de dos reproducciones del
+// articulado (leyes-mx.com y mley.mx)». Las dos con `fuente_tipo:
+// diputados_oficial`. Las genuinamente primarias se distinguen solas:
+// `cff-30` y `cff-89-90` dicen «Transcrito del PDF oficial de la Cámara de
+// Diputados» y `rfa-2026-2.9` «Leído en el DOF (SIDOF)».
+//
+// Un contador que abra `normas/` en la sala y lea dos renglones seguidos de
+// `lisr-28-V.yaml` concluye que el sello de verificación es decorativo.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('el sello de verificación dice lo que la ficha de verdad hizo', () => {
+  /** Lo que delata una fuente SECUNDARIA en la propia nota de la ficha. */
+  const MARCAS_SECUNDARIAS = [/reproducci[oó]n/i, /reproducciones/i, /leyes-?mx/i, /mley\.mx/i, /apta\.com\.mx/i, /tax\.com\.mx/i, /justia/i];
+  /** Y lo que declara haber leído el ORIGINAL. Con esto, corroborar con copias
+   *  es una virtud (`rfa-2026-2.9`: «Leído en el DOF (SIDOF) y corroborado en
+   *  tres reproducciones independientes»); sin esto, las copias son todo lo que
+   *  hubo. */
+  const MARCAS_PRIMARIAS = [/le[ií]do en el DOF/i, /SIDOF/i, /PDF oficial/i, /diputados\.gob\.mx/i, /C[aá]mara de Diputados/i, /descargado de/i, /contra el texto vigente/i, /minisitio/i];
+
+  /**
+   * El PRIMER párrafo de `nota_verificacion` (más `verificado_por`): es donde la
+   * ficha declara QUÉ SE HIZO. Lo que viene después son matices, correcciones y
+   * el `PARA CERRAR` —que nombra la fuente primaria justamente porque todavía no
+   * se leyó—, y contarlo como evidencia de lectura dejaría pasar la ficha que
+   * este bloque existe para atrapar.
+   */
+  function nota(txt: string): string {
+    const bloque = /^nota_verificacion:\s*>\n([\s\S]*?)(?=\n[a-z_]+:)/m.exec(txt)?.[1] ?? '';
+    return bloque.split(/\n\s*\n/)[0] + ' ' + (campo(txt, 'verificado_por') ?? '');
+  }
+
+  /** Solo leyó copias: ninguna declaración de haber abierto el original. */
+  function soloReproducciones(txt: string): boolean {
+    const n = nota(txt);
+    return MARCAS_SECUNDARIAS.some((m) => m.test(n)) && !MARCAS_PRIMARIAS.some((m) => m.test(n));
+  }
+
+  it('ninguna ficha `verificado_fuente_primaria` funda su verificación SOLO en reproducciones', () => {
+    for (const f of fichas.filter((x) => x.estado === 'verificado_fuente_primaria')) {
+      expect(soloReproducciones(f.txt), `${f.archivo} dice \`verificado_fuente_primaria\` y su nota solo admite reproducciones — el estado honesto es \`evidencia_corroborante\``)
+        .toBe(false);
+    }
+  });
+
+  it('y la que solo leyó reproducciones tampoco declara `fuente_tipo` oficial', () => {
+    // El `fuente_tipo` es la otra mitad del mismo sello: `diputados_oficial`
+    // sobre una ficha que leyó apta.com.mx afirma la procedencia dos veces.
+    // (Las fichas cuyo `PARA CERRAR` es ir al DOF —los dos criterios del Anexo
+    // 3— no entran aquí: su nota no dice haber leído una reproducción, dice que
+    // el texto todavía no se transcribió, y eso ya lo declara su estado.)
+    for (const f of fichas.filter((x) => soloReproducciones(x.txt))) {
+      const tipo = campo(f.txt, 'fuente_tipo');
+      if (!tipo) continue;
+      expect(tipo, `${f.archivo} solo leyó reproducciones y declara \`fuente_tipo: ${tipo}\``)
+        .not.toMatch(/oficial/);
+    }
+  });
+});
+
 describe('esVinculante', () => {
   it('ley, reglamento, regla general y anexo obligan', () => {
     for (const j of [1, 2, 3, 4] as Jerarquia[]) expect(esVinculante(j)).toBe(true);

@@ -9,7 +9,7 @@
 //
 // con el comentario «criterio conservador: se le sigue aplicando el tope».
 //
-// `normas/lisr-28-V.yaml` (`verificado_fuente_primaria`), literal: «Tratándose
+// `normas/lisr-28-V.yaml` (`evidencia_corroborante`), literal: «Tratándose
 // de gastos de viaje destinados a LA ALIMENTACIÓN, éstos sólo serán deducibles
 // hasta por un monto que no exceda de $750.00 diarios...», y su
 // `confirmado_del_codigo`: «Solo alimentación; EL HOSPEDAJE NACIONAL NO TIENE

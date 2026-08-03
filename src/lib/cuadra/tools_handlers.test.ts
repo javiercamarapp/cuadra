@@ -59,7 +59,7 @@ await import('./tools');
 const { executeTool } = await import('@/lib/llm/tool-executor');
 
 const CTX = { tenantId: 't1', viajeId: 'v1', operadorId: 'o1', telefono: '52199' };
-type Fundamento = { norma_id: string; cita: string; jerarquia: number; verificada: boolean; vinculante: boolean };
+type Fundamento = { norma_id: string; cita: string; jerarquia: number; verificacion: string; afirmar: string; vinculante: boolean };
 type ResCuadre = {
   total_comprobado: number; total_anticipo: number; diferencia: number; estatus: string;
   diferencias: { tipo: string; monto: number; nota?: string }[];
@@ -109,17 +109,43 @@ describe('cuadrar_viaje — cifras y permiso de citar, por la frontera de execut
     expect(ids).toContain('rfa-2026-2.9');     // …salvo hasta el 15%
   });
 
-  it('cada fundamento trae la cita, la jerarquía y si obliga — con valores, no con la fórmula', async () => {
+  // AUDITORÍA 10 · MEDIO (fiscal): esta prueba fijaba `verificada: true` sobre
+  // `lisr-27-fr-III`, que es `evidencia_corroborante` — la ficha que funda
+  // `combustible_efectivo`, `efectivo_sobre_tope` y `sin_cfdi`, y cuya propia
+  // nota dice «NO se leyó en diputados.gob.mx». El booleano
+  // (`estado !== 'sin_verificar'`) COLAPSABA los tres estados del catálogo en
+  // dos, y el que se perdía era justo el del medio: `normas/README.md` le
+  // asigna «Sí, condicionado» y al agente le llegaba lo mismo que a una ficha
+  // transcrita del PDF de la Cámara de Diputados. Se reescribe, no se borra.
+  it('cada fundamento trae la cita, la jerarquía, el ESTADO de verificación y si obliga', async () => {
     LIQ = { ...base, diferencias: [
       { tipo: 'combustible_efectivo', concepto: 'diesel', monto: 9400, gastoId: 'g1', nota: 'n' },
     ] };
     const f = (await cuadrar()).fundamentos;
     expect(f.find((x) => x.norma_id === 'lisr-27-fr-III')).toEqual({
-      norma_id: 'lisr-27-fr-III', cita: 'LISR 27-III', jerarquia: 1, verificada: true, vinculante: true,
+      norma_id: 'lisr-27-fr-III', cita: 'LISR 27-III', jerarquia: 1,
+      verificacion: 'evidencia_corroborante', afirmar: 'condicionado', vinculante: true,
     });
     expect(f.find((x) => x.norma_id === 'rfa-2026-2.9')).toEqual({
-      norma_id: 'rfa-2026-2.9', cita: 'RFA 2026 regla 2.9', jerarquia: 3, verificada: true, vinculante: true,
+      norma_id: 'rfa-2026-2.9', cita: 'RFA 2026 regla 2.9', jerarquia: 3,
+      verificacion: 'verificado_fuente_primaria', afirmar: 'si', vinculante: true,
     });
+  });
+
+  it('el estado que llega al agente es el de la ficha, no una reducción de dos valores', async () => {
+    // Los tres estados tienen que poder distinguirse en el mismo turno.
+    LIQ = { ...base, diferencias: [
+      { tipo: 'cfdi_efos', concepto: 'diesel', monto: 0, gastoId: 'g1', nota: 'n' },        // cff-69-B: primaria
+      { tipo: 'combustible_efectivo', concepto: 'diesel', monto: 0, gastoId: 'g1', nota: 'n' }, // lisr-27-III: corroborante
+      { tipo: 'factura_por_vencer', concepto: 'diesel', monto: 0, gastoId: 'g1', nota: 'n' },   // política de portal: sin verificar
+    ] };
+    const f = (await cuadrar()).fundamentos;
+    const por = (id: string) => f.find((x) => x.norma_id === id)!;
+    expect(por('cff-69-B').afirmar).toBe('si');
+    expect(por('lisr-27-fr-III').afirmar).toBe('condicionado');
+    expect(por('politica-portales-plazos-facturacion').afirmar).toBe('no');
+    // Los tres, distintos, en el mismo resultado.
+    expect(new Set(f.map((x) => x.afirmar)).size).toBe(3);
   });
 
   it('una ficha SIN VERIFICAR sale marcada como tal y como no vinculante', async () => {
@@ -131,7 +157,8 @@ describe('cuadrar_viaje — cifras y permiso de citar, por la frontera de execut
     ] };
     const f = (await cuadrar()).fundamentos.find((x) => x.norma_id === 'politica-portales-plazos-facturacion');
     expect(f).toBeDefined();
-    expect(f!.verificada, 'ficha sin_verificar marcada como verificada').toBe(false);
+    expect(f!.verificacion, 'ficha sin_verificar marcada como verificada').toBe('sin_verificar');
+    expect(f!.afirmar).toBe('no');
     expect(f!.vinculante, 'una política de un tercero no obliga').toBe(false);
     expect(f!.jerarquia).toBe(6);
   });
@@ -192,8 +219,13 @@ describe('consultar_politica — los topes y el permiso de citar viajan juntos',
     POLITICA = [{ concepto: 'diesel', tope: 5000 }];
     const r = await executeTool('consultar_politica', {}, CTX);
     const f = (r.result as { fundamentos: Fundamento[] }).fundamentos;
+    // `lisr-28-fr-V` es la ficha del $750/día. Su `estado_verificacion` bajó a
+    // `evidencia_corroborante` (AUDITORÍA 10): su nota admite haber leído cuatro
+    // REPRODUCCIONES, no el PDF de la Cámara de Diputados. Este es el número más
+    // impreso del producto, y el agente tiene que saber que va condicionado.
     expect(f.find((x) => x.norma_id === 'lisr-28-fr-V')).toEqual({
-      norma_id: 'lisr-28-fr-V', cita: 'LISR 28-V', jerarquia: 1, verificada: true, vinculante: true,
+      norma_id: 'lisr-28-fr-V', cita: 'LISR 28-V', jerarquia: 1,
+      verificacion: 'evidencia_corroborante', afirmar: 'condicionado', vinculante: true,
     });
   });
 });
