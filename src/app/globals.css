@@ -28,7 +28,20 @@
      que el override de abajo lo devuelve. Medido con la fórmula de luminancia
      relativa de WCAG, no a ojo (auditoría 5, frontend, MEDIO 2). */
   --color-ok: #14602c;
-  --color-warn: #ff9f0a;
+  /* #ff9f0a (el ámbar de sistema de Apple) mide 2.06:1 sobre blanco y 1.99:1
+     sobre --bg. AA pide 4.5:1 para texto normal; esto es la MITAD, y el token
+     es TINTA en dos sitios que importan: el renglón `text-xs` que le avisa al
+     operador que su flota no capturó el contacto de derechos ARCO
+     (`aviso/[tenant]/page.tsx`) y la fila «Por confirmar» del desglose de
+     deducibilidad —dinero que todavía se puede recuperar—. Este tono llega a
+     7.48:1 sobre blanco y 7.24:1 sobre --bg, y es el mismo que el sistema de
+     diseño del repo ya había elegido para `.tag-warn` (design-system/styles.css)
+     por esta misma razón; mismo movimiento que se le hizo a `--color-ok`.
+     El 2-ago esto «solo pasaba de día»: el `@media (prefers-color-scheme: dark)`
+     daba 8.76:1. Ese bloque se quitó y no hay switch, así que el modo claro es
+     hoy el único caso. El override oscuro de abajo conserva el ámbar brillante,
+     que ahí sí pasa (auditoría 10, frontend, MEDIO reincidente y agravado). */
+  --color-warn: #7a4a00;
   /* #ff3b30 daba ~3.6:1 sobre blanco y AA pide 4.5:1 para texto normal. Este
      tono llega a 4.6:1 y se sigue leyendo como el rojo de sistema. */
   --color-bad: #d70015;
@@ -61,11 +74,13 @@
   --bg: #0b0b0f; --surface: #16161c; --ink: #e8edf5; --muted: #9aa0aa; --line: #242430; --accent: #2dd4bf; --accent-fg: #06231e;
   --color-bad: #ff453a;   /* ver la nota de contraste arriba */
   --color-ok: #34c759;    /* 8.12:1 sobre #16161c */
+  --color-warn: #ff9f0a;  /* 8.76:1 sobre #16161c — el marrón del claro cae a 2.41:1 */
 }
 :root[data-theme="light"] {
   --bg: #fbfbfd; --surface: #ffffff; --ink: #0b0b0f; --muted: #6b7280; --line: #ececef; --accent: #0e7c66; --accent-fg: #ffffff;
   --color-bad: #d70015;   /* 5.38:1 sobre blanco */
   --color-ok: #14602c;    /* 7.67:1 sobre blanco */
+  --color-warn: #7a4a00;  /* 7.48:1 sobre blanco · 7.24:1 sobre --bg */
 }
 
 * { border-color: var(--line); }
