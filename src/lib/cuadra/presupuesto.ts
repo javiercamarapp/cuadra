@@ -72,6 +72,56 @@ export const COSTO_CIERRE_MS = PASOS_CIERRE.reduce((s, p) => s + p.ms, 0);
 export const MARGEN_CIERRE_MS = 12_000;
 
 /**
+ * TECHO DE UNA LLAMADA DE VISIÓN (OCR de un comprobante).
+ *
+ * Es el `reloj.senal(…)` que `processor.ts` le pasa a `extraerComprobante`, en
+ * los dos caminos (con viaje y sin viaje). Vive aquí y no en `processor.ts`
+ * porque hay OTRA etapa que tiene que dimensionarse contra él —la barrera de
+ * intake, justo abajo— y con los dos números escritos a mano en sitios distintos
+ * se desincronizaron sin que nada fallara.
+ */
+export const TECHO_OCR_MS = 25_000;
+
+/**
+ * Lo que tarda una foto DESPUÉS de que la visión contestó y ANTES de que el
+ * `finally` decremente el contador de intake: `registrarCosto`, la lectura de
+ * gastos para emparejar, el `addGasto` y el aviso al operador. Nominal ~2.4 s
+ * con los costos unitarios de este archivo (0.3 s consulta, 1.5 s `sendText`);
+ * se reserva el doble.
+ */
+const MARGEN_INTAKE_ESCRITURA_MS = 5_000;
+
+/**
+ * TOPE DE LA BARRERA DE INTAKE — lo que el "listo" espera a los OCR en vuelo.
+ *
+ * AUDITORÍA 10, ALTO: eran 20 000 ms esperando a un OCR cuyo techo son 25 000.
+ * O sea 5 000 ms de ventana en la que la barrera SIEMPRE se rinde de más: la
+ * foto sigue legítimamente dentro de su propio tope y el "listo" ya cuadró sin
+ * ella. Con valores: ticket a las 21:04:00, "listo" a las 21:04:01, OCR de 22 s
+ * —dentro de su techo—, barrera vencida a los 20 s, `intake.barrera_timeout`, el
+ * agente cuadra sin ese comprobante y el viaje queda `liquidado` (el trigger de
+ * la 0037 impide corregirlo). Dos segundos después la otra invocación escribe el
+ * gasto: el PDF que recibió el operador y el panel del contralor difieren por el
+ * monto de ese ticket. Con una carga de diésel de $8 000 de por medio, el
+ * operador paga de su bolsa un gasto que sí hizo.
+ *
+ * El 20 000 se dimensionó cuando `PRESUPUESTO_WEBHOOK_MS` era 60 000 y nunca se
+ * re-dimensionó por encima del techo del OCR que espera; `reloj.acotar` solo
+ * puede bajarlo, nunca subirlo.
+ *
+ * Ahora se DERIVA del techo del OCR, así que no se pueden volver a separar:
+ * 25 000 + 5 000 = **30 000 ms**.
+ *
+ * ¿Cabe? El peor caso del camino del "listo" con topes pedidos es
+ * 30 000 (barrera) + 12 000 (mutex) + 40 000 (agente) = **82 000 ms** contra los
+ * `PRESUPUESTO_WEBHOOK_MS − MARGEN_CIERRE_MS = 108 000` utilizables: 26 000 ms
+ * de holgura. Antes eran 72 000 y 36 000 — se gastan 10 s de holgura para dejar
+ * de emitir liquidaciones cortas, que es el único de los dos que cuesta dinero
+ * del operador.
+ */
+export const TOPE_BARRERA_INTAKE_MS = TECHO_OCR_MS + MARGEN_INTAKE_ESCRITURA_MS;
+
+/**
  * TECHO DURO DE UNA CONSULTA A SUPABASE. Lo impone `repo.ts` en cada llamada.
  *
  * `supabaseAdmin()` construye el cliente sin `fetch` propio, así que hasta aquí

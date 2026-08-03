@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { crearPresupuesto, MARGEN_CIERRE_MS, PRESUPUESTO_WEBHOOK_MS } from './presupuesto';
+import { crearPresupuesto, MARGEN_CIERRE_MS, PRESUPUESTO_WEBHOOK_MS, TOPE_BARRERA_INTAKE_MS } from './presupuesto';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EL PEOR CASO TIENE QUE CABER EN SU PROPIO PRESUPUESTO.
@@ -11,7 +11,12 @@ import { crearPresupuesto, MARGEN_CIERRE_MS, PRESUPUESTO_WEBHOOK_MS } from './pr
 // Esto simula el camino del "listo" con cada etapa agotando su tope, usando el
 // mismo reloj compartido que usa el processor.
 // ═══════════════════════════════════════════════════════════════════════════
-const TOPE_BARRERA = 20_000, TOPE_MUTEX = 12_000, TOPE_AGENTE = 40_000, COSTO_AGENTE_MS = 15_000;
+// `TOPE_BARRERA` era un 20_000 escrito a mano aquí, copia del que estaba escrito
+// a mano en `processor.ts`. Se importa desde `presupuesto.ts` porque el número
+// dejó de ser libre: se DERIVA del techo del OCR que la barrera espera
+// (auditoría 10, ALTO — 20 000 esperando a 25 000). Una copia local volvería a
+// dejar pasar exactamente el desajuste que este cambio cierra.
+const TOPE_BARRERA = TOPE_BARRERA_INTAKE_MS, TOPE_MUTEX = 12_000, TOPE_AGENTE = 40_000, COSTO_AGENTE_MS = 15_000;
 
 /**
  * Corre el camino con cada etapa tardando lo que se le indique.
@@ -50,10 +55,18 @@ describe('camino del "listo" — peor caso', () => {
   // escrito es lo que hoy es verdad, incluido cuánta holgura hay — porque si
   // alguien vuelve a bajar el presupuesto, esto vuelve a apretar.
   it('los topes fijos ya caben en el presupuesto, y sobra margen', () => {
-    const fijos = TOPE_BARRERA + TOPE_MUTEX + TOPE_AGENTE;   // 72s
+    const fijos = TOPE_BARRERA + TOPE_MUTEX + TOPE_AGENTE;   // 82s
     expect(fijos).toBeLessThanOrEqual(PRESUPUESTO_WEBHOOK_MS - MARGEN_CIERRE_MS);
     // Holgura real sobre el peor caso de topes fijos. Con 60s era negativa.
-    expect(PRESUPUESTO_WEBHOOK_MS - MARGEN_CIERRE_MS - fijos).toBeGreaterThanOrEqual(30_000);
+    //
+    // Este listón decía 30_000 y ahora dice 20_000. NO es bajarlo para que pase:
+    // la barrera creció de 20 000 a 30 000 ms porque esperaba menos de lo que
+    // puede tardar el OCR que espera (25 000), y eso emitía liquidaciones cortas
+    // —dinero del operador— cada vez que una foto tardaba entre 20 y 25 s. Los
+    // topes fijos pasan de 72 000 a 82 000 y la holgura de 36 000 a 26 000. Se
+    // paga con holgura de reloj lo que se deja de pagar con comprobantes fuera
+    // de la liquidación.
+    expect(PRESUPUESTO_WEBHOOK_MS - MARGEN_CIERRE_MS - fijos).toBeGreaterThanOrEqual(20_000);
   });
 
   it('si lo previo y las esperas se comen el presupuesto, el agente NO se lanza', () => {

@@ -29,7 +29,7 @@ import { violaIndice, llegoTarde } from '@/lib/cuadra/pg_errores';
 import { mxn, fechaMx } from '@/lib/formato';
 import { guardiaFundamento, normasDeToolCalls } from '@/lib/cuadra/normas/fundamento';
 import { guardiaEstado } from '@/lib/cuadra/cuadre/estado_afirmado';
-import { crearPresupuesto, PRESUPUESTO_WEBHOOK_MS, acotada } from '@/lib/cuadra/presupuesto';
+import { crearPresupuesto, PRESUPUESTO_WEBHOOK_MS, acotada, TECHO_OCR_MS, TOPE_BARRERA_INTAKE_MS } from '@/lib/cuadra/presupuesto';
 import { conceptoDesdeClave } from '@/lib/cuadra/intake/concepto';
 import { getConfig } from '@/lib/cuadra/config';
 import { emparejarPendiente, emparejarXmlConTicket } from '@/lib/cuadra/intake/emparejar';
@@ -327,7 +327,7 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
           // subía por dinero que nadie gastó, a favor del chofer.
           const imgHash = await hashImagen(dataUrl);
           const ruta = await subirComprobante(op.tenantId, 'sin-viaje', imgHash, dataUrl);
-          const ex = await extraerComprobante(dataUrl, reloj.senal(25_000));
+          const ex = await extraerComprobante(dataUrl, reloj.senal(TECHO_OCR_MS));
           await registrarCosto({ tenantId: op.tenantId, viajeId: null, fase: 'ocr', modelo: ex.costo.modelo, tokensIn: ex.costo.tokensIn, tokensOut: ex.costo.tokensOut, costoUsd: ex.costo.costoUsd });
           // Ilegible: se le pide otra ANTES de guardar algo que no se puede usar.
           if (!ex.legible && ex.motivo !== 'solo_codigo' && ex.motivo !== 'solo_pago') {
@@ -519,7 +519,7 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
         // (~$0.015/ticket de dos fotos) no justificaba ese riesgo a 5 días del
         // demo — decisión explícita de Javier, 1-ago-2026. Cada foto vuelve a
         // pagar su propia visión, como antes de la auditoría 8.
-        const extraccion = await extraerComprobante(dataUrl, reloj.senal(25_000));
+        const extraccion = await extraerComprobante(dataUrl, reloj.senal(TECHO_OCR_MS));
         const { gasto, costo } = extraccion;
         await registrarCosto({ tenantId: op.tenantId, viajeId, fase: 'ocr', modelo: costo.modelo, tokensIn: costo.tokensIn, tokensOut: costo.tokensOut, costoUsd: costo.costoUsd });
 
@@ -1175,7 +1175,7 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
     // BARRERA DE RÁFAGA: espera a que terminen los OCR de fotos en vuelo antes de
     // cuadrar — así "listo" nunca cierra sobre datos parciales. NUNCA es infinito:
     // si vence, se cuadra con lo que haya y se avisa al operador.
-    const intakeOk = await esperarIntake(viajeId, reloj.acotar(20_000));
+    const intakeOk = await esperarIntake(viajeId, reloj.acotar(TOPE_BARRERA_INTAKE_MS));
     if (!intakeOk) logger.warn('intake.barrera_timeout', { viaje: viajeId, restanteMs: reloj.restante() });
 
     // Mutex para serializar cierres concurrentes (dos "listo" a la vez).
