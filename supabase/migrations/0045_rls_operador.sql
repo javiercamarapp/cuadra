@@ -15,6 +15,47 @@
 -- policy de SOLO LECTURA scoped a su propio operador_id. Las otras 4 tablas
 -- de `tenant_data` (terminal, politica_gasto, wa_conversacion — y
 -- `operador` misma) no cambian: el chofer no tiene vista de esas.
+--
+-- [Esa última decisión resultó equivocada y la corrige la 0046: «no tiene
+-- vista» es un argumento sobre la UI y la policy es sobre PostgREST, que está
+-- en internet. Se deja escrita aquí para que el que lea esta migración no
+-- crea que las otras cuatro se decidieron bien.]
+--
+-- ── IDEMPOTENCIA Y REVERSIÓN (auditoría 10, BAJO de modelo de datos) ────────
+--
+-- Los tres `create policy` de abajo iban SIN `drop policy if exists` delante,
+-- mientras esta MISMA migración sí lo usa para `tenant_data` en el `do $$`.
+-- Re-aplicarla sobre una base donde ya corrió —un `db push` repetido, un
+-- `db reset` parcial— fallaba con
+-- `42710 policy "operador_ve_su_viaje" for table "viaje" already exists`
+-- DESPUÉS de que el `do $$` ya había reescrito las tres policies `tenant_data`:
+-- media migración aplicada y un error que no dice cuál mitad.
+--
+-- REVERSIÓN. No estaba escrita en ningún sitio, y reconstruirla a mano en la
+-- madrugada del 6-ago es cómo se deja un `tenant_data` sin la exclusión del
+-- chofer (o un chofer sin acceso a nada). Es esto, exacto:
+--
+--   drop policy if exists operador_ve_su_viaje on public.viaje;
+--   drop policy if exists operador_ve_sus_gastos on public.gasto;
+--   drop policy if exists operador_ve_sus_liquidaciones on public.liquidacion;
+--   do $$
+--   declare t text;
+--   begin
+--     foreach t in array array['viaje', 'gasto', 'liquidacion']
+--     loop
+--       execute format('drop policy if exists tenant_data on %I', t);
+--       execute format($p$
+--         create policy tenant_data on %I for all
+--         using (tenant_id = any(get_user_tenant_ids()) or is_superadmin())
+--         with check (tenant_id = any(get_user_tenant_ids()) or is_superadmin())
+--       $p$, t);
+--     end loop;
+--   end $$;
+--
+-- OJO al revertir: eso devuelve el `tenant_data` de la 0001, que NO lleva la
+-- exclusión del contador que puso la 0048 (`not is_contador()`). Revertir esta
+-- migración obliga a re-aplicar la 0048 detrás, o el contador recupera
+-- escritura sobre viaje/gasto/liquidacion.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 alter table public.app_user
@@ -49,12 +90,15 @@ end $$;
 
 -- Views, no "for all": el chofer no escribe nada desde la web — su única
 -- vía de escritura sigue siendo WhatsApp (que usa el service-role, no RLS).
+drop policy if exists operador_ve_su_viaje on public.viaje;
 create policy operador_ve_su_viaje on public.viaje for select
   using (operador_id = get_user_operador_id());
 
+drop policy if exists operador_ve_sus_gastos on public.gasto;
 create policy operador_ve_sus_gastos on public.gasto for select
   using (viaje_id in (select id from public.viaje where operador_id = get_user_operador_id()));
 
+drop policy if exists operador_ve_sus_liquidaciones on public.liquidacion;
 create policy operador_ve_sus_liquidaciones on public.liquidacion for select
   using (viaje_id in (select id from public.viaje where operador_id = get_user_operador_id()));
 
