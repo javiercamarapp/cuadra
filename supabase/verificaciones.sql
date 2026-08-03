@@ -1018,3 +1018,54 @@ begin
   raise exception E'OPERADOR_RLS  viajes-del-tenant-visibles=%  gastos-visibles=%  liquidaciones-visibles=%  viaje-ajeno-por-id=%   (esperado 1 / 1 / 1 / 0 — nunca 2, que sería ver los dos choferes)',
     n_viaje, n_gasto, n_liq, n_otro_viaje;
 end $$;
+
+-- ── 27. El chofer no toca las otras cuatro tablas (mig. 0046) ────────────────
+--
+-- El bloque 26 comprueba viaje/gasto/liquidacion, que es lo que cerró la 0045.
+-- Éste comprueba lo que la 0045 dejó abierto y la 0046 cierra: `tenant_data`
+-- era `for all` —lectura Y ESCRITURA— sobre terminal, operador, politica_gasto
+-- y wa_conversacion para CUALQUIER app_user del tenant, sin mirar el rol
+-- (auditoría 10, CRÍTICO de seguridad).
+--
+-- Lo que se mide, con la sesión de un chofer real puesta con
+-- `request.jwt.claims` (mismo mecanismo que usa PostgREST con un JWT):
+--   · cuántas filas VE de cada tabla   → esperado 0 en las cuatro
+--   · si puede ESCRIBIR su propio tope → esperado 0 filas afectadas
+--
+-- El UPDATE de politica_gasto es el que importa más: subirse el tope de diésel
+-- cambia qué gasto sale «sobre política» en su propia liquidación. Es dinero.
+--
+-- ⚠️  ESTE BLOQUE NO SE HA CORRIDO TODAVÍA. La 0046 se escribió sin una base
+--     contra la cual ejercerla. Correr esto es lo que convierte la migración de
+--     «plausible» en «verificada».
+-- ═══════════════════════════════════════════════════════════════════════════
+do $$
+declare
+  v_t uuid; v_o1 uuid; v_u1 uuid := gen_random_uuid();
+  n_term int; n_oper int; n_pol int; n_conv int; n_upd int;
+begin
+  insert into tenant (nombre) values ('ZZZ VERIF OPERADOR RLS RESTO') returning id into v_t;
+  insert into operador (tenant_id, nombre, telefono) values (v_t, 'Chofer Uno', '520000009040') returning id into v_o1;
+  insert into terminal (tenant_id, nombre) values (v_t, 'Terminal Demo');
+  insert into politica_gasto (tenant_id, concepto, tope_monto) values (v_t, 'diesel', 4000);
+  insert into wa_conversacion (tenant_id, operador_id) values (v_t, v_o1);
+  insert into app_user (id, tenant_id, email, rol, operador_id)
+    values (v_u1, v_t, 'zzz-verif-chofer-resto@likida.test', 'operador', v_o1);
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_u1)::text, true);
+
+  select count(*) into n_term from terminal        where tenant_id = v_t;
+  select count(*) into n_oper from operador        where tenant_id = v_t;
+  select count(*) into n_pol  from politica_gasto  where tenant_id = v_t;
+  select count(*) into n_conv from wa_conversacion where tenant_id = v_t;
+
+  -- El que cuesta dinero: ¿puede subirse su propio tope?
+  with u as (update politica_gasto set tope_monto = 99999 where tenant_id = v_t returning 1)
+  select count(*) into n_upd from u;
+
+  reset role;
+
+  raise exception E'OPERADOR_RLS_RESTO  terminal=%  operador=%  politica=%  conversacion=%  subio-su-tope=%   (esperado 0 / 0 / 0 / 0 / 0 — cualquier otra cosa es la fuga)',
+    n_term, n_oper, n_pol, n_conv, n_upd;
+end $$;
