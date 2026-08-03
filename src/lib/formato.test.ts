@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { sinComentarios } from '@/lib/pruebas/codigo';
 import { execSync } from 'node:child_process';
-import { mxn, litros, fechaMx, round2 } from './formato';
+import { mxn, litros, fechaMx, round2, numero, usd } from './formato';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AUDITORÍA 7 · MEDIO REINCIDENTE POR TERCERA RONDA — y el número CRECÍA:
@@ -51,6 +51,48 @@ describe('el formato del dinero', () => {
     // 31-jul 19:30 en México (CST, UTC−6) = 01:30 UTC del 1-ago.
     expect(fechaMx('2026-08-01T01:30:00.000Z')).toContain('31');
     expect(fechaMx('2026-08-01T01:30:00.000Z')).toContain('jul');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDITORÍA 10 · BAJO (pruebas) — `numero()` entró esta ronda sin un solo
+// `expect`. La usan cuatro sitios de /admin (`admin/page.tsx:205`,
+// `crecimiento/page.tsx:89`, `chat.tsx:26` y `:40`) para pintar conteos de
+// tokens y de viajes, y este archivo la tenía rodeada de guardarraíles
+// —«nadie reimplementa el formato a mano»— sin nada que dijera qué imprime.
+//
+// Es la única de las cinco funciones de formato que NO lleva símbolo ni
+// unidad, y ése es justamente su contrato: si un día alguien la "arregla"
+// devolviendo `String(n)` o reusando `mxn`, la consola pinta «1234567» o
+// «$1,234,567.00» donde debe decir tokens.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('numero — conteos con separador de millares, sin moneda ni unidad', () => {
+  it('pone el separador de millares que lee un mexicano', () => {
+    expect(numero(1234567)).toBe('1,234,567');
+    expect(numero(1000)).toBe('1,000');
+  });
+
+  it('por debajo del millar no inventa separador', () => {
+    expect(numero(0)).toBe('0');
+    expect(numero(999)).toBe('999');
+  });
+
+  it('no es dinero ni son litros: sin `$`, sin `MXN`, sin ` L`', () => {
+    // Las cuatro llamadas de /admin pintan TOKENS y VIAJES. El símbolo de
+    // moneda ahí no es un detalle estético: la pantalla de al lado sí enseña
+    // dólares (`usd`), y mezclarlos es leer un conteo como un costo.
+    const n = numero(1500);
+    expect(n).not.toContain('$');
+    expect(n).not.toMatch(/MXN|USD/);
+    expect(n).not.toContain('L');
+    expect(n).not.toBe(mxn(1500));
+    expect(n).not.toBe(usd(1500));
+    expect(n).not.toBe(litros(1500));
+  });
+
+  it('un negativo se ve como negativo', () => {
+    expect(numero(-1500)).toContain('-');
+    expect(numero(-1500)).toContain('1,500');
   });
 });
 
