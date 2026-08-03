@@ -10,6 +10,7 @@ import { cuadrarDesdeDB } from './cuadre/desde_db';
 import { filasImprimibles } from './liquidacion/omitidos';
 import { round2 } from '@/lib/formato';
 import { acotada } from './presupuesto';
+import { liquidacionesDe } from './liquidaciones';
 
 // ── EL CAMINO DEL PANEL TAMBIÉN TIENE TECHO (auditoría 10, MEDIO) ───────────
 //
@@ -41,7 +42,7 @@ import { acotada } from './presupuesto';
 // El panel ya sabe distinguir null de dato —`safe()` en dashboard/page.tsx
 // atrapa excepciones—, así que lo único que faltaba era TRADUCIR el error por
 // valor a una excepción. Se hace aquí, en el borde, y no en cada llamador.
-type RespuestaPg<T> = { data: T | null; error: { message: string } | null };
+export type RespuestaPg<T> = { data: T | null; error: { message: string } | null };
 
 function exigir<T>(res: RespuestaPg<T>, consulta: string): T | null {
   if (res.error) throw new Error(`${consulta}: ${res.error.message}`);
@@ -90,10 +91,7 @@ export interface DashboardKpis {
 
 export async function getKpis(tenantId: string): Promise<DashboardKpis> {
   const rows = await traerTodo<{ total_comprobado: unknown; diferencia: unknown; estatus: unknown; diferencias: unknown }>(
-    (desde, hasta) => acotada(supabaseAdmin()
-      .from('liquidacion')
-      .select('total_comprobado, diferencia, estatus, diferencias')
-      .eq('tenant_id', tenantId)
+    (desde, hasta) => acotada(liquidacionesDe<{ total_comprobado: unknown; diferencia: unknown; estatus: unknown; diferencias: unknown }>(tenantId, 'total_comprobado, diferencia, estatus, diferencias')
       .order('id')
       .range(desde, hasta), 'getKpis'),
     'getKpis',
@@ -199,10 +197,7 @@ export interface Acreditables {
 /** Suma de estímulos acreditables del periodo (IEPS diésel + IVA + peaje 50%). */
 export async function getAcreditables(tenantId: string): Promise<Acreditables> {
   const rows = await traerTodo<{ ieps_acreditable: unknown; iva_acreditable: unknown; peaje_acreditable: unknown; litros_diesel_acreditables: unknown }>(
-    (desde, hasta) => acotada(supabaseAdmin()
-      .from('liquidacion')
-      .select('ieps_acreditable, iva_acreditable, peaje_acreditable, litros_diesel_acreditables')
-      .eq('tenant_id', tenantId)
+    (desde, hasta) => acotada(liquidacionesDe<{ ieps_acreditable: unknown; iva_acreditable: unknown; peaje_acreditable: unknown; litros_diesel_acreditables: unknown }>(tenantId, 'ieps_acreditable, iva_acreditable, peaje_acreditable, litros_diesel_acreditables')
       .order('id')
       .range(desde, hasta), 'getAcreditables'),
     'getAcreditables',
@@ -250,11 +245,8 @@ export interface LiquidacionDetalle {
 /** Detalle de una liquidación (read-only) — para la vista de proyector. */
 export async function getLiquidacionDetalle(id: string, tenantId: string): Promise<LiquidacionDetalle | null> {
   const admin = supabaseAdmin();
-  const res = await acotada(admin
-    .from('liquidacion')
-    .select('id, viaje_id, estatus, total_comprobado, total_anticipo, diferencia, diferencias, ieps_acreditable, litros_diesel_acreditables, iva_acreditable, peaje_acreditable, created_at, pdf_url, viaje:viaje_id(folio, operador_id, operador:operador_id(nombre))')
+  const res = await acotada(liquidacionesDe(tenantId, 'id, viaje_id, estatus, total_comprobado, total_anticipo, diferencia, diferencias, ieps_acreditable, litros_diesel_acreditables, iva_acreditable, peaje_acreditable, created_at, pdf_url, viaje:viaje_id(folio, operador_id, operador:operador_id(nombre))')
     .eq('id', id)
-    .eq('tenant_id', tenantId)
     .maybeSingle(), 'getLiquidacionDetalle');
   // `null` significa AHORA una sola cosa: la liquidación no existe (y la página
   // responde notFound()). Antes también significaba "no se pudo leer", y el
@@ -490,4 +482,50 @@ export function derivoLaConfig(
   if (antes.size !== ahora.size) return true;
   for (const t of ahora) if (!antes.has(t)) return true;
   return false;
+}
+
+/**
+ * Las últimas liquidaciones de la flota, para la tabla del panel.
+ *
+ * Vivía DENTRO de `app/dashboard/page.tsx` (auditoría 10, BAJO de
+ * arquitectura): una función de consulta en el archivo de la página, teniendo
+ * a `getKpis`/`getAcreditables`/`getLiquidacionDetalle` aquí al lado y con la
+ * misma firma `(…, tenantId)`. Un componente de página no es donde se decide
+ * cómo se lee la tabla de dinero de una flota.
+ *
+ * `creadoEn` viaja en ISO crudo: la fecha se formatea al pintarla, y en hora
+ * de México. `.slice(0, 10)` se quedaba con el día UTC, así que una
+ * liquidación cerrada el 31-jul a las 20:00 salía listada en agosto — justo en
+ * el corte mensual (auditoría 5, frontend, MEDIO 3).
+ */
+export async function getLiquidaciones(tenantId: string, limite = 20): Promise<LiqRow[]> {
+  const { data, error } = await liquidacionesDe(
+    tenantId,
+    'id, estatus, total_comprobado, diferencia, created_at, viaje:viaje_id(folio)',
+  )
+    .order('created_at', { ascending: false })
+    .limit(limite);
+  // supabase-js reporta el fallo POR VALOR: sin este throw, una lectura caída
+  // devolvía `[]` y el `safe()` de la página nunca veía el error. La tabla
+  // salía con encabezados y cero filas bajo unos KPIs que decían "12 viajes
+  // liquidados" (auditoría 5, frontend, CRÍTICO).
+  if (error) throw new Error(`getLiquidaciones: ${error.message}`);
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    id: r.id as string,
+    folio: ((r.viaje as { folio?: string } | null)?.folio) ?? (r.id as string).slice(0, 8),
+    creadoEn: r.created_at as string,
+    comprobado: Number(r.total_comprobado ?? 0),
+    diferencia: Number(r.diferencia ?? 0),
+    estatus: r.estatus as string,
+  }));
+}
+
+/** Un renglón de la tabla de liquidaciones del panel. */
+export interface LiqRow {
+  id: string;
+  folio: string;
+  creadoEn: string;
+  comprobado: number;
+  diferencia: number;
+  estatus: string;
 }

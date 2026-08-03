@@ -1,8 +1,7 @@
 import { requireSessionTenant } from '@/lib/auth/guard';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { getKpis, getAcreditables, detectarAnomalias, type DashboardKpis, type Acreditables, type Anomalia } from '@/lib/cuadra/analytics';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getKpis, getAcreditables, detectarAnomalias, getLiquidaciones, type DashboardKpis, type Acreditables, type Anomalia, type LiqRow } from '@/lib/cuadra/analytics';
 import { mxn } from '@/lib/utils';
 import { LEYENDA_CORTA } from '@/lib/cuadra/cuadre/leyendas';
 import { estadoPanel } from './estado';
@@ -17,34 +16,6 @@ export const dynamic = 'force-dynamic';
  *  muestra un fallback en vez de tirar toda la pantalla. */
 async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
   try { return await fn(); } catch { return null; }
-}
-
-/** `creadoEn` viaja en ISO crudo: la fecha se formatea al pintarla, y en hora
- *  de México. `.slice(0, 10)` se quedaba con el día UTC, así que una
- *  liquidación cerrada el 31-jul a las 20:00 salía listada en agosto — justo en
- *  el corte mensual (auditoría 5, frontend, MEDIO 3). */
-interface LiqRow { id: string; folio: string; creadoEn: string; comprobado: number; diferencia: number; estatus: string }
-
-async function getLiquidaciones(tenantId: string): Promise<LiqRow[]> {
-  const { data, error } = await supabaseAdmin()
-    .from('liquidacion')
-    .select('id, estatus, total_comprobado, diferencia, created_at, viaje:viaje_id(folio)')
-    .eq('tenant_id', tenantId)
-    .order('created_at', { ascending: false })
-    .limit(20);
-  // supabase-js reporta el fallo POR VALOR: sin este throw, una lectura caída
-  // devolvía `[]` y `safe()` nunca veía el error. La tabla salía con
-  // encabezados y cero filas bajo unos KPIs que decían "12 viajes liquidados"
-  // (auditoría 5, frontend, CRÍTICO).
-  if (error) throw new Error(`getLiquidaciones: ${error.message}`);
-  return (data ?? []).map((r) => ({
-    id: r.id as string,
-    folio: ((r.viaje as { folio?: string } | null)?.folio) ?? (r.id as string).slice(0, 8),
-    creadoEn: r.created_at as string,
-    comprobado: Number(r.total_comprobado ?? 0),
-    diferencia: Number(r.diferencia ?? 0),
-    estatus: r.estatus as string,
-  }));
 }
 
 export default async function DashboardPage({

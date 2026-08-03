@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { liquidacionesDe } from '@/lib/cuadra/liquidaciones';
 import { toCsv, toLiquidacionRows } from '@/lib/cuadra/export';
 import { traerTodo } from '@/lib/cuadra/analytics';
 import { rateLimit, clientIp } from '@/lib/ratelimit';
@@ -42,10 +42,7 @@ export async function GET(req: Request) {
   let error: { message: string } | null = null;
   try {
     data = await traerTodo<Record<string, unknown>>(
-      (desde, hasta) => supabaseAdmin()
-        .from('liquidacion')
-        .select('created_at, total_comprobado, total_anticipo, diferencia, estatus, diferencias, viaje:viaje_id(folio, operador:operador_id(nombre))')
-        .eq('tenant_id', tenantId)
+      (desde, hasta) => liquidacionesDe(tenantId, 'created_at, total_comprobado, total_anticipo, diferencia, estatus, diferencias, viaje:viaje_id(folio, operador:operador_id(nombre))')
         .order('id')
         .range(desde, hasta),
       'export.liquidaciones',

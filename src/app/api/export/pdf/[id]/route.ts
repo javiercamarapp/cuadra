@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { liquidacionesDe } from '@/lib/cuadra/liquidaciones';
 import { rateLimit, clientIp } from '@/lib/ratelimit';
 import { getSessionTenant } from '@/lib/auth/session';
 import { puedeExportar } from '@/lib/auth/permisos';
@@ -43,11 +44,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   // El filtro por tenant es EXPLÍCITO: el service-role salta RLS, así que un
   // id de otra flota no puede resolver aquí — tenantId sale de la sesión, no
   // de un env var.
-  const { data, error } = await admin
-    .from('liquidacion')
-    .select('pdf_url')
+  const { data, error } = await liquidacionesDe<{ pdf_url: string | null }>(tenantId, 'pdf_url')
     .eq('id', id)
-    .eq('tenant_id', tenantId)
     .maybeSingle();
 
   if (error) {

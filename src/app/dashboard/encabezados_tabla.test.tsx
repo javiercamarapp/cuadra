@@ -48,6 +48,16 @@ vi.mock('@/lib/cuadra/analytics', () => ({
   }),
   getAcreditables: async () => ({ litrosDiesel: 113, ieps: 0, iva: 774.48, peaje: 603.45 }),
   detectarAnomalias: async () => [],
+  // La consulta de las liquidaciones YA NO vive en `dashboard/page.tsx`: se movió
+  // a `analytics.ts` como `getLiquidaciones` (auditoría 10, BAJO de arquitectura
+  // — una función de consulta definida dentro del archivo de la página, con
+  // `analytics.ts` al lado y la misma firma). Este mock servía esas filas por
+  // abajo, a través de `supabaseAdmin`; ahora las sirve por donde la página las
+  // pide. Las filas son las mismas.
+  getLiquidaciones: async () => [{
+    id: 'l-1', folio: 'VJ-2026-0847', creadoEn: '2026-08-01T18:00:00Z',
+    comprobado: 8500, diferencia: 1500, estatus: 'con_diferencias',
+  }],
 }));
 
 /** La consulta de `getLiquidaciones` — una liquidación con diferencia a favor. */
