@@ -709,9 +709,25 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
       // El matiz cambia según de dónde salga la fecha: sin verificar, la ventana
       // del comercio puede ser MENOR; verificada, la ventana es la del comercio
       // y el ejercicio sigue siendo el plazo de la ley.
+      //
+      // AUDITORÍA 10, MEDIO (fiscal): el matiz legal era propiedad de
+      // `cierreComercio` —que solo existe con `plazoVerificado: true`, 4 de las
+      // 37 entradas del catálogo—, así que 33 comercios caían en una rama que
+      // afirmaba una fecha límite y no decía de quién era el plazo. Medido sobre
+      // un diésel de $3,200 con emisor Shell: «puedes timbrarlo hasta el
+      // 2026-08-31 (29 días), y la ventana del comercio puede ser menor» — ni
+      // "no de la ley" ni "dentro del ejercicio". Y esa fecha es el default
+      // `mes_natural`, cuyas dos fichas son `sin_verificar` y `texto_vigente:
+      // null`, contra la regla de `normas/README.md`: «Ninguna ficha
+      // `sin_verificar` debe sostener una cifra que el producto imprima».
+      //
+      // El matiz es del AVISO, no del comercio: se dice en las cuatro ramas. Lo
+      // que cambia con `plazoVerificado` es de dónde sale la fecha —del portal
+      // que alguien leyó, o del supuesto de fin de mes de este sistema— y eso
+      // ahora también se dice, para que la fecha no se lea como un cálculo legal.
       const cierreComercio = comercio?.plazoVerificado
         ? ` (plazo del portal de ${comercio.nombre}, no de la ley: legalmente puedes exigir la factura dentro del ejercicio)`
-        : ', y la ventana del comercio puede ser menor';
+        : ' (fin del mes de la compra, no de la ley: la ventana del comercio puede ser menor, y legalmente puedes exigir la factura dentro del ejercicio)';
       // SI LA FECHA ESTÁ EN DUDA, EL PLAZO TAMBIÉN. Las dos observaciones salen
       // del MISMO dato, y una de ellas manda a la oficina a hacer algo.
       //
@@ -730,7 +746,7 @@ export function cuadrarViaje(input: CuadreInput): Omit<Liquidacion, 'id' | 'crea
         : c.vencido
         ? `se pasó el plazo de facturación. El comercio ya no suele facturarlo en su portal, pero legalmente puedes exigirlo dentro del ejercicio (Conciliación de Factura del SAT)`
         : c.urgente
-          ? `quedan ${c.diasRestantes} día(s) para timbrarlo${comercio?.plazoVerificado ? `${cierreComercio}` : ' — y la ventana del comercio puede ser menor, así que hazlo antes'}`
+          ? `quedan ${c.diasRestantes} día(s) para timbrarlo${cierreComercio}`
           : `puedes timbrarlo hasta el ${c.fechaLimite} (${c.diasRestantes} días)${cierreComercio}`;
       // Con comercio reconocido el aviso deja de ser genérico: dice a qué portal
       // ir y qué datos hay que teclear, que es la diferencia entre un recordatorio
