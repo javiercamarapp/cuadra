@@ -149,6 +149,47 @@ describe('NO puede volver a haber una copia de round2', () => {
       `estos archivos reimplementan round2 en vez de importarlo de formato.ts:\n${fuera.join('\n')}`,
     ).toEqual([]);
   });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // AUDITORÍA 10, BAJO — ESTE GUARDARRAÍL CONTABA DECLARACIONES, NO LA
+  // EXPRESIÓN.
+  //
+  // El grep de arriba busca `function round2` / `const round2 =` porque así
+  // fue como la ronda 9 encontró las cuatro copias. Pero el defecto no es el
+  // nombre: es `Math.round(x * 100) / 100`. Escrita INLINE, sin bautizarla, se
+  // le escapaba entera — y quedaban dos sitios de dinero con ella:
+  //
+  //   repo.ts:834      getAcumuladoCombustible → el acumulado de efectivo del
+  //                    ejercicio que dispara la alerta del tope RFA 2026 2.9
+  //                    (`periodo/combustible.ts`), uno de los cuatro sitios
+  //                    que la ronda 9 nombró.
+  //   omitidos.ts:37   el monto del renglón «… y N comprobantes más» que va
+  //                    IMPRESO en la liquidación que el contralor archiva.
+  //
+  // Mientras `round2` fue un no-op (ver el ALTO de esta misma ronda) los tres
+  // redondeos daban lo mismo y no había bug visible. Al arreglar `round2` de
+  // verdad, estos dos se habrían quedado con el comportamiento viejo y este
+  // archivo habría pasado verde: la alerta de efectivo y el renglón impreso
+  // divergiendo del resto del producto por un centavo, sin que nada fallara.
+  // ═════════════════════════════════════════════════════════════════════════
+  it('y nadie la escribe inline: `Math.round(x * 100) / 100` es round2 sin nombre', () => {
+    // Se mide sobre el código, no sobre los comentarios: el encabezado de
+    // `formato.ts` CITA la expresión para contar la historia del hallazgo, y
+    // una prueba que prohíbe explicar el bug que vigila obliga a borrar justo
+    // la explicación que hace falta para no repetirlo (mismo criterio que el
+    // guardarraíl de `mxn()`).
+    const candidatos = execSync(
+      `command grep -rlE "Math\\.round\\(.*\\* *100\\) */ *100" src/ --include='*.ts' --include='*.tsx' || true`,
+      { encoding: 'utf8' },
+    ).split('\n').filter(Boolean);
+    const fuera = candidatos
+      .filter((f) => !f.includes('lib/formato.ts') && !f.includes('.test.'))
+      .filter((f) => /Math\.round\(.*\* *100\) *\/ *100/.test(sinComentarios(readFileSync(f, 'utf8'))));
+    expect(
+      fuera,
+      `estos archivos redondean centavos a mano en vez de llamar a round2 de formato.ts:\n${fuera.join('\n')}`,
+    ).toEqual([]);
+  });
 });
 
 describe('NO puede volver a haber una copia a mano', () => {

@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
 import type { DatosIntegral } from './privacidad';
 import { acotada } from './presupuesto';
+import { round2 } from '@/lib/formato';
 import type { Gasto, Liquidacion, Viaje, Operador } from '@/types/cuadra';
 import type { CodigoPendiente } from './intake/emparejar';
 
@@ -831,5 +832,9 @@ export async function getAcumuladoCombustible(
     throw new Error(`getAcumuladoCombustible: solo se leyeron ${leidas} de ${esperadas} cargas del ejercicio ${ejercicio}`);
   }
 
-  return { efectivo: Math.round(efectivo * 100) / 100, totalCombustible: Math.round(totalCombustible * 100) / 100 };
+  // `round2` de `formato.ts`, no `Math.round(x*100)/100` a mano: esta cifra es
+  // el acumulado de efectivo del ejercicio que dispara la alerta del tope RFA
+  // 2026 2.9 (`periodo/combustible.ts`), y redondear distinto que el resto del
+  // dinero es cómo el aviso salta —o no— por un centavo (auditoría 10, BAJO).
+  return { efectivo: round2(efectivo), totalCombustible: round2(totalCombustible) };
 }
