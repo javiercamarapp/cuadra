@@ -109,11 +109,13 @@ export default async function MisViajes() {
           <div className="card overflow-x-auto">
             <table className="w-full text-base">
               <thead>
+                {/* `scope="col"` — esta tabla nació sin él, con el mismo hueco
+                    que la del panel (auditoría 10, frontend, BAJO extendido). */}
                 <tr style={{ color: 'var(--muted)' }} className="text-left text-sm">
-                  <th className="px-6 py-3 font-medium">Folio</th>
-                  <th className="px-6 py-3 font-medium">Fecha</th>
-                  <th className="px-6 py-3 font-medium text-right">Comprobado</th>
-                  <th className="px-6 py-3 font-medium">Estatus</th>
+                  <th scope="col" className="px-6 py-3 font-medium">Folio</th>
+                  <th scope="col" className="px-6 py-3 font-medium">Fecha</th>
+                  <th scope="col" className="px-6 py-3 font-medium text-right">Comprobado</th>
+                  <th scope="col" className="px-6 py-3 font-medium">Estatus</th>
                 </tr>
               </thead>
               <tbody>

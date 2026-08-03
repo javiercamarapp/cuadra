@@ -232,12 +232,17 @@ export default async function DashboardPage({
                 <div className="card overflow-x-auto">
                   <table className="w-full text-base">
                     <thead>
+                      {/* `scope="col"`: sin él un lector de pantalla anuncia
+                          "$1,500.00, a favor de la empresa" sin decir de qué
+                          columna. La tabla del detalle lo lleva desde la
+                          auditoría 5 y ésta no lo heredó (auditoría 10,
+                          frontend, BAJO reincidente). */}
                       <tr style={{ color: 'var(--muted)' }} className="text-left text-sm">
-                        <th className="px-6 py-3 font-medium">Folio</th>
-                        <th className="px-6 py-3 font-medium">Fecha</th>
-                        <th className="px-6 py-3 font-medium text-right">Comprobado</th>
-                        <th className="px-6 py-3 font-medium text-right">Diferencia</th>
-                        <th className="px-6 py-3 font-medium">Estatus</th>
+                        <th scope="col" className="px-6 py-3 font-medium">Folio</th>
+                        <th scope="col" className="px-6 py-3 font-medium">Fecha</th>
+                        <th scope="col" className="px-6 py-3 font-medium text-right">Comprobado</th>
+                        <th scope="col" className="px-6 py-3 font-medium text-right">Diferencia</th>
+                        <th scope="col" className="px-6 py-3 font-medium">Estatus</th>
                       </tr>
                     </thead>
                     <tbody>
