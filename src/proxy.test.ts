@@ -15,6 +15,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 type Cb = { getAll: () => unknown[]; setAll: (l: { name: string; value: string; options?: object }[]) => void };
 let cookiesCb: Cb;
 let usuario: { id: string } | null = null;
+let errorAuth: { name?: string; status?: number; message: string } | null = null;
+
+const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+vi.mock('@/lib/logger', () => ({ logger }));
 
 vi.mock('@supabase/ssr', () => ({
   createServerClient: (_url: string, _key: string, opts: { cookies: Cb }) => {
@@ -24,7 +28,7 @@ vi.mock('@supabase/ssr', () => ({
         getUser: async () => {
           // El SDK manda borrar la cookie muerta ANTES de contestar.
           cookiesCb.setAll([{ name: 'sb-proyecto-auth-token', value: '', options: { path: '/', maxAge: 0 } }]);
-          return { data: { user: usuario } };
+          return { data: { user: usuario }, error: errorAuth };
         },
       },
     };
@@ -41,7 +45,7 @@ function pedir(path: string) {
 }
 
 describe('proxy · gate de /dashboard sin sesión', () => {
-  beforeEach(() => { usuario = null; });
+  beforeEach(() => { usuario = null; errorAuth = null; logger.warn.mockReset(); logger.error.mockReset(); });
 
   it('redirige a /login conservando el destino', async () => {
     const res = await pedir('/dashboard');
@@ -92,5 +96,75 @@ describe('proxy · gate de /dashboard sin sesión', () => {
     const destino = new URL(res.headers.get('location')!);
     expect(destino.pathname).toBe('/login');
     expect(destino.searchParams.get('next')).toBe('/mis-viajes');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ALTO de la auditoría 10 (operabilidad) — la primera capa del gate corre en el
+// 100% del tráfico del panel y NO importaba el logger en ninguna línea.
+//
+// Escenario: rotación de la anon key, o 30 s de caída del endpoint de auth de
+// Supabase. `getUser()` devuelve `{ user: null, error }` —por VALOR, no
+// lanzado (GoTrueClient.js:2666-2676)—, entra el `if (!user)` y cada petición
+// se contesta con un 307 a /login. Lo que se escribía: cero líneas. Y como no
+// se lanza, `onRequestError` tampoco se dispara; peor, el middleware corre en
+// el runtime EDGE, donde `register()` retorna de inmediato y ningún aviso de
+// arranque existe. Si el 6-ago el panel "no abre", el primer sitio donde mirar
+// era el único sin huella.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('proxy · el gate deja testigo cuando rebota por un fallo, no por falta de sesión', () => {
+  beforeEach(() => { usuario = null; errorAuth = null; logger.warn.mockReset(); logger.error.mockReset(); });
+
+  it('un fallo del endpoint de auth queda escrito, y con la RUTA que se rebotó', async () => {
+    errorAuth = { name: 'AuthRetryableFetchError', status: 0, message: 'fetch failed' };
+    const res = await pedir('/dashboard');
+    expect(res.status, 'sigue fallando cerrado').toBe(307);
+    expect(logger.error, 'el gate rebotó a todos y no escribió una línea').toHaveBeenCalled();
+    const [msg, meta] = logger.error.mock.calls[0] as [string, Record<string, unknown>];
+    expect(msg).toBe('proxy.auth_error');
+    expect(meta.ruta, 'un log que no dice QUÉ ruta se rebotó no sirve a las 3 a.m.').toBe('/dashboard');
+    expect(String(meta.err)).toContain('fetch failed');
+  });
+
+  it('también en /admin y en /mis-viajes, que son el mismo gate', async () => {
+    errorAuth = { name: 'AuthRetryableFetchError', status: 503, message: 'service unavailable' };
+    await pedir('/admin');
+    await pedir('/mis-viajes');
+    const rutas = logger.error.mock.calls.map((c) => (c[1] as Record<string, unknown>).ruta);
+    expect(rutas).toEqual(['/admin', '/mis-viajes']);
+  });
+
+  // CONTROL 1: el visitante que simplemente no ha iniciado sesión es el caso
+  // NORMAL de esta capa —cualquier bot que toque /dashboard cae aquí—. Si
+  // dejara línea, el log del panel sería ruido y la línea de arriba, la que
+  // importa, se perdería dentro.
+  it('CONTROL: sin sesión y sin fallo, el redirect a /login NO escribe nada', async () => {
+    const res = await pedir('/dashboard');
+    expect(res.status).toBe(307);
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('CONTROL: la sesión caducada (4xx de GoTrue) tampoco es un incidente', async () => {
+    errorAuth = { name: 'AuthApiError', status: 400, message: 'Invalid Refresh Token: Refresh Token Not Found' };
+    await pedir('/dashboard');
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  // CONTROL 2: y el camino feliz —el contralor con su sesión buena, que son
+  // TODAS las peticiones de una demo que va bien— tampoco.
+  it('CONTROL: con sesión válida el gate no escribe nada', async () => {
+    usuario = { id: 'u-1' };
+    await pedir('/dashboard');
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  // CONTROL 3: y una ruta fuera del matcher del gate ni siquiera lo consulta.
+  it('CONTROL: una ruta pública no pasa por el gate ni lo registra', async () => {
+    errorAuth = { name: 'AuthRetryableFetchError', status: 0, message: 'fetch failed' };
+    await pedir('/login');
+    expect(logger.error).not.toHaveBeenCalled();
   });
 });
