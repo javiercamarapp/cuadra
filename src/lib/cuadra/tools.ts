@@ -60,6 +60,7 @@ registerTool('consultar_politica', {
     },
   },
   handler: async (_args, ctx) => {
+    ctx.signal?.throwIfAborted();
     const config = await getConfig(ctx.tenantId);
     // ── EL PERMISO DE CITAR TIENE QUE VIAJAR CON LA POLÍTICA ────────────────
     //
@@ -116,6 +117,7 @@ registerTool('cuadrar_viaje', {
     },
   },
   handler: async (_args, ctx) => {
+    ctx.signal?.throwIfAborted();
     if (!ctx.viajeId) throw new Error('sin viaje activo');
     const liq = await computeCuadre(ctx.tenantId, ctx.viajeId);
 
@@ -192,6 +194,16 @@ registerTool('guardar_liquidacion', {
     },
   },
   handler: async (_args, ctx) => {
+    // ── EL RELOJ DEL TURNO TAMBIÉN ES DE LAS TOOLS ───────────────────────────
+    //
+    // `run.ts` construye `ctx.signal` desde el AbortController del turno (40s) y
+    // ningún handler lo miraba: si el turno se agotaba, `generateWithTools`
+    // abortaba y esta tool seguía contra su propio reloj — dos PDF generados,
+    // dos subidas a Storage y una liquidación escrita para un turno que ya nadie
+    // va a leer. Se mira al ENTRAR y ANTES DE ESCRIBIR, nunca después: una vez
+    // que `saveLiquidacion` corrió, abortar no desharía nada y sí convertiría un
+    // cierre bueno en un error.
+    ctx.signal?.throwIfAborted();
     if (!ctx.viajeId) throw new Error('sin viaje activo');
     const [liq, viaje, operador] = await Promise.all([
       computeCuadre(ctx.tenantId, ctx.viajeId),
@@ -204,6 +216,7 @@ registerTool('guardar_liquidacion', {
     // filtro que su mensaje de WhatsApp. Sin esta separación, la defensa de
     // `SOLO_CONTRALOR` en el texto no servía de nada: al chofer le llegaban los
     // veredictos por el adjunto, en un documento que además puede reenviar.
+    ctx.signal?.throwIfAborted();
     let pdfPath: string | undefined;
     let pdfOperadorPath: string | undefined;
     try {
