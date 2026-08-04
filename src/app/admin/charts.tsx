@@ -11,6 +11,21 @@
  * fijas (100×28) — lo que cambia es que el SVG se ESCALA al contenedor real
  * en vez de reclamar un ancho propio que el contenedor tiene que ceder.
  */
+/**
+ * UNA COORDENADA SVG SE REDONDEA SIEMPRE. AUDITORÍA 11 · G-35.
+ *
+ * `graficas.tsx:38-41` ya lo documentaba para `punto()`: «Math.cos/Math.sin
+ * puede imprimir el último dígito distinto entre el motor JS del servidor y
+ * el del navegador, y React lo marca como mismatch de hidratación aunque sea
+ * invisible». La misma división —`i/(n-1)`, `(i+0.5)/n`— produce
+ * `57.142857142857146` en cuatro sitios de estas dos librerías que SÍ salían
+ * al markup: los `d=` iban con `toFixed(1)` y los `cx/cy/points` de al lado,
+ * no. Al ejecutarlas por primera vez (esta ronda) aparecieron los cuatro.
+ */
+function coord(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+
 export function Sparkline({ valores, alto = 24 }: { valores: number[]; alto?: number }) {
   const ANCHO_VB = 100;
   if (valores.length < 2) return null;
@@ -24,7 +39,7 @@ export function Sparkline({ valores, alto = 24 }: { valores: number[]; alto?: nu
   return (
     <svg width="100%" height={alto} viewBox={`0 0 ${ANCHO_VB} ${alto}`} preserveAspectRatio="none" className="block">
       <path d={d} fill="none" stroke="var(--marca)" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.5} vectorEffect="non-scaling-stroke" />
-      <circle cx={ux} cy={uy} r={2.5} fill="var(--marca)" />
+      <circle cx={coord(ux)} cy={coord(uy)} r={2.5} fill="var(--marca)" />
     </svg>
   );
 }
@@ -51,9 +66,36 @@ export function AreaChartSimple({
 }) {
   const ANCHO = 640, ALTO = 240, PAD_IZQ = 8, PAD_DER = 8, PAD_SUP = 16, PAD_INF = 28;
   const w = ANCHO - PAD_IZQ - PAD_DER, h = ALTO - PAD_SUP - PAD_INF;
+  // SIN DATOS NO SE PINTA UNA LÍNEA: SE DICE. Auditoría 11 · G-35.
+  //
+  // Con `datos = []` esta función LANZABA: `xy[xy.length - 1][0]` es leer
+  // `[0]` de `undefined`, y el fallo tumba la página entera (no hay error
+  // boundary en /admin). No es un caso raro — `r.porDia` viene vacío en
+  // cuanto `llm_costo` no tiene filas, que es el estado de una flota nueva y
+  // el de cualquier ventana sin actividad, y CINCO páginas de la consola le
+  // pasan `r.porDia` directo (analitica, costos-facturacion, observabilidad,
+  // capacidad-forecast, crecimiento). Se descubrió al ejecutar el componente
+  // por primera vez: nunca había tenido una prueba.
+  //
+  // Se pinta el marco vacío con su leyenda en vez de devolver `null`, para
+  // que la tarjeta no quede en blanco sin decir por qué (regla del producto:
+  // si no hay dato real, se dice qué falta).
+  if (datos.length === 0) {
+    return (
+      <svg viewBox={`0 0 ${ANCHO} ${ALTO}`} className="w-full h-auto" role="img" aria-label="Sin datos en el periodo">
+        {[0, 0.5, 1].map((t) => (
+          <line key={t} x1={PAD_IZQ} x2={ANCHO - PAD_DER} y1={PAD_SUP + h * t} y2={PAD_SUP + h * t}
+            stroke="var(--line)" strokeWidth={1} />
+        ))}
+        <text x={ANCHO / 2} y={PAD_SUP + h / 2} textAnchor="middle" fontSize={12} fill="var(--muted)">
+          Sin datos en el periodo
+        </text>
+      </svg>
+    );
+  }
   const max = Math.max(...datos.map((d) => d.valor), 1);
   const paso = datos.length > 1 ? w / (datos.length - 1) : 0;
-  const xy = datos.map((d, i) => [PAD_IZQ + i * paso, PAD_SUP + h - (d.valor / max) * h] as const);
+  const xy = datos.map((d, i) => [coord(PAD_IZQ + i * paso), coord(PAD_SUP + h - (d.valor / max) * h)] as const);
   const linea = xy.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
   const area = `${linea} L${xy[xy.length - 1][0].toFixed(1)},${PAD_SUP + h} L${xy[0][0].toFixed(1)},${PAD_SUP + h} Z`;
   // Cada 1/4 y última — evita amontonar etiquetas en series largas.
@@ -117,8 +159,8 @@ export function BarChartSimple({
   // Mismo % que la altura de cada barra — el punto queda EXACTO en su
   // tope, así la línea de verdad seala "cómo se mueve" la barra, no un
   // dato distinto trazado encima.
-  const pcts = datos.map((d) => (d.valor > 0 ? Math.max(4, (d.valor / max) * 100) : 0));
-  const xPct = (i: number) => ((i + 0.5) / n) * 100;
+  const pcts = datos.map((d) => (d.valor > 0 ? coord(Math.max(4, (d.valor / max) * 100)) : 0));
+  const xPct = (i: number) => coord(((i + 0.5) / n) * 100);
 
   return (
     <div style={{ height: alto }}>

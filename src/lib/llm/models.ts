@@ -14,7 +14,32 @@
 //              (τ²-bench), a 1/3 del precio de Opus.
 //   Chat     → Gemini Flash-Lite: mejor español barato + baja latencia.
 //   Router   → Gemini Flash-Lite / clasificación de una línea, centavos.
-//   Costo ≈ $0.03–0.05 / liquidación.
+//
+// ── CUÁNTO CUESTA UNA LIQUIDACIÓN: LO QUE SE SABE Y LO QUE NO ──────────────
+//
+// Aquí decía «Costo ≈ $0.03–0.05 / liquidación», a secas y sin fuente. La
+// aritmética con las constantes del propio repo lo contradice por 2.4×
+// ANTES de que el agente gaste un token (auditoría 11 · G-42):
+//
+//   8 fotos (el lote que `api/webhook/whatsapp/route.ts:68` dimensiona)
+//   × ~$0.015 por llamada de visión (`processor.ts:863`)  =  $0.12
+//
+// Y eso es solo el OCR: falta el cuadre (Sonnet, hasta 6 rondas de tools con
+// `DEFAULT_MAX_TOKENS = 4000`), el router y el chat. El peor caso sumado
+// ronda los $0.49, o sea 10-16× el número que estaba escrito.
+//
+// El rango de arriba no se borra porque sí ni se sustituye por otro
+// inventado: se marca por lo que es —una ASPIRACIÓN de diseño, no una
+// medición— y se dice dónde está el dato para cerrarlo. Likida YA lo está
+// guardando: `llm_costo.costo_usd` con `viaje_id` y `liquidacion_id`
+// (`costos.ts`), y `/admin/model-ops` lo enseña por fase y modelo desde la
+// auditoría 11. Nadie ha hecho la división.
+//
+//   Objetivo declarado (no medido): $0.03–0.05 / liquidación.
+//   Cota inferior calculada hoy con las constantes del repo: ~$0.12.
+//   Medición real: PENDIENTE — sale de `llm_costo`, no de este comentario.
+//
+// Mientras la división no se haga, este archivo NO afirma un costo unitario.
 //
 // ⚖️ SOBERANÍA DE DATOS FISCALES (LFPDPPP, DOF 20-mar-2025): RFC y CFDI son
 //   datos personales. Todo lo que lleve RFC/CFDI va SOLO a proveedores US/EU

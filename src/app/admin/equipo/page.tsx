@@ -2,25 +2,17 @@ import { getEquipo } from '@/lib/admin/negocio';
 import type { RolAppUser } from '@/lib/auth/provisionar';
 import { Users, CheckCircle2 } from 'lucide-react';
 import { EstadoVacio } from '../ui/kit';
+import { etiquetaRol } from '../roles';
 
 export const dynamic = 'force-dynamic';
 
-/** Los 5 roles reales del dominio (constraint `app_user_rol_dominio`,
- *  0044_rol_encargado.sql) — etiqueta legible para cada uno. Cualquier
- *  valor que no esté en este mapa (no debería pasar, la base ya lo
- *  restringe) se enseña tal cual en vez de esconderse. */
-const ROL_LABEL: Record<RolAppUser, string> = {
-  superadmin: 'Superadmin',
-  flota_admin: 'Dueño / Admin de flota',
-  encargado: 'Encargado',
-  contador: 'Contador',
-  operador: 'Operador / Chofer',
-};
-
+// El mapa de etiquetas vive en `admin/roles.ts` (auditoría 11): era la
+// primera de DOS copias, y la segunda —`mi-perfil/page.tsx`— había perdido
+// el tipo por el camino.
 const ORDEN_ROL: RolAppUser[] = ['superadmin', 'flota_admin', 'encargado', 'contador', 'operador'];
 
 function InsigniaRol({ rol }: { rol: string }) {
-  const label = ROL_LABEL[rol as RolAppUser] ?? rol;
+  const label = etiquetaRol(rol);
   return (
     <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-block"
       style={{ background: 'var(--surface)', border: '1px solid var(--line)', color: 'var(--ink)' }}>

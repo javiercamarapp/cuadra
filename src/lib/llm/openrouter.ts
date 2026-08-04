@@ -99,15 +99,91 @@ export function isTransientError(err: unknown): boolean {
 }
 
 // Precios [in, out] por 1M tokens — safety net; ver models.ts para el stack.
-const PRICES: Record<string, [number, number]> = {
+export const PRICES: Record<string, [number, number]> = {
   'google/gemini-3.6-flash': [1.5, 7.5],
   'google/gemini-3.5-flash-lite': [0.3, 2.5],
-  'anthropic/claude-sonnet-5': [2, 10],       // intro VIGENTE hasta 31-ago-2026; revertir a [3,15] después
+  'anthropic/claude-sonnet-5': [2, 10],       // TARIFA INTRODUCTORIA — ver VIGENCIAS, abajo
   'anthropic/claude-opus-5': [5, 25],
   'anthropic/claude-haiku-4.5': [1, 5],
   'openai/gpt-5.6-terra': [2.5, 15],
   'openai/gpt-5.6-luna': [1, 6],
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UNA TARIFA QUE CADUCA NO ES UN COMENTARIO. AUDITORÍA 11 · G-42.
+//
+// Aquí decía, en una línea de comentario al final del renglón: «intro VIGENTE
+// hasta 31-ago-2026; revertir a [3,15] después». `PRICES` es la ÚNICA fuente
+// de costo del producto —nadie reconcilia jamás contra un importe del
+// proveedor—, así que el 1-sep, cuando Anthropic revierta a $3/$15, TODAS las
+// filas de `llm_costo` del modelo de cuadre se iban a registrar con un 50% de
+// subestimación, sin una sola línea de aviso. Y mientras tanto
+// `llm.modelo_sin_precio` sí grita cuando el modelo es DESCONOCIDO: gritaba
+// por lo raro y se callaba por lo seguro.
+//
+// Se declara como DATO: hasta cuándo vale, y a cuánto vuelve. Dos cosas lo
+// vigilan y ninguna es un comentario:
+//
+//   1. `openrouter_vigencia_precio.test.ts` FALLA a partir de la fecha si
+//      `PRICES` no se actualizó. La fecha deja de depender de que alguien se
+//      acuerde.
+//   2. `avisarPreciosCaducados()` (abajo) emite un `error` estructurado en
+//      cada arranque que use un precio vencido, con el importe correcto al
+//      lado. Una prueba solo protege al que corre la suite.
+//
+// NO se cambia el precio solo: eso sería inventar una cifra. La tarifa
+// revertida hay que confirmarla contra el proveedor, y el trabajo de esta
+// tabla es hacer imposible que se olvide, no adivinar por su cuenta.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface VigenciaPrecio {
+  /** Último día (inclusive, ISO `YYYY-MM-DD`) en que la tarifa de `PRICES` vale. */
+  hasta: string;
+  /** A cuánto vuelve, según lo anunciado por el proveedor. */
+  despues: [number, number];
+  motivo: string;
+}
+
+export const VIGENCIAS: Record<string, VigenciaPrecio> = {
+  'anthropic/claude-sonnet-5': {
+    hasta: '2026-08-31',
+    despues: [3, 15],
+    motivo: 'tarifa introductoria de lanzamiento',
+  },
+};
+
+/** Los slugs cuya tarifa ya caducó en `hoy` y siguen con el precio viejo. */
+export function preciosCaducados(hoy: string = new Date().toISOString().slice(0, 10)): Array<{
+  model: string; vigente: [number, number]; debeSer: [number, number]; hasta: string;
+}> {
+  return Object.entries(VIGENCIAS)
+    .filter(([model, v]) => {
+      if (hoy <= v.hasta) return false;
+      const actual = PRICES[model];
+      // Si ya se actualizó a la tarifa de `despues`, no hay nada que avisar.
+      return !actual || actual[0] !== v.despues[0] || actual[1] !== v.despues[1];
+    })
+    .map(([model, v]) => ({ model, vigente: PRICES[model], debeSer: v.despues, hasta: v.hasta }));
+}
+
+/**
+ * Se llama al calcular un costo (no en un `import`) para que el aviso salga
+ * en la corrida real que está registrando la cifra mal, no en un arranque que
+ * quizá nadie mire. Se limita a una vez por proceso: un error por llamada de
+ * modelo ahoga el log en el que hay que ver el problema.
+ */
+const yaAvisado = new Set<string>();
+export function avisarPreciosCaducados(hoy?: string): void {
+  for (const c of preciosCaducados(hoy)) {
+    if (yaAvisado.has(c.model)) continue;
+    yaAvisado.add(c.model);
+    logger.error('llm.precio_caducado', {
+      model: c.model,
+      err: `la tarifa de ${c.model} venció el ${c.hasta} y PRICES sigue en [${c.vigente?.join(', ')}]: `
+        + `el costo se está registrando POR DEBAJO del real. Debe ser [${c.debeSer.join(', ')}]`,
+    });
+  }
+}
 
 /**
  * El slug SIN el sufijo de proveedor con el que OpenRouter a veces responde
@@ -140,6 +216,10 @@ export function normalizarSlug(model: string): string {
  * parece correcto.
  */
 export function calcCost(model: string, tokIn: number, tokOut: number): number {
+  // Una tarifa introductoria vencida subestima el costo EN SILENCIO, que es
+  // el modo de fallo que este archivo entero existe para no tener (ver
+  // VIGENCIAS). Se avisa aquí, en la llamada que está calculando la cifra.
+  avisarPreciosCaducados();
   // El sufijo de proveedor no cambia el precio del modelo.
   const limpio = normalizarSlug(model);
   const r = PRICES[model] ?? PRICES[limpio];

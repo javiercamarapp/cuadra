@@ -14,6 +14,11 @@ function crearBuilder(tabla: string) {
   const b: Record<string, unknown> = {};
   const self = () => b;
   for (const m of ['select', 'eq', 'order', 'limit']) b[m] = self;
+  // `.range()` desde G-40 (auditoría 11): las lecturas de este archivo pasan
+  // por `traerTodo` (pg.ts), que pagina. Con menos de 1,000 filas la primera
+  // página ya es todo — la prueba de las DOS páginas vive en
+  // `negocio_paginacion.test.ts`.
+  b.range = () => Promise.resolve(resp());
   b.then = (ok: (v: Resp) => unknown, fail?: (e: unknown) => unknown) => Promise.resolve(resp()).then(ok, fail);
   return b;
 }
@@ -45,22 +50,22 @@ describe('getResumenNegocio', () => {
     });
     const r = await getResumenNegocio('2026-08-02');
     expect(r.tenants).toBe(1);
-    expect(r.flotas).toEqual([{ id: 't1', nombre: 'Transportes Innovativos', plan: 'demo', viajes: 2, costoIaUsd: 1.93 }]);
+    expect(r.flotas).toEqual([{ id: 't1', nombre: 'Transportes Innovativos', plan: 'demo', viajes: 2, costoIaUsd: 1.9322 }]);
     expect(r.viajesProcesados).toBe(2);
-    expect(r.costoIaUsd).toBe(1.93);
+    expect(r.costoIaUsd).toBe(1.9322);
     expect(r.tokensIn).toBe(1800);
     expect(r.tokensOut).toBe(350);
     expect(r.porFase).toEqual([
-      { fase: 'ocr', n: 2, costoUsd: 1.51 },
-      { fase: 'cuadre', n: 1, costoUsd: 0.43 },
+      { fase: 'ocr', n: 2, costoUsd: 1.505 },
+      { fase: 'cuadre', n: 1, costoUsd: 0.4272 },
     ]);
     expect(r.porModelo).toEqual([
-      { modelo: 'google/gemini-3.6-flash', n: 2, costoUsd: 1.51 },
-      { modelo: 'anthropic/claude-5-sonnet', n: 1, costoUsd: 0.43 },
+      { modelo: 'google/gemini-3.6-flash', n: 2, costoUsd: 1.505 },
+      { modelo: 'anthropic/claude-5-sonnet', n: 1, costoUsd: 0.4272 },
     ]);
     expect(r.porDia).toEqual([
-      { dia: '2026-08-01', costoUsd: 1.51, tokens: 1800 },
-      { dia: '2026-08-02', costoUsd: 0.43, tokens: 350 },
+      { dia: '2026-08-01', costoUsd: 1.505, tokens: 1800 },
+      { dia: '2026-08-02', costoUsd: 0.4272, tokens: 350 },
     ]);
     // Facturas por día: SIEMPRE las 7 fechas (0 donde no hubo actividad),
     // no solo las que tuvieron gasto — si no, la gráfica de barras
@@ -134,8 +139,13 @@ describe('getConversacionesActivas', () => {
       error: null,
     });
     const r = await getConversacionesActivas();
+    // La identidad que sale de aquí es un SEUDÓNIMO, no el teléfono
+    // (auditoría 11 · G-53). Su estabilidad y su forma se fijan en
+    // `negocio_seudonimo.test.ts`; aquí solo se comprueba que el número NO
+    // viaja.
+    expect(JSON.stringify(r)).not.toContain('529993700779');
     expect(r).toEqual([{
-      telefono: '529993700779',
+      seudonimo: expect.stringMatching(/^Operador [0-9A-Z]{4}$/),
       tenantNombre: 'Transportes Innovativos',
       turns: [{ role: 'user', content: 'Listo' }, { role: 'assistant', content: 'Listo, cuadré tu viaje' }],
       actualizadaEn: '2026-08-02T20:00:00Z',
