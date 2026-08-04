@@ -1,17 +1,17 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { TriangleAlert, Plus } from 'lucide-react';
-import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
+import { resolverTenantEfectivo, resolverTenantDeAction } from '@/lib/auth/tenant-efectivo';
 import { requireSessionTenant } from '@/lib/auth/guard';
 import { puedeAsignar } from '@/lib/auth/permisos';
-import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getViajes, type ViajeRow } from '@/lib/cuadra/analytics';
 import {
-  getIncidencias, getUnidades, crearIncidencia, cambiarEstadoIncidencia,
+  getIncidencias, getUnidades, crearIncidencia, cambiarEstadoIncidencia, codigoDeCaptura,
   type IncidenciaRow, type UnidadRow,
 } from '@/lib/cuadra/operacion';
 import { EstadoVacio, StatusPill } from '../../admin/ui/kit';
 import { sufijoTenant } from '../sufijo';
+import AvisoCaptura from '../aviso-captura';
 import { CifrasIncidencias, TablaIncidencias, FormaIncidencia, TIPOS, PRIORIDADES, ESTADOS } from './vista';
 
 export const dynamic = 'force-dynamic';
@@ -33,12 +33,16 @@ async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
 export default async function IncidenciasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vista?: string; tenant?: string; ok?: string }>;
+  searchParams: Promise<{ vista?: string; tenant?: string; rol?: string; ok?: string; err?: string }>;
 }) {
   const sp = await searchParams;
   const { tenantId, rol } = await resolverTenantEfectivo('/dashboard/incidencias', sp);
   const sufijo = sufijoTenant(sp);
   const puede = puedeAsignar(rol);
+
+  /** A dónde volver después de una escritura, con su acuse o su motivo. */
+  const volver = (clave: string, valor: string) =>
+    `/dashboard/incidencias${sufijo ? `${sufijo}&` : '?'}${clave}=${valor}`;
 
   const [incidencias, viajes, unidades] = await Promise.all([
     safe<IncidenciaRow[]>(() => getIncidencias(tenantId)),
@@ -46,14 +50,20 @@ export default async function IncidenciasPage({
     safe<UnidadRow[]>(() => getUnidades(tenantId)),
   ]);
 
+  /**
+   * El tenant al que ESCRIBE el action. `resolverTenantDeAction` es la copia
+   * única (G-34): la que vivía aquí descartaba el `error` de la consulta, así
+   * que con un 503 transitorio `data` salía null, el `if` no entraba y la
+   * escritura aterrizaba en el tenant de la SESIÓN — que para un superadmin es
+   * el DEMO, con la píldora verde diciendo que se guardó.
+   *
+   * El gate de PERMISO se queda aquí porque el redirect de vuelta necesita el
+   * `sufijo`, que es local a esta página.
+   */
   async function tenantDelAction() {
     const s = await requireSessionTenant('/dashboard/incidencias');
     if (!puedeAsignar(s.rol)) redirect(`/dashboard/incidencias${sufijo}`);
-    if (s.rol === 'superadmin' && sp?.tenant) {
-      const { data } = await supabaseAdmin().from('tenant').select('id').eq('id', sp.tenant).maybeSingle();
-      if (data) return data.id as string;
-    }
-    return s.tenantId;
+    return resolverTenantDeAction('/dashboard/incidencias', sp);
   }
 
   async function accionEstado(formData: FormData) {
@@ -62,9 +72,16 @@ export default async function IncidenciasPage({
     const incidenciaId = String(formData.get('incidenciaId') ?? '');
     const estado = String(formData.get('estado') ?? '');
     if (!incidenciaId || !(estado in ESTADOS)) redirect(`/dashboard/incidencias${sufijo}`);
-    await cambiarEstadoIncidencia(t, incidenciaId, estado);
+    // El `try` no envuelve al `redirect`: `redirect()` funciona lanzando.
+    let err: string | null = null;
+    try {
+      await cambiarEstadoIncidencia(t, incidenciaId, estado);
+    } catch (e) {
+      err = codigoDeCaptura(e);
+      if (err === null) throw e;
+    }
     revalidatePath('/dashboard/incidencias');
-    redirect(`/dashboard/incidencias${sufijo ? `${sufijo}&` : '?'}ok=movida`);
+    redirect(err ? volver('err', err) : volver('ok', 'movida'));
   }
 
   async function accionCrear(formData: FormData) {
@@ -82,16 +99,22 @@ export default async function IncidenciasPage({
       redirect(`/dashboard/incidencias${sufijo}`);
     }
 
-    await crearIncidencia(t, {
-      tipo,
-      prioridad,
-      viajeId: String(formData.get('viajeId') ?? '') || null,
-      unidadId: String(formData.get('unidadId') ?? '') || null,
-      descripcion: String(formData.get('descripcion') ?? '').trim() || null,
-      slaHoras,
-    });
+    let err: string | null = null;
+    try {
+      await crearIncidencia(t, {
+        tipo,
+        prioridad,
+        viajeId: String(formData.get('viajeId') ?? '') || null,
+        unidadId: String(formData.get('unidadId') ?? '') || null,
+        descripcion: String(formData.get('descripcion') ?? '').trim() || null,
+        slaHoras,
+      });
+    } catch (e) {
+      err = codigoDeCaptura(e);
+      if (err === null) throw e;
+    }
     revalidatePath('/dashboard/incidencias');
-    redirect(`/dashboard/incidencias${sufijo ? `${sufijo}&` : '?'}ok=creada`);
+    redirect(err ? volver('err', err) : volver('ok', 'creada'));
   }
 
   // Solo se ofrecen viajes SIN LIQUIDAR: levantar una incidencia contra un
@@ -116,6 +139,8 @@ export default async function IncidenciasPage({
         {sp.ok === 'movida' && <StatusPill estado="ok">Estado actualizado</StatusPill>}
         {sp.ok === 'creada' && <StatusPill estado="ok">Incidencia levantada</StatusPill>}
       </header>
+
+      <AvisoCaptura codigo={sp.err} />
 
       {incidencias === null ? (
         <div className="glass-panel p-8 text-sm" style={{ color: 'var(--muted)' }}>

@@ -15,6 +15,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { acotada } from './presupuesto';
 import { traerTodo } from './pg';
+import { violaIndice } from './pg_errores';
 
 /** Los tres estatus que `viaje` de verdad admite (`viaje_estatus_dominio`,
  *  0025). Un cuarto valor no se traduce ni se esconde: se cuenta aparte. */
@@ -373,13 +374,16 @@ function orden(estado: string | null): number {
  * necesita para saber a quién insistirle.
  */
 export async function marcarPodPedido(tenantId: string, viajeId: string, operadorId: string | null): Promise<void> {
+  await exigirDelTenant('viaje', viajeId, tenantId);
+  if (operadorId) await exigirDelTenant('operador', operadorId, tenantId);
+
   const { error } = await acotada(supabaseAdmin().from('pod').insert({
     tenant_id: tenantId,
     viaje_id: viajeId,
     operador_id: operadorId,
     estado: 'pendiente',
   }), 'marcarPodPedido');
-  if (error) throw new Error(`marcarPodPedido: ${error.message}`);
+  if (error) throw comoError(error, 'marcarPodPedido');
 }
 
 /**
@@ -388,10 +392,11 @@ export async function marcarPodPedido(tenantId: string, viajeId: string, operado
  * chofer mandó, y borrarlo dejaría la discusión sin prueba.
  */
 export async function rechazarPod(tenantId: string, podId: string, nota: string | null): Promise<void> {
-  const { error } = await acotada(supabaseAdmin().from('pod')
+  const { data, error } = await acotada(supabaseAdmin().from('pod')
     .update({ estado: 'rechazado', nota })
-    .eq('id', podId).eq('tenant_id', tenantId), 'rechazarPod');
-  if (error) throw new Error(`rechazarPod: ${error.message}`);
+    .eq('id', podId).eq('tenant_id', tenantId).select('id'), 'rechazarPod');
+  if (error) throw comoError(error, 'rechazarPod');
+  if (tocadas(data) === 0) throw new ErrorDeCaptura('sin_filas');
 }
 
 // ── Tablero de operación ───────────────────────────────────────────────────
@@ -455,6 +460,105 @@ export async function getTableroOperacion(tenantId: string): Promise<TableroOper
 // una unidad se hacía con SQL a mano. Por eso cada una comprueba el tenant en
 // el WHERE además del id — un id de otro tenant no debe poder tocarse aunque
 // alguien lo adivine.
+//
+// Y por eso las tres reglas de abajo, que ninguna escritura se salta:
+//
+//   (a) un choque de índice único se TRADUCE. Propagarlo hace que
+//       `dashboard/error.tsx` pinte «No se pudo cargar el panel — hubo un
+//       problema al leer los datos» con un hash de incidente: doblemente
+//       falso, y sin la única frase que le sirve al encargado.
+//   (b) un UPDATE que no empató NINGUNA fila es un fallo. PostgREST contesta
+//       204 sin error, así que "no había nada que actualizar" y "se actualizó"
+//       entran por el mismo camino y la pantalla pinta verde en los dos.
+//   (c) un id que viene del `<form>` se comprueba ANTES de escribirlo. Las FK
+//       de la 0047 son de una sola columna (`references public.unidad(id)`,
+//       sin tenant), así que la base aceptaría feliz una unidad de otra flota
+//       colgada de un viaje de ésta.
+
+/**
+ * Los textos que el encargado puede leer y actuar. La pantalla los pinta por
+ * CÓDIGO —nunca arrastrando el texto en el query string—: así la URL no es un
+ * sitio donde alguien pueda poner el mensaje que quiera bajo el encabezado de
+ * Likida.
+ */
+export const CAPTURA: Record<string, string> = {
+  viaje_abierto:
+    'Ese chofer ya trae un viaje abierto. Ciérralo o liquídalo antes de darle otro: las fotos que mande se cuelgan '
+    + 'del más nuevo, y el viejo cerraría con el anticipo entero en contra suya.',
+  eco_repetido:
+    'Ya hay una unidad con ese número económico en esta flota. Revisa si no estaba dada de alta con otro nombre.',
+  pod_duplicado:
+    'Ese viaje ya tiene registro de evidencia de entrega. Si la que llegó no sirve, recházala desde la tabla.',
+  sin_chofer:
+    'Elige al chofer. Hoy la base no admite un viaje sin operador asignado, así que "asignar después" no se puede '
+    + 'guardar todavía.',
+  ajeno:
+    'Ese registro no es de esta flota. No se escribió nada — vuelve a cargar la pantalla.',
+  sin_filas:
+    'No se cambió nada: ese registro ya no existe o no es de esta flota. Vuelve a cargar la pantalla.',
+};
+
+/**
+ * Un fallo que el ENCARGADO puede entender y corregir sin llamarle a nadie.
+ *
+ * Las páginas atrapan esta clase y pintan su mensaje; cualquier otra excepción
+ * sigue subiendo, que es lo correcto para un bug de verdad.
+ */
+export class ErrorDeCaptura extends Error {
+  readonly codigo: string;
+  constructor(codigo: keyof typeof CAPTURA | string) {
+    super(CAPTURA[codigo] ?? codigo);
+    this.codigo = codigo;
+    this.name = 'ErrorDeCaptura';
+  }
+}
+
+/** El código si el fallo es de captura; `null` si es un error de verdad. */
+export function codigoDeCaptura(e: unknown): string | null {
+  return e instanceof ErrorDeCaptura ? e.codigo : null;
+}
+
+/**
+ * Los índices únicos con los que estas escrituras pueden chocar, y qué
+ * significa cada choque en el idioma del encargado.
+ *
+ * Se comparan por NOMBRE (`violaIndice`, `pg_errores.ts`) y no por código:
+ * 23505 no es una categoría, significa "chocó con algo", y qué hacer depende
+ * de con qué. Un índice que no está en esta lista sigue siendo un error de
+ * verdad y sube — tragarse cualquier 23505 escondería el bug que sí lo es.
+ */
+const CHOQUES: ReadonlyArray<readonly [string, string]> = [
+  ['uq_viaje_abierto_por_operador', 'viaje_abierto'],
+  ['unidad_economico_unico', 'eco_repetido'],
+  ['pod_viaje_unico', 'pod_duplicado'],
+];
+
+/** Traduce lo que devolvió PostgREST, o lo deja pasar como error real. */
+function comoError(e: { message: string }, donde: string): Error {
+  for (const [indice, codigo] of CHOQUES) if (violaIndice(e, indice)) return new ErrorDeCaptura(codigo);
+  return new Error(`${donde}: ${e.message}`);
+}
+
+/** Cuántas filas empató la escritura. Cero es un fallo, no un éxito callado. */
+function tocadas(data: unknown): number {
+  return Array.isArray(data) ? data.length : (data ? 1 : 0);
+}
+
+/**
+ * ¿Este id es de esta flota? Se comprueba antes de escribirlo.
+ *
+ * No sustituye al `tenant_id` del WHERE —ese sigue—: cubre el otro caso, el
+ * del id que va como VALOR de una columna con FK simple, donde no hay WHERE
+ * que lo acote.
+ */
+async function exigirDelTenant(tabla: string, id: string, tenantId: string): Promise<void> {
+  const { data, error } = await acotada(
+    supabaseAdmin().from(tabla).select('id').eq('id', id).eq('tenant_id', tenantId).maybeSingle(),
+    `exigirDelTenant.${tabla}`,
+  );
+  if (error) throw new Error(`exigirDelTenant(${tabla}): ${error.message}`);
+  if (!data) throw new ErrorDeCaptura('ajeno');
+}
 
 export interface NuevoViaje {
   folio?: string | null;
@@ -468,6 +572,14 @@ export interface NuevoViaje {
 
 /** Devuelve el id del viaje creado. */
 export async function crearViaje(tenantId: string, v: NuevoViaje): Promise<string> {
+  // `viaje.operador_id` es NOT NULL desde la 0001 y ninguna migración lo
+  // aflojó (G-20). Mientras la columna siga así, "asignar después" no es una
+  // fila que la base admita: es un 23502 que tumba la pantalla y le enseña al
+  // encargado un hash de incidente en vez de la palabra "chofer".
+  if (!v.operadorId) throw new ErrorDeCaptura('sin_chofer');
+  await exigirDelTenant('operador', v.operadorId, tenantId);
+  if (v.unidadId) await exigirDelTenant('unidad', v.unidadId, tenantId);
+
   const { data, error } = await acotada(supabaseAdmin().from('viaje').insert({
     tenant_id: tenantId,
     folio: v.folio || null,
@@ -475,29 +587,60 @@ export async function crearViaje(tenantId: string, v: NuevoViaje): Promise<strin
     destino: v.destino || null,
     fecha_inicio: v.fechaInicio || null,
     anticipo: v.anticipo ?? 0,
-    operador_id: v.operadorId || null,
+    operador_id: v.operadorId,
     unidad_id: v.unidadId || null,
     estatus: 'abierto',
   }).select('id').single(), 'crearViaje');
-  if (error) throw new Error(`crearViaje: ${error.message}`);
+  if (error) throw comoError(error, 'crearViaje');
   const id = (data as { id?: unknown } | null)?.id;
   if (!id) throw new Error('crearViaje: el insert no devolvió id');
+
+  // El viaje nace con la unidad ocupada. Si no, el tablero la sigue contando
+  // "disponible" y el <select> la vuelve a ofrecer para el siguiente viaje.
+  if (v.unidadId) await cambiarEstadoUnidad(tenantId, v.unidadId, 'en_ruta');
   return id as string;
 }
 
-/** Empatar viaje ↔ unidad. `null` la desasigna. */
-export async function asignarUnidad(tenantId: string, viajeId: string, unidadId: string | null): Promise<void> {
-  const { error } = await acotada(supabaseAdmin().from('viaje')
-    .update({ unidad_id: unidadId })
-    .eq('id', viajeId).eq('tenant_id', tenantId), 'asignarUnidad');
+/** Qué unidad trae HOY el viaje — la que hay que liberar al cambiarla. */
+async function unidadDelViaje(tenantId: string, viajeId: string): Promise<string | null> {
+  const { data, error } = await acotada(supabaseAdmin().from('viaje')
+    .select('unidad_id').eq('id', viajeId).eq('tenant_id', tenantId).maybeSingle(), 'asignarUnidad.previa');
   if (error) throw new Error(`asignarUnidad: ${error.message}`);
+  return ((data as { unidad_id?: unknown } | null)?.unidad_id as string) || null;
+}
+
+/**
+ * Empatar viaje ↔ unidad. `null` la desasigna.
+ *
+ * Mueve TAMBIÉN el estado de la unidad, y ese es el punto: la 0047 dice de su
+ * columna «disponible | en_ruta | taller | baja. Lo mueve el despacho, no un
+ * humano tecleando». Sin esto, el encargado despacha las ocho unidades de la
+ * mañana y al mediodía el tablero sigue diciendo "8 disponibles" con los ocho
+ * camiones en carretera.
+ */
+export async function asignarUnidad(tenantId: string, viajeId: string, unidadId: string | null): Promise<void> {
+  if (unidadId) await exigirDelTenant('unidad', unidadId, tenantId);
+
+  // Se lee ANTES del update: después ya no se sabe cuál traía, y esa es la que
+  // hay que devolver a "disponible" para que no quede ocupada para siempre.
+  const previa = await unidadDelViaje(tenantId, viajeId);
+
+  const { data, error } = await acotada(supabaseAdmin().from('viaje')
+    .update({ unidad_id: unidadId })
+    .eq('id', viajeId).eq('tenant_id', tenantId).select('id'), 'asignarUnidad');
+  if (error) throw comoError(error, 'asignarUnidad');
+  if (tocadas(data) === 0) throw new ErrorDeCaptura('sin_filas');
+
+  if (previa && previa !== unidadId) await cambiarEstadoUnidad(tenantId, previa, 'disponible');
+  if (unidadId) await cambiarEstadoUnidad(tenantId, unidadId, 'en_ruta');
 }
 
 export async function cambiarEstadoUnidad(tenantId: string, unidadId: string, estado: string): Promise<void> {
-  const { error } = await acotada(supabaseAdmin().from('unidad')
+  const { data, error } = await acotada(supabaseAdmin().from('unidad')
     .update({ estado })
-    .eq('id', unidadId).eq('tenant_id', tenantId), 'cambiarEstadoUnidad');
-  if (error) throw new Error(`cambiarEstadoUnidad: ${error.message}`);
+    .eq('id', unidadId).eq('tenant_id', tenantId).select('id'), 'cambiarEstadoUnidad');
+  if (error) throw comoError(error, 'cambiarEstadoUnidad');
+  if (tocadas(data) === 0) throw new ErrorDeCaptura('sin_filas');
 }
 
 export interface NuevaUnidad {
@@ -517,7 +660,7 @@ export async function crearUnidad(tenantId: string, u: NuevaUnidad): Promise<str
     modelo: u.modelo || null,
     anio: u.anio ?? null,
   }).select('id').single(), 'crearUnidad');
-  if (error) throw new Error(`crearUnidad: ${error.message}`);
+  if (error) throw comoError(error, 'crearUnidad');
   const id = (data as { id?: unknown } | null)?.id;
   if (!id) throw new Error('crearUnidad: el insert no devolvió id');
   return id as string;
@@ -533,6 +676,12 @@ export interface NuevaIncidencia {
 }
 
 export async function crearIncidencia(tenantId: string, i: NuevaIncidencia): Promise<string> {
+  // Los dos vienen de un <select> del formulario, y las FK de la 0047 son de
+  // una sola columna: sin esto, una incidencia de esta flota se cuelga del
+  // viaje de otra y las dos pantallas la ven a medias.
+  if (i.viajeId) await exigirDelTenant('viaje', i.viajeId, tenantId);
+  if (i.unidadId) await exigirDelTenant('unidad', i.unidadId, tenantId);
+
   const { data, error } = await acotada(supabaseAdmin().from('incidencia').insert({
     tenant_id: tenantId,
     viaje_id: i.viajeId || null,
@@ -542,7 +691,7 @@ export async function crearIncidencia(tenantId: string, i: NuevaIncidencia): Pro
     descripcion: i.descripcion || null,
     sla_horas: i.slaHoras ?? null,
   }).select('id').single(), 'crearIncidencia');
-  if (error) throw new Error(`crearIncidencia: ${error.message}`);
+  if (error) throw comoError(error, 'crearIncidencia');
   const id = (data as { id?: unknown } | null)?.id;
   if (!id) throw new Error('crearIncidencia: el insert no devolvió id');
   return id as string;
@@ -560,8 +709,9 @@ export async function crearIncidencia(tenantId: string, i: NuevaIncidencia): Pro
 export async function cambiarEstadoIncidencia(
   tenantId: string, incidenciaId: string, estado: string, ahora = new Date(),
 ): Promise<void> {
-  const { error } = await acotada(supabaseAdmin().from('incidencia')
+  const { data, error } = await acotada(supabaseAdmin().from('incidencia')
     .update({ estado, resuelta_en: estado === 'resuelta' ? ahora.toISOString() : null })
-    .eq('id', incidenciaId).eq('tenant_id', tenantId), 'cambiarEstadoIncidencia');
-  if (error) throw new Error(`cambiarEstadoIncidencia: ${error.message}`);
+    .eq('id', incidenciaId).eq('tenant_id', tenantId).select('id'), 'cambiarEstadoIncidencia');
+  if (error) throw comoError(error, 'cambiarEstadoIncidencia');
+  if (tocadas(data) === 0) throw new ErrorDeCaptura('sin_filas');
 }

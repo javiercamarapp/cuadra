@@ -2,13 +2,15 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import Link from 'next/link';
 import { Wrench, Plus } from 'lucide-react';
-import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
+import { resolverTenantEfectivo, resolverTenantDeAction } from '@/lib/auth/tenant-efectivo';
 import { requireSessionTenant } from '@/lib/auth/guard';
 import { puedeAsignar } from '@/lib/auth/permisos';
-import { supabaseAdmin } from '@/lib/supabase/admin';
-import { getUnidades, crearUnidad, cambiarEstadoUnidad, type UnidadRow } from '@/lib/cuadra/operacion';
+import {
+  getUnidades, crearUnidad, cambiarEstadoUnidad, codigoDeCaptura, type UnidadRow,
+} from '@/lib/cuadra/operacion';
 import { EstadoVacio, StatusPill } from '../../admin/ui/kit';
 import { sufijoTenant } from '../sufijo';
+import AvisoCaptura from '../aviso-captura';
 import { CifrasUnidades, TablaUnidades, FormaUnidad } from './vista';
 
 export const dynamic = 'force-dynamic';
@@ -37,23 +39,33 @@ async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
 export default async function UnidadesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vista?: string; tenant?: string; ok?: string }>;
+  searchParams: Promise<{ vista?: string; tenant?: string; rol?: string; ok?: string; err?: string }>;
 }) {
   const sp = await searchParams;
   const { tenantId, rol } = await resolverTenantEfectivo('/dashboard/unidades', sp);
   const sufijo = sufijoTenant(sp);
   const puede = puedeAsignar(rol);
 
+  /** A dónde volver después de una escritura, con su acuse o su motivo. */
+  const volver = (clave: string, valor: string) =>
+    `/dashboard/unidades${sufijo ? `${sufijo}&` : '?'}${clave}=${valor}`;
+
   const unidades = await safe<UnidadRow[]>(() => getUnidades(tenantId));
 
+  /**
+   * El tenant al que ESCRIBE el action. `resolverTenantDeAction` es la copia
+   * única (G-34): la que vivía aquí descartaba el `error` de la consulta, así
+   * que con un 503 transitorio `data` salía null, el `if` no entraba y la
+   * escritura aterrizaba en el tenant de la SESIÓN — que para un superadmin es
+   * el DEMO, con la píldora verde diciendo que se guardó.
+   *
+   * El gate de PERMISO se queda aquí porque el redirect de vuelta necesita el
+   * `sufijo`, que es local a esta página.
+   */
   async function tenantDelAction() {
     const s = await requireSessionTenant('/dashboard/unidades');
     if (!puedeAsignar(s.rol)) redirect(`/dashboard/unidades${sufijo}`);
-    if (s.rol === 'superadmin' && sp?.tenant) {
-      const { data } = await supabaseAdmin().from('tenant').select('id').eq('id', sp.tenant).maybeSingle();
-      if (data) return data.id as string;
-    }
-    return s.tenantId;
+    return resolverTenantDeAction('/dashboard/unidades', sp);
   }
 
   async function accionEstado(formData: FormData) {
@@ -62,9 +74,16 @@ export default async function UnidadesPage({
     const unidadId = String(formData.get('unidadId') ?? '');
     const estado = String(formData.get('estado') ?? '');
     if (!unidadId || !ESTADOS.has(estado)) redirect(`/dashboard/unidades${sufijo}`);
-    await cambiarEstadoUnidad(t, unidadId, estado);
+    // El `try` no envuelve al `redirect`: `redirect()` funciona lanzando.
+    let err: string | null = null;
+    try {
+      await cambiarEstadoUnidad(t, unidadId, estado);
+    } catch (e) {
+      err = codigoDeCaptura(e);
+      if (err === null) throw e;
+    }
     revalidatePath('/dashboard/unidades');
-    redirect(`/dashboard/unidades${sufijo ? `${sufijo}&` : '?'}ok=movida`);
+    redirect(err ? volver('err', err) : volver('ok', 'movida'));
   }
 
   async function accionAlta(formData: FormData) {
@@ -79,15 +98,21 @@ export default async function UnidadesPage({
     const anio = anioBruto === '' ? null : Number(anioBruto);
     if (anio !== null && !Number.isInteger(anio)) redirect(`/dashboard/unidades${sufijo}`);
 
-    await crearUnidad(t, {
-      numeroEconomico,
-      placas: String(formData.get('placas') ?? '').trim() || null,
-      marca: String(formData.get('marca') ?? '').trim() || null,
-      modelo: String(formData.get('modelo') ?? '').trim() || null,
-      anio,
-    });
+    let err: string | null = null;
+    try {
+      await crearUnidad(t, {
+        numeroEconomico,
+        placas: String(formData.get('placas') ?? '').trim() || null,
+        marca: String(formData.get('marca') ?? '').trim() || null,
+        modelo: String(formData.get('modelo') ?? '').trim() || null,
+        anio,
+      });
+    } catch (e) {
+      err = codigoDeCaptura(e);
+      if (err === null) throw e;
+    }
     revalidatePath('/dashboard/unidades');
-    redirect(`/dashboard/unidades${sufijo ? `${sufijo}&` : '?'}ok=alta`);
+    redirect(err ? volver('err', err) : volver('ok', 'alta'));
   }
 
   return (
@@ -103,6 +128,8 @@ export default async function UnidadesPage({
         {sp.ok === 'movida' && <StatusPill estado="ok">Estado actualizado</StatusPill>}
         {sp.ok === 'alta' && <StatusPill estado="ok">Unidad dada de alta</StatusPill>}
       </header>
+
+      <AvisoCaptura codigo={sp.err} />
 
       {unidades === null ? (
         <div className="glass-panel p-8 text-sm" style={{ color: 'var(--muted)' }}>

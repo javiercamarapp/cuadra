@@ -46,8 +46,12 @@ export function CifrasIncidencias({ incidencias }: { incidencias: IncidenciaRow[
         <KpiTile icono={<Clock {...ICONO} />} etiqueta="Con SLA vencido"
           valor={vivas.filter((i) => i.slaVencido).length} formato="entero"
           nota="Solo cuenta las que tienen SLA pactado" />
+        {/* `mediana ?? 0` escribía justo el cero que el comentario de arriba
+            dice que no se puede escribir: «un 0 se leería como "se resuelven
+            al instante"». `KpiTile` ya sabe decir "no lo medí" (G-09), así que
+            el null se pasa tal cual. */}
         <KpiTile icono={<CircleCheck {...ICONO} />} etiqueta="Mediana de resolución"
-          valor={mediana ?? 0} formato="entero"
+          valor={mediana} formato="entero"
           vacio={mediana === null ? 'sin incidencias resueltas todavía' : undefined}
           nota={mediana === null ? undefined : 'horas, mediana — no promedio'} />
       </div>

@@ -9,15 +9,29 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /** Filas por tabla que devolverá el mock en la siguiente llamada. */
 let TABLAS: Record<string, unknown[]> = {};
-/** Tablas que deben fallar, con su mensaje. */
-let FALLAN: Record<string, string> = {};
+/**
+ * Tablas que deben fallar. Una cadena es solo el mensaje; el objeto permite
+ * darle el SQLSTATE y el `details` con los que Postgres reporta un choque de
+ * índice único — que es lo que `violaIndice` lee.
+ */
+type Falla = string | { message: string; code?: string; details?: string };
+let FALLAN: Record<string, Falla> = {};
 
 const escrituras: Array<{ tabla: string; op: string; valores?: unknown; filtros: Array<[string, unknown]> }> = [];
+
+function comoFalla(f: Falla) {
+  return typeof f === 'string' ? { message: f } : f;
+}
 
 /**
  * Constructor encadenable: todo método devuelve el mismo objeto, y `range`
  * (que es donde `traerTodo` cierra la consulta) resuelve con las filas de la
- * tabla. `single()` cierra las escrituras.
+ * tabla. `single()`/`maybeSingle()` cierran las consultas de una fila.
+ *
+ * `then` —por donde se esperan los UPDATE— devuelve las filas de la tabla, NO
+ * `{data: null}`: codificar el cero-filas como éxito era exactamente el bug
+ * que este archivo tenía que haber cazado (un update que no empató nada se
+ * anunciaba en verde).
  */
 function constructor(tabla: string) {
   const filtros: Array<[string, unknown]> = [];
@@ -25,8 +39,16 @@ function constructor(tabla: string) {
     { tabla, op: 'select', filtros };
 
   const resultado = () => FALLAN[tabla]
-    ? { data: null, error: { message: FALLAN[tabla] } }
+    ? { data: null, error: comoFalla(FALLAN[tabla]) }
     : { data: TABLAS[tabla] ?? [], error: null };
+
+  /** La fila que empata el `.eq('id', …)` de la consulta, si lo hay. */
+  const unaFila = () => {
+    const filas = (TABLAS[tabla] ?? []) as Array<Record<string, unknown>>;
+    const porId = filtros.find(([c]) => c === 'id');
+    if (!porId) return filas[0] ?? null;
+    return filas.find((f) => f.id === porId[1]) ?? null;
+  };
 
   const api: Record<string, unknown> = {
     select: () => api,
@@ -38,12 +60,13 @@ function constructor(tabla: string) {
     insert: (v: unknown) => { registro.op = 'insert'; registro.valores = v; escrituras.push(registro); return api; },
     update: (v: unknown) => { registro.op = 'update'; registro.valores = v; escrituras.push(registro); return api; },
     single: () => Promise.resolve(
-      FALLAN[tabla] ? { data: null, error: { message: FALLAN[tabla] } } : { data: { id: `${tabla}-nuevo` }, error: null },
+      FALLAN[tabla] ? { data: null, error: comoFalla(FALLAN[tabla]) } : { data: { id: `${tabla}-nuevo` }, error: null },
+    ),
+    maybeSingle: () => Promise.resolve(
+      FALLAN[tabla] ? { data: null, error: comoFalla(FALLAN[tabla]) } : { data: unaFila(), error: null },
     ),
     // Un update sin `.single()` se espera directo: `then` lo hace thenable.
-    then: (res: (v: unknown) => unknown) => Promise.resolve(
-      FALLAN[tabla] ? { data: null, error: { message: FALLAN[tabla] } } : { data: null, error: null },
-    ).then(res),
+    then: (res: (v: unknown) => unknown) => Promise.resolve(resultado()).then(res),
   };
   return api;
 }
@@ -54,6 +77,7 @@ vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: 
 const {
   getCargaOperadores, getViajesSinAsignar, getUnidades, getIncidencias,
   getTableroOperacion, cambiarEstadoIncidencia, crearViaje, getPods, rechazarPod,
+  asignarUnidad, crearUnidad, crearIncidencia, marcarPodPedido, cambiarEstadoUnidad,
 } = await import('./operacion');
 
 beforeEach(() => { TABLAS = {}; FALLAN = {}; escrituras.length = 0; });
@@ -290,14 +314,25 @@ describe('getPods — se parte de los VIAJES, no de la tabla pod', () => {
 });
 
 describe('escrituras', () => {
+  /** Un tenant con un chofer, una unidad, un viaje y una incidencia reales. */
+  const FLOTA = () => ({
+    operador: [{ id: 'o-1', nombre: 'Ana' }],
+    unidad: [{ id: 'u-1', numero_economico: 'C2-08' }],
+    viaje: [{ id: 'v-1', unidad_id: null }],
+    incidencia: [{ id: 'i-1' }],
+    pod: [{ id: 'p-1' }],
+  });
+
   it('crearViaje acota por tenant y nace abierto', async () => {
-    await crearViaje('t-1', { folio: 'VJ-9', origen: 'GDL', destino: 'MTY', anticipo: 5000 });
+    TABLAS = FLOTA();
+    await crearViaje('t-1', { folio: 'VJ-9', origen: 'GDL', destino: 'MTY', anticipo: 5000, operadorId: 'o-1' });
     const w = escrituras.find((e) => e.tabla === 'viaje')!;
     expect(w.op).toBe('insert');
     expect(w.valores).toMatchObject({ tenant_id: 't-1', folio: 'VJ-9', estatus: 'abierto', anticipo: 5000 });
   });
 
   it('resolver una incidencia FECHA el cierre — el constraint la rechaza si no', async () => {
+    TABLAS = FLOTA();
     const ahora = new Date('2026-08-03T12:00:00Z');
     await cambiarEstadoIncidencia('t-1', 'i-1', 'resuelta', ahora);
     const w = escrituras.find((e) => e.tabla === 'incidencia')!;
@@ -306,24 +341,185 @@ describe('escrituras', () => {
   });
 
   it('reabrir una incidencia BORRA la fecha de cierre', async () => {
+    TABLAS = FLOTA();
     await cambiarEstadoIncidencia('t-1', 'i-1', 'en_proceso');
     const w = escrituras.find((e) => e.tabla === 'incidencia')!;
     expect(w.valores).toEqual({ estado: 'en_proceso', resuelta_en: null });
   });
 
   it('un insert que falla lanza en vez de devolver un id inventado', async () => {
+    TABLAS = FLOTA();
     FALLAN = { viaje: 'folio duplicado' };
-    await expect(crearViaje('t-1', { folio: 'VJ-9' })).rejects.toThrow('folio duplicado');
+    await expect(crearViaje('t-1', { folio: 'VJ-9', operadorId: 'o-1' })).rejects.toThrow('folio duplicado');
   });
 
   it('rechazar un POD NO borra el archivo — solo cambia el estado y anota', async () => {
     // Borrar la ruta dejaría la discusión con el chofer sin la prueba de lo
     // que sí mandó. Además, `pod_subido_tiene_archivo` (0047) solo exige
     // archivo para 'subido', así que la fila rechazada queda consistente.
+    TABLAS = FLOTA();
     await rechazarPod('t-1', 'p-1', 'ilegible, no se ve el sello');
     const w = escrituras.find((e) => e.tabla === 'pod')!;
     expect(w.valores).toEqual({ estado: 'rechazado', nota: 'ilegible, no se ve el sello' });
     expect(w.valores).not.toHaveProperty('storage_path');
     expect(w.filtros).toEqual([['id', 'p-1'], ['tenant_id', 't-1']]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// G-21 — las siete escrituras, sus tres defectos.
+//
+// (a) Un 23505 propagaba y `dashboard/error.tsx` pintaba «No se pudo cargar el
+//     panel — hubo un problema al leer los datos» con un hash de incidente:
+//     doblemente falso (no fue una lectura, no es un incidente) y sin la única
+//     frase que le sirve al encargado.
+// (b) PostgREST contesta 204 SIN error con cero filas empatadas, así que "no
+//     había nada que actualizar" y "se actualizó" salían las dos en verde.
+// (c) Los ids venían del `<form>` sin comprobar de quién son, contra FK de una
+//     sola columna: una unidad de otra flota se podía colgar de un viaje.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const FLOTA_BASE = () => ({
+  operador: [{ id: 'o-1', nombre: 'Ana' }],
+  unidad: [{ id: 'u-1', numero_economico: 'C2-08' }],
+  viaje: [{ id: 'v-1', unidad_id: null }],
+  incidencia: [{ id: 'i-1' }],
+  pod: [{ id: 'p-1' }],
+});
+
+/** Cómo llega un choque de índice único desde PostgREST. */
+const choque = (indice: string) => ({
+  message: `duplicate key value violates unique constraint "${indice}"`,
+  code: '23505',
+  details: `Key (tenant_id, operador_id)=(…) already exists.`,
+});
+
+describe('G-21(a) — un 23505 es un mensaje para el encargado, no un incidente', () => {
+  it('el segundo viaje abierto del mismo chofer se explica, no se convierte en hash', async () => {
+    TABLAS = FLOTA_BASE();
+    FALLAN = { viaje: choque('uq_viaje_abierto_por_operador') };
+    // En el tenant del demo son DOS CLICS: dar de alta un viaje al único
+    // chofer con datos.
+    await expect(crearViaje('t-1', { operadorId: 'o-1' })).rejects.toThrow(/ya trae un viaje abierto/i);
+  });
+
+  it('un número económico repetido dice cuál es el problema', async () => {
+    TABLAS = FLOTA_BASE();
+    FALLAN = { unidad: choque('unidad_economico_unico') };
+    await expect(crearUnidad('t-1', { numeroEconomico: 'C2-08' })).rejects.toThrow(/n[úu]mero econ[óo]mico/i);
+  });
+
+  it('pedir dos veces la misma evidencia no tumba la pantalla', async () => {
+    TABLAS = FLOTA_BASE();
+    FALLAN = { pod: choque('pod_viaje_unico') };
+    await expect(marcarPodPedido('t-1', 'v-1', 'o-1')).rejects.toThrow(/ya tiene registro de evidencia/i);
+  });
+
+  it('un 23505 contra un índice DESCONOCIDO sigue siendo un error de verdad', async () => {
+    // Tragarse cualquier 23505 escondería el bug que sí lo es.
+    TABLAS = FLOTA_BASE();
+    FALLAN = { unidad: choque('un_indice_que_nadie_previo') };
+    await expect(crearUnidad('t-1', { numeroEconomico: 'C2-08' }))
+      .rejects.toThrow(/un_indice_que_nadie_previo/);
+  });
+});
+
+describe('G-21(b) — un UPDATE que no empató nada NO es un éxito', () => {
+  it('rechazar un POD que no es de esta flota lanza en vez de pintar verde', async () => {
+    TABLAS = { ...FLOTA_BASE(), pod: [] };
+    await expect(rechazarPod('t-1', 'p-ajeno', 'ilegible')).rejects.toThrow();
+  });
+
+  it('mover una incidencia que no existe lanza', async () => {
+    TABLAS = { ...FLOTA_BASE(), incidencia: [] };
+    await expect(cambiarEstadoIncidencia('t-1', 'i-ajena', 'resuelta')).rejects.toThrow();
+  });
+
+  it('mover una unidad que no existe lanza', async () => {
+    TABLAS = { ...FLOTA_BASE(), unidad: [] };
+    await expect(cambiarEstadoUnidad('t-1', 'u-ajena', 'taller')).rejects.toThrow();
+  });
+
+  it('asignar unidad a un viaje que no es de esta flota lanza', async () => {
+    TABLAS = { ...FLOTA_BASE(), viaje: [] };
+    await expect(asignarUnidad('t-1', 'v-ajeno', null)).rejects.toThrow();
+  });
+});
+
+describe('G-21(c) — el id viene del formulario: hay que comprobar de quién es', () => {
+  it('no se cuelga de un viaje una unidad de OTRA flota', async () => {
+    TABLAS = { ...FLOTA_BASE(), unidad: [] };   // esa unidad no es de t-1
+    await expect(asignarUnidad('t-1', 'v-1', 'u-de-otra-flota')).rejects.toThrow();
+    expect(escrituras.filter((e) => e.op === 'update')).toHaveLength(0);
+  });
+
+  it('una incidencia no se levanta contra un viaje ajeno', async () => {
+    TABLAS = { ...FLOTA_BASE(), viaje: [] };
+    await expect(crearIncidencia('t-1', { tipo: 'retraso', viajeId: 'v-de-otra-flota' })).rejects.toThrow();
+    expect(escrituras.filter((e) => e.tabla === 'incidencia')).toHaveLength(0);
+  });
+
+  it('no se le pide evidencia a un chofer que no es de esta flota', async () => {
+    TABLAS = { ...FLOTA_BASE(), operador: [] };
+    await expect(marcarPodPedido('t-1', 'v-1', 'o-de-otra-flota')).rejects.toThrow();
+    expect(escrituras.filter((e) => e.tabla === 'pod')).toHaveLength(0);
+  });
+
+  it('un viaje nuevo no nace con el chofer de otra flota', async () => {
+    TABLAS = { ...FLOTA_BASE(), operador: [] };
+    await expect(crearViaje('t-1', { operadorId: 'o-de-otra-flota' })).rejects.toThrow();
+    expect(escrituras.filter((e) => e.tabla === 'viaje')).toHaveLength(0);
+  });
+});
+
+describe('G-57 — el despacho saca la unidad de "disponible"', () => {
+  it('asignar una unidad la mueve a en_ruta', async () => {
+    // Sin esto el encargado despacha las 8 unidades de la mañana y al mediodía
+    // el tablero sigue diciendo "8 disponibles" con los 8 en carretera, y el
+    // <select> vuelve a ofrecer C2-08 para el noveno viaje.
+    TABLAS = FLOTA_BASE();
+    await asignarUnidad('t-1', 'v-1', 'u-1');
+    const w = escrituras.find((e) => e.tabla === 'unidad' && e.op === 'update')!;
+    expect(w).toBeDefined();
+    expect(w.valores).toEqual({ estado: 'en_ruta' });
+    expect(w.filtros).toEqual([['id', 'u-1'], ['tenant_id', 't-1']]);
+  });
+
+  it('desasignar devuelve la unidad que traía a disponible', async () => {
+    TABLAS = { ...FLOTA_BASE(), viaje: [{ id: 'v-1', unidad_id: 'u-1' }] };
+    await asignarUnidad('t-1', 'v-1', null);
+    const w = escrituras.find((e) => e.tabla === 'unidad' && e.op === 'update')!;
+    expect(w.valores).toEqual({ estado: 'disponible' });
+    expect(w.filtros).toEqual([['id', 'u-1'], ['tenant_id', 't-1']]);
+  });
+
+  it('cambiar de unidad libera la vieja y ocupa la nueva', async () => {
+    TABLAS = {
+      ...FLOTA_BASE(),
+      viaje: [{ id: 'v-1', unidad_id: 'u-vieja' }],
+      unidad: [{ id: 'u-vieja' }, { id: 'u-nueva' }],
+    };
+    await asignarUnidad('t-1', 'v-1', 'u-nueva');
+    const movidas = escrituras.filter((e) => e.tabla === 'unidad' && e.op === 'update');
+    expect(movidas.map((m) => [m.filtros[0][1], (m.valores as { estado: string }).estado]))
+      .toEqual([['u-vieja', 'disponible'], ['u-nueva', 'en_ruta']]);
+  });
+
+  it('crear un viaje CON unidad también la ocupa', async () => {
+    TABLAS = FLOTA_BASE();
+    await crearViaje('t-1', { operadorId: 'o-1', unidadId: 'u-1' });
+    const w = escrituras.find((e) => e.tabla === 'unidad' && e.op === 'update')!;
+    expect(w.valores).toEqual({ estado: 'en_ruta' });
+  });
+});
+
+describe('G-20 (mitigación) — un viaje sin chofer no se intenta escribir', () => {
+  it('crearViaje sin operador dice qué falta en vez de tumbarse con un 23502', async () => {
+    // `viaje.operador_id` es NOT NULL desde la 0001. Hasta que la columna se
+    // haga nullable, un viaje sin chofer es un error de la BASE, no de la
+    // captura — y el encargado solo vería "hubo un problema" con un hash.
+    TABLAS = FLOTA_BASE();
+    await expect(crearViaje('t-1', { folio: 'VJ-9' })).rejects.toThrow(/chofer|operador/i);
+    expect(escrituras.filter((e) => e.tabla === 'viaje')).toHaveLength(0);
   });
 });

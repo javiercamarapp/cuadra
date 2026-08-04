@@ -1,8 +1,10 @@
+import Link from 'next/link';
 import { Truck, MapPin, Wallet, Clock } from 'lucide-react';
 import { getViajes, type ViajeRow } from '@/lib/cuadra/analytics';
 import { mxn } from '@/lib/utils';
 import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
 import { fechaMx } from '../formato';
+import { sufijoTenant } from '../sufijo';
 import { KpiTile, EstadoVacio, StatusPill, type Estado } from '../../admin/ui/kit';
 
 export const dynamic = 'force-dynamic';
@@ -25,11 +27,16 @@ async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
 /**
  * Viajes (PASO 12 del documento) — la tabla real de `viaje`.
  *
- * El PASO 12 pide columnas de unidad, POD y margen por viaje: NINGUNA existe
- * en el esquema (`viaje` no tiene `unidad_id`, no hay tabla de vehículos, no
- * hay campo de POD, y no hay ingreso registrado contra el cual calcular un
- * margen). Enseñar esas columnas vacías haría ver el producto más completo y
- * la pantalla más inútil, así que se dice abajo qué falta y por qué.
+ * El PASO 12 pide columnas de unidad, POD y margen por viaje. Desde la
+ * migración 0047 las dos primeras SÍ existen (`viaje.unidad_id`, tablas
+ * `unidad` y `pod`) y tienen pantalla propia — Unidades y POD & Evidencias —,
+ * así que el recuadro de abajo las manda ahí en vez de declararlas
+ * inexistentes: un hueco que ya no es hueco vuelve sospechoso a todo lo demás
+ * que esta pantalla afirma.
+ *
+ * El margen sigue sin poderse calcular, y esa sí es una pieza que falta de
+ * raíz: no se registra el ingreso del flete en ningún lado, y `viaje.anticipo`
+ * es lo que se le adelanta al operador, no lo que paga el cliente.
  */
 export default async function ViajesPage({
   searchParams,
@@ -38,6 +45,7 @@ export default async function ViajesPage({
 }) {
   const sp = await searchParams;
   const { tenantId } = await resolverTenantEfectivo('/dashboard/viajes', sp);
+  const sufijo = sufijoTenant(sp);
   const viajes = await safe<ViajeRow[]>(() => getViajes(tenantId));
 
   // "Sin liquidar" son los DOS estatus previos al cierre (`abierto` y
@@ -129,10 +137,15 @@ export default async function ViajesPage({
 
             <div className="px-5 pt-4 pb-5 border-t" style={{ borderColor: 'var(--line)' }}>
               <EstadoVacio>
-                Unidad asignada, POD (evidencia de entrega) y margen por viaje no aparecen porque no existen en el
-                sistema: `viaje` no guarda unidad, no hay tabla de vehículos, no hay campo de POD, y no se registra
-                el ingreso del flete contra el cual calcular un margen. Crear y asignar viajes desde aquí (hoy se
-                hace por WhatsApp), el estimador de casetas+combustible y OTIF necesitan esas mismas piezas.
+                Esta tabla lista el viaje y su dinero. La unidad que lo hizo y la evidencia de entrega existen desde
+                la migración 0047, pero se administran en su propia pantalla:{' '}
+                <Link href={`/dashboard/unidades${sufijo}`} className="underline">Unidades</Link>,{' '}
+                <Link href={`/dashboard/pod${sufijo}`} className="underline">POD &amp; Evidencias</Link> y{' '}
+                <Link href={`/dashboard/despacho${sufijo}`} className="underline">Despacho</Link>, que es donde se
+                crea y se asigna un viaje sin pasar por WhatsApp. Lo que sigue sin poderse calcular es el{' '}
+                <strong>margen por viaje</strong>: no se registra el ingreso del flete en ningún lado, y el anticipo
+                es lo que le adelantas al operador, no lo que te paga tu cliente. El estimador de casetas +
+                combustible y el OTIF necesitan esa misma pieza y los kilómetros de la ruta, que tampoco se guardan.
               </EstadoVacio>
             </div>
           </>
