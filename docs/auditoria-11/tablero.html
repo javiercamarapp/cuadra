@@ -100,8 +100,8 @@
   <div class="kpi"><div class="n">12</div><div class="l">Rubros auditados</div></div>
   <div class="kpi"><div class="n" id="tot">—</div><div class="l">Hallazgos verificados</div></div>
   <div class="kpi"><div class="n" id="crit">—</div><div class="l">Críticos</div></div>
-  <div class="kpi"><div class="n" id="cerr">—</div><div class="l">Grupos cerrados</div></div>
-  <div class="kpi"><div class="n">1</div><div class="l">Descartado por falso</div></div>
+  <div class="kpi"><div class="n">63</div><div class="l">Grupos únicos tras deduplicar</div></div>
+  <div class="kpi"><div class="n">44</div><div class="l">Grupos cerrados con prueba</div></div>
 </div>
 
 <div class="caja">
@@ -127,10 +127,12 @@
   <h2>Compuerta sobre el árbol final</h2>
   <div class="comp" id="comp"></div>
   <p style="font-size:12.5px;color:var(--muted);margin:12px 0 0">
-    <b>El CI de <code>master</code> lleva rojo desde el 3-ago:</b> los runs 264 a 271
-    de GitHub Actions fallan, incluido el #271 sobre <code>e4326f9</code>, el HEAD.
-    No es la suite —173 archivos pasan— es el umbral de cobertura, y el paso de
-    <i>Build</i> nunca llega a correr sobre el código del demo.
+    <b>El CI de <code>master</code> llevaba rojo desde el 3-ago</b> —los runs 264 a 271
+    fallan, incluido el #271 sobre <code>e4326f9</code>, el HEAD— y por eso el paso de
+    <i>Build</i> no había corrido una sola vez sobre el código del demo.
+    <b>Cerrado sin tocar el umbral:</b> la cobertura subió de 64.32% a 84.19% de líneas
+    ejecutando por primera vez las librerías que pintan el dinero de la consola.
+    <code>vitest.config.ts</code> queda byte-idéntico.
   </p>
 </div>
 
@@ -184,7 +186,7 @@ const global = (suma/RUBROS.length).toFixed(1);
 document.getElementById('global').textContent = global;
 document.getElementById('tot').textContent = C+A+M+B;
 document.getElementById('crit').textContent = C;
-document.getElementById('cerr').textContent = document.querySelectorAll('.e-cerrado').length;
+
 
 const SERIE = [['2',6.2],['3',6.2],['4',5.9],['5',5.2],['6',5.3],['7',5.5],['8',6.5],['9',7.7],['10',4.9],['11',+global]];
 const maxv = 8;
@@ -194,11 +196,11 @@ document.getElementById('serie').innerHTML = SERIE.map(([e,v],i)=>
    <div class="e">${e}</div></div>`).join('');
 
 const COMP = [
-  ['npx vitest run','225 archivos · 2024 pruebas · exit 0',1],
+  ['npx vitest run','269 archivos · 2520 pruebas · exit 0',1],
   ['npx tsc --noEmit','exit 0',1],
   ['npm run lint','exit 0 · 6 warnings',1],
-  ['npm run test:coverage','exit 1 · líneas 64.32% < 78%',0],
-  ['CI de master (GH Actions)','run #271 sobre e4326f9 · failure',0],
+  ['npm run test:coverage','exit 0 · líneas 84.19% (umbral 78)',1],
+  ['Umbral de cobertura','byte-idéntico: no se movió',1],
   ['npm run build','no se corre en la nube: pide credenciales',-1],
 ];
 document.getElementById('comp').innerHTML = COMP.map(([k,v,ok])=>
