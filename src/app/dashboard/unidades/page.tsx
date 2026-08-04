@@ -12,17 +12,22 @@ import { EstadoVacio, StatusPill } from '../../admin/ui/kit';
 import { sufijoTenant } from '../sufijo';
 import AvisoCaptura from '../aviso-captura';
 import { CifrasUnidades, TablaUnidades, FormaUnidad } from './vista';
+import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
+// Techo explícito: sin él, una lectura lenta se lleva el default de la
+// plataforma y la página cuelga sin decirlo (auditoría 11, G-52).
+export const maxDuration = 60;
 
 /** Los cuatro valores que admite `unidad_estado_dominio` (0047). Se valida
  *  aquí ADEMÁS del constraint: un valor fuera del dominio lo rechaza la base
  *  con un 500 feo, y el encargado solo vería "algo falló". */
 const ESTADOS = new Set(['disponible', 'en_ruta', 'taller', 'baja']);
 
-async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
+/** Un fallo de lectura NO es «no hay nada»: se registra y se devuelve `null`
+ *  para que la pantalla lo declare, en vez de un `catch` vacío que lo borra
+ *  (auditoría 11, G-32). */
+const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/unidades');
 
 /**
  * UNIDADES — el expediente operativo del vehículo.

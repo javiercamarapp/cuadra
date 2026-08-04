@@ -22,12 +22,10 @@ import { join } from 'node:path';
 
 const RAIZ = join(process.cwd(), 'src/app/dashboard');
 
-const PENDIENTES = new Set([
-  'despacho/page.tsx', 'pod/page.tsx', 'unidades/page.tsx',
-  'incidencias/page.tsx', 'viajes/page.tsx', 'operadores/page.tsx',
-  // `mapa` y `soporte` son stubs estáticos de otro dominio de esta ronda.
-  'mapa/page.tsx', 'soporte/page.tsx',
-]);
+// LISTA VACÍA: las ocho páginas que faltaban ya declaran su techo. Se deja el
+// mecanismo —no la lista— porque una página nueva sin `maxDuration` tiene que
+// seguir poniendo esto en rojo. Auditoría 11, G-52, cierre cruzado.
+const PENDIENTES = new Set<string>([]);
 
 function paginas(dir: string): string[] {
   const out: string[] = [];

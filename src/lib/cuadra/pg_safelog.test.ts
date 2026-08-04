@@ -73,14 +73,11 @@ const PATRON = /catch\s*(\([^)]*\))?\s*\{\s*return null;?\s*\}/;
  *  sea SUBCONJUNTO de esta lista: quitar una de aquí sin arreglarla, o
  *  escribir una copia nueva en cualquier otro archivo, la pone en rojo. */
 const PENDIENTES = new Set([
-  'src/app/dashboard/despacho/page.tsx',
-  'src/app/dashboard/incidencias/page.tsx',
-  'src/app/dashboard/pod/page.tsx',
-  'src/app/dashboard/unidades/page.tsx',
-  'src/app/dashboard/viajes/page.tsx',
-  'src/app/dashboard/operadores/page.tsx',
-  // D4 — el parser de XML: su `catch` decide "este XML no es CFDI", que es un
-  // veredicto y no un fallo de lectura. Se revisa con su dominio.
+  // Las seis páginas de operación YA migraron (auditoría 11, cierre cruzado).
+  // Queda una sola excepción, y no es deuda: el `catch` del parser de XML
+  // decide "este XML no es CFDI", que es un VEREDICTO del dominio, no un fallo
+  // de lectura que haya que registrar. Un `safeLog` ahí llenaría el log de
+  // errores con archivos que simplemente no eran facturas.
   'src/lib/cuadra/intake/cfdi_xml.ts',
 ]);
 

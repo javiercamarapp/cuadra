@@ -3,12 +3,18 @@ import { getOperadoresDetalle, type OperadorDetalle } from '@/lib/cuadra/analyti
 import { mxn } from '@/lib/utils';
 import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
 import { KpiTile, EstadoVacio, StatusPill } from '../../admin/ui/kit';
+import { safeLog } from '@/lib/cuadra/pg';
+import type { SearchParamsPanel } from '../sufijo';
 
 export const dynamic = 'force-dynamic';
+// Techo explícito: sin él, una lectura lenta se lleva el default de la
+// plataforma y la página cuelga sin decirlo (auditoría 11, G-52).
+export const maxDuration = 60;
 
-async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
+/** Un fallo de lectura NO es «no hay nada»: se registra y se devuelve `null`
+ *  para que la pantalla lo declare, en vez de un `catch` vacío que lo borra
+ *  (auditoría 11, G-32). */
+const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/operadores');
 
 /** Barra de % comprobado — monocromo, con el número al lado: nunca color
  *  solo (regla del skill de dataviz). `null` (nunca recibió anticipo) se
@@ -37,7 +43,7 @@ function BarraComprobado({ pct }: { pct: number | null }) {
 export default async function OperadoresPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vista?: string; tenant?: string }>;
+  searchParams: Promise<SearchParamsPanel>;
 }) {
   const sp = await searchParams;
   const { tenantId } = await resolverTenantEfectivo('/dashboard/operadores', sp);

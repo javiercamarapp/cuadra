@@ -65,6 +65,14 @@
   --canvas: #f4f4f5;
   --canvas2: #fafafa;
   --ink2: #3f3f46;
+  /* --faint NO ES TINTA. Mide 2.56:1 sobre blanco, muy por debajo del 4.5:1
+     que pide AA para texto normal — y no hay margen para subirlo: un gris que
+     pase 4.5:1 es ya indistinguible de --muted (#6b7280, 4.83:1), o sea que
+     dejaría de ser "faint". La conclusión de la auditoría 11 (G-13) es que el
+     token está bien y el uso estaba mal: sirve para hairlines, separadores y
+     rellenos, nunca para letras. Las citas legales del panel y las etiquetas
+     de eje de las gráficas ya migraron a --muted; el único uso que queda es
+     una línea divisoria (`graficas.tsx:428`), que es exactamente su trabajo. */
   --faint: #a1a1aa;
   --line2: #e4e4e7;
 

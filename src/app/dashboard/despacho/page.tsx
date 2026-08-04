@@ -15,12 +15,17 @@ import { EstadoVacio, StatusPill } from '../../admin/ui/kit';
 import { sufijoTenant } from '../sufijo';
 import AvisoCaptura from '../aviso-captura';
 import { TableroCifras, TablaSinAsignar, TablaCarga, FormaAlta } from './vista';
+import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
+// Techo explícito: sin él, una lectura lenta se lleva el default de la
+// plataforma y la página cuelga sin decirlo (auditoría 11, G-52).
+export const maxDuration = 60;
 
-async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
+/** Un fallo de lectura NO es «no hay nada»: se registra y se devuelve `null`
+ *  para que la pantalla lo declare, en vez de un `catch` vacío que lo borra
+ *  (auditoría 11, G-32). */
+const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/despacho');
 
 /**
  * DESPACHO — la pantalla del encargado (jefe de tráfico).

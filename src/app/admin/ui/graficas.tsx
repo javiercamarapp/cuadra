@@ -283,7 +283,7 @@ export function Waterfall({
               <div className="absolute inset-x-0 text-center text-xs tabular" style={{ top: `calc(${topPct}% - 18px)`, color: 'var(--muted)' }}>
                 {fmt(b.hasta - b.desde)}
               </div>
-              <div className="absolute inset-x-0 text-center text-xs truncate px-0.5" style={{ top: '100%', marginTop: 6, color: 'var(--faint)' }}>
+              <div className="absolute inset-x-0 text-center text-xs truncate px-0.5" style={{ top: '100%', marginTop: 6, color: 'var(--muted)' }}>
                 {b.etiqueta}
               </div>
             </div>
@@ -319,7 +319,7 @@ export function Histogram({ buckets }: { buckets: Array<{ rango: string; conteo:
       </div>
       <div className="flex gap-px mt-2">
         {buckets.map((b, i) => (
-          <div key={b.rango} className="flex-1 text-[10px] text-center truncate" style={{ color: 'var(--faint)' }}>
+          <div key={b.rango} className="flex-1 text-[10px] text-center truncate" style={{ color: 'var(--muted)' }}>
             {i % paso === 0 ? b.rango : ''}
           </div>
         ))}
@@ -347,7 +347,7 @@ export function Heatmap({
           <tr>
             <th />
             {columnas.map((c) => (
-              <th key={c} className="text-[10px] font-normal px-1 pb-1" style={{ color: 'var(--faint)' }}>{c}</th>
+              <th key={c} className="text-[10px] font-normal px-1 pb-1" style={{ color: 'var(--muted)' }}>{c}</th>
             ))}
           </tr>
         </thead>
@@ -498,7 +498,7 @@ export function ParetoBars({
       </div>
       <div className="flex gap-2 mt-2">
         {conCumulativo.map((d) => (
-          <div key={d.etiqueta} className="flex-1 text-[10px] text-center truncate" style={{ color: 'var(--faint)' }} title={fmt(d.valor)}>
+          <div key={d.etiqueta} className="flex-1 text-[10px] text-center truncate" style={{ color: 'var(--muted)' }} title={fmt(d.valor)}>
             {d.etiqueta}
           </div>
         ))}

@@ -4,10 +4,14 @@ import { getViajes, type ViajeRow } from '@/lib/cuadra/analytics';
 import { mxn } from '@/lib/utils';
 import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
 import { fechaMx } from '../formato';
-import { sufijoTenant } from '../sufijo';
+import { sufijoTenant, type SearchParamsPanel } from '../sufijo';
 import { KpiTile, EstadoVacio, StatusPill, type Estado } from '../../admin/ui/kit';
+import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
+// Techo explícito: sin él, una lectura lenta se lleva el default de la
+// plataforma y la página cuelga sin decirlo (auditoría 11, G-52).
+export const maxDuration = 60;
 
 /** Los TRES estatus que `viaje` de verdad admite — el dominio está fijado en
  *  la base (`viaje_estatus_dominio`, 0025_dominios_check.sql:112:
@@ -20,9 +24,10 @@ const ESTATUS_VIAJE: Record<string, { label: string; estado: Estado }> = {
   liquidado: { label: 'Liquidado', estado: 'ok' },
 };
 
-async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
+/** Un fallo de lectura NO es «no hay nada»: se registra y se devuelve `null`
+ *  para que la pantalla lo declare, en vez de un `catch` vacío que lo borra
+ *  (auditoría 11, G-32). */
+const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/viajes');
 
 /**
  * Viajes (PASO 12 del documento) — la tabla real de `viaje`.
@@ -41,7 +46,7 @@ async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
 export default async function ViajesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vista?: string; tenant?: string }>;
+  searchParams: Promise<SearchParamsPanel>;
 }) {
   const sp = await searchParams;
   const { tenantId } = await resolverTenantEfectivo('/dashboard/viajes', sp);

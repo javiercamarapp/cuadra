@@ -56,7 +56,10 @@ describe('el sufijo de los links del servidor arrastra el «ver como»', () => {
 const RAIZ = join(process.cwd(), 'src/app/dashboard');
 
 /** Páginas de dominios de otros agentes de esta ronda: migran con el suyo. */
-const PENDIENTES = new Set(['viajes/page.tsx', 'operadores/page.tsx']);
+// LISTA VACÍA: las dos páginas que faltaban ya declaran `SearchParamsPanel`,
+// así que «ver como» arrastra `?rol=` en las 17. Se deja el mecanismo, no la
+// lista. Auditoría 11, G-47, cierre cruzado.
+const PENDIENTES = new Set<string>([]);
 
 function paginas(dir: string): string[] {
   const out: string[] = [];

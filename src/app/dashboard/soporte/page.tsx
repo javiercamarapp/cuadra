@@ -3,6 +3,9 @@ import SeccionPendiente from '../pendiente';
 import { exigirVerRuta } from '@/lib/auth/guard';
 
 export const dynamic = 'force-dynamic';
+// Techo explícito: sin él, una lectura lenta se lleva el default de la
+// plataforma y la página cuelga sin decirlo (auditoría 11, G-52).
+export const maxDuration = 60;
 
 export default async function SoportePage() {
   await exigirVerRuta('/dashboard/soporte');
