@@ -15,6 +15,7 @@
 // la tabla antes de usarse.
 import { NextResponse, type NextRequest } from 'next/server';
 import { getSessionTenant } from '@/lib/auth/session';
+import { puedeVerArea } from '@/lib/auth/visibilidad';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getKpis, getAcreditables, detectarAnomalias } from '@/lib/cuadra/analytics';
 
@@ -40,14 +41,28 @@ export async function GET(req: NextRequest) {
     if (t) { tenantId = t.id as string; tenantNombre = t.nombre as string; }
   }
 
+  // ...Y TAMBIÉN LA DEL ROL. El rail lo pinta `chrome.tsx` en las 20 páginas
+  // sin mirar quién es, así que este handler es la única capa que queda entre
+  // el jefe de tráfico y las finanzas de la flota. `visibilidad.ts` dice
+  // `encargado: ['operacion']`; sin esta pregunta, un `GET` con su cookie —o
+  // con la del chofer, que ni siquiera entra al panel— devolvía el comprobado,
+  // los acreditables fiscales y el detector de anomalías en JSON.
+  // `/api` está fuera del matcher del proxy y esto consulta con service-role
+  // (salta la RLS de la 0045): aquí no hay una segunda capa que perdone.
+  // Se niega ANTES de consultar — traer el dinero para luego tirarlo es pagar
+  // tres consultas por un dato que no se va a entregar.
+  const verDinero = puedeVerArea(sesion.rol, 'dinero');
+
   const safe = async <T,>(fn: () => Promise<T>): Promise<T | null> => {
     try { return await fn(); } catch { return null; }
   };
-  const [kpis, acred, anomalias] = await Promise.all([
-    safe(() => getKpis(tenantId!)),
-    safe(() => getAcreditables(tenantId!)),
-    safe(() => detectarAnomalias(tenantId!)),
-  ]);
+  const [kpis, acred, anomalias] = verDinero
+    ? await Promise.all([
+        safe(() => getKpis(tenantId!)),
+        safe(() => getAcreditables(tenantId!)),
+        safe(() => detectarAnomalias(tenantId!)),
+      ])
+    : [null, null, null];
 
   return NextResponse.json({
     nombre: sesion.nombre,
