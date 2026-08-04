@@ -10,14 +10,32 @@
 //   · `DEMO_TENANT_ID` ausente → el panel cae al tenant de `supabase/seed.sql` y
 //     pinta CERO liquidaciones, sin un solo log. En el demo del 6 de agosto eso
 //     se lee como "el producto no guardó nada". Es el caso de manual del rubro.
-//   · `DASHBOARD_PASSCODE` ausente → `proxy.ts` no bloquea `/dashboard`: el panel
-//     del contralor queda abierto y tampoco avisa.
 //   · `CUADRA_WHATSAPP_MSG_USD` ausente → el costo por liquidación se calcula con
 //     un default, y esa cifra es la que decide el precio del producto.
 //   · `NEXT_PUBLIC_APP_URL` ausente → `login/page.tsx` cae a `https://likida.ai`
 //     y manda los magic links y el retorno de Google a un dominio que no es el
 //     desplegado. El correo llega, el link abre, y la sesión se completa en otro
 //     sitio: no hay error en ninguna parte, simplemente nadie entra.
+//
+// LO QUE SALIÓ DE ESTA LISTA, Y POR QUÉ (auditoría 10, MEDIO). Aquí vivía el
+// passcode del panel con la consecuencia `→ "proxy.ts no bloquea /dashboard"`.
+// Esa consecuencia es FALSA desde que el gate pasó a ser la sesión de Supabase:
+// `src/proxy.ts` no nombra esa variable en ninguna línea, y sus dos únicos
+// lectores (`app/acceso/page.tsx`, `lib/auth/passcode.ts`) no protegían
+// `/dashboard`. Dejarla costaba de las dos formas posibles: quien la quitara
+// —lo correcto— se comía un `error` en CADA arranque en frío, en el mismo `msg`
+// (y por tanto el mismo cubo de Sentry) que el aviso real de `DEMO_TENANT_ID`;
+// y quien no, tenía que mantener viva una variable que ningún gate lee solo
+// para que el semáforo de `GUION_DEMO.md:28` pasara. Es exactamente lo que
+// `cuadra/startup.ts:34-46` documenta con nombre y fecha: cuando el aviso
+// resulta ser mentira una vez, se aprende a ignorarlo — y el que se aprende a
+// ignorar es el que más importa el 6 de agosto.
+//
+// Los dos lectores de arriba ya NO existen: `/acceso` y `lib/auth/passcode.ts`
+// se borraron en la misma auditoría (el passcode "aceptaba" el código y no
+// concedía nada). El nombre de la variable no se escribe aquí a propósito —
+// `acceso_retirado.test.ts` comprueba que no le quede un solo lector en `src/`,
+// y una mención en un comentario cuenta como lector para esa prueba.
 //
 // No duplica `verificarEntornoCritico()` de `cuadra/startup.ts`, que revisa
 // `DASHBOARD_SECRET` (una variable que sí es un agujero de seguridad, no una
@@ -30,7 +48,6 @@ import { faltantes } from '@/lib/env';
 
 const SILENCIOSAS: Array<{ nombre: string; consecuencia: string }> = [
   { nombre: 'DEMO_TENANT_ID', consecuencia: 'el panel consulta el tenant del seed y pinta cero liquidaciones' },
-  { nombre: 'DASHBOARD_PASSCODE', consecuencia: 'proxy.ts no bloquea /dashboard' },
   { nombre: 'CUADRA_WHATSAPP_MSG_USD', consecuencia: 'el costo por liquidación usa el default 0.008' },
   {
     nombre: 'NEXT_PUBLIC_APP_URL',

@@ -38,7 +38,24 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
 import { acotada } from './presupuesto';
 
-export type FaseCosto = 'ocr' | 'cuadre' | 'escalacion' | 'chat' | 'router' | 'whatsapp';
+// AUDITORÍA 10: aquí estaba declarada la fase `'escalacion'`, y con ella
+// `faseDeModelo`, que clasificaba como escalación cualquier modelo cuyo slug
+// llevara «opus». Tenía sentido mientras hubo un rol `cuadre_fallback` con Opus
+// por default; ese rol se retiró (commit eace503) porque nadie lo ejecutaba, y
+// con él se fue el único camino que llevaba un Opus al sistema: ninguno de los
+// cuatro roles por default lo usa, y la tabla `FALLBACK` de `openrouter.ts` tiene
+// a Opus como llave de origen, nunca como destino.
+//
+// Quedaba un solo camino y por él la etiqueta era FALSA: con
+// `CUADRA_MODEL_CUADRE=anthropic/claude-opus-5`, ese Opus ES el agente de cuadre
+// de esa instalación, no una escalación de nada — y la fila se habría rotulado
+// «Agente de Escalación» en tres pantallas de `/admin` mientras el costo del
+// cuadre desaparecía de su propia fase.
+//
+// Cuando la escalación se implemente, la fase vuelve CON el código que la
+// escribe. (La migración 0025 sigue admitiéndola en el `check` de la columna, así
+// que las filas históricas se leen igual y no hace falta tocar la base.)
+export type FaseCosto = 'ocr' | 'cuadre' | 'chat' | 'router' | 'whatsapp';
 
 // Costo por mensaje SALIENTE de WhatsApp (los entrantes son GRATIS).
 // Dentro de la ventana de servicio de 24h son gratis hasta el 1-oct-2026; después
@@ -98,12 +115,6 @@ export interface CostoLLM {
   costoUsd: number;
 }
 
-/** Deriva la fase a partir del slug del modelo (opus = escalación). */
-export function faseDeModelo(modelo: string, base: FaseCosto): FaseCosto {
-  if (modelo.includes('opus')) return 'escalacion';
-  return base;
-}
-
 function entero(n: number): number {
   return Number.isFinite(n) ? Math.round(n) : 0;
 }
@@ -141,6 +152,47 @@ export async function registrarCosto(c: CostoLLM): Promise<void> {
     if (error) fallo(c, error.message, (error as { code?: string }).code);
   } catch (e) {
     fallo(c, e instanceof Error ? e.message : String(e));
+  }
+}
+
+/**
+ * UNA FILA POR MODELO QUE DE VERDAD CORRIÓ. (auditoría 10 — consumo de la
+ * atribución de costo)
+ *
+ * El gateway ya emite `porModelo` (`UsoPorModelo[]`, con `Σ porModelo == total`)
+ * porque un solo turno puede haber corrido en DOS modelos: el ciclo de tools
+ * cambia de proveedor cuando el primero falla (`FALLBACK` en openrouter.ts), y
+ * el costo de cada ronda se calcula al precio del modelo que respondió ESA
+ * ronda. Quien escribía la fila cogía solo el acumulado y lo etiquetaba con UN
+ * modelo —el último—, así que en `/admin` el gasto del fallback aparecía
+ * facturado al slug equivocado. Sonnet 5 y GPT-5.6-terra no cuestan lo mismo, y
+ * la pantalla de la que sale el precio del producto es esa.
+ *
+ * Si no hay desglose se escribe una sola fila con el modelo del acumulado — el
+ * comportamiento de siempre, para los caminos que aún no lo emiten.
+ *
+ * La FASE es la que pide el llamador, la misma para todas las filas: es el
+ * TRABAJO que se estaba haciendo (leer un comprobante, cuadrar un viaje), no una
+ * propiedad del modelo. Reinterpretarla por el slug es lo que hacía
+ * `faseDeModelo`, y por eso se retiró junto con la fase `'escalacion'`.
+ */
+export async function registrarCostoDesglosado(
+  base: { tenantId: string; viajeId?: string | null; liquidacionId?: string | null; fase: FaseCosto },
+  uso: {
+    model?: string;
+    tokensIn: number; tokensOut: number; cost: number;
+    porModelo?: ReadonlyArray<{ model: string; tokensIn: number; tokensOut: number; cost: number }>;
+  },
+): Promise<void> {
+  const desglose = uso.porModelo?.length
+    ? uso.porModelo
+    : [{ model: uso.model ?? '', tokensIn: uso.tokensIn, tokensOut: uso.tokensOut, cost: uso.cost }];
+  for (const u of desglose) {
+    await registrarCosto({
+      ...base,
+      modelo: u.model,
+      tokensIn: u.tokensIn, tokensOut: u.tokensOut, costoUsd: u.cost,
+    });
   }
 }
 
@@ -271,16 +323,16 @@ export async function getResumenCosto(tenantId: string): Promise<ResumenCosto> {
   };
   const totalUsd = filas.reduce((s, r) => s + numero(r.costo_usd), 0);
   const viajes = new Set(filas.map((r) => r.viaje_id).filter(Boolean));
-  const porFase: Record<string, number> = {};
-  for (const r of filas) porFase[r.fase as string] = round6((porFase[r.fase as string] ?? 0) + numero(r.costo_usd));
+  // La MISMA agregación que usa la consola de superadmin — ver `agregarPorFase`.
+  const porFase = Object.fromEntries(agregarPorFase(filas).map((f) => [f.fase, f.costoUsd]));
   return {
     estado: 'medido',
-    totalUsd: round6(totalUsd),
+    totalUsd: redondearUsd(totalUsd),
     liquidaciones: viajes.size,
     // Dividir entre cero viajes daba 0, y un promedio de $0 por liquidación se
     // lee como "cada liquidación sale gratis". Si no hay denominador, no hay
     // promedio.
-    costoPromedioPorLiquidacion: viajes.size ? round6(totalUsd / viajes.size) : null,
+    costoPromedioPorLiquidacion: viajes.size ? redondearUsd(totalUsd / viajes.size) : null,
     tokensIn: filas.reduce((s, r) => s + numero(r.tokens_in), 0),
     tokensOut: filas.reduce((s, r) => s + numero(r.tokens_out), 0),
     registros: filas.length,
@@ -296,6 +348,69 @@ function ilegible(tenantId: string, err: string): ResumenCosto {
   return { estado: 'no_medido', err };
 }
 
-function round6(n: number): number {
+/**
+ * LA regla de redondeo del costo de modelo, para todo el repo.
+ *
+ * Seis decimales y no dos: una llamada de OCR cuesta fracciones de centavo y un
+ * mensaje de WhatsApp USD 0.008. `round2` sobre estas cifras convierte en $0.00
+ * casi todo lo que no sea un agregado grande — y el número que sale de aquí es
+ * con el que se fija el precio del producto.
+ *
+ * NO es `round2` con otro exponente por casualidad: son dos monedas distintas.
+ * `round2` (`formato.ts`) redondea PESOS a centavos, que es la unidad más chica
+ * que existe en un CFDI. Aquí no hay unidad más chica: hay un precio por token.
+ */
+export function redondearUsd(n: number): number {
   return Math.round(n * 1e6) / 1e6;
+}
+
+export interface CostoPorFase {
+  fase: string;
+  /** Cuántas filas de `llm_costo` cayeron en esa fase. */
+  n: number;
+  costoUsd: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CÓMO SE SUMA `llm_costo` POR FASE. UNA SOLA VEZ.
+//
+// BAJO de la auditoría 10 (arquitectura). Había DOS agregadores de la misma
+// tabla, con semántica distinta y sin que nada los atara:
+//
+//   costos.ts     `getResumenCosto` — por fase, `round6`, unión discriminada de
+//                 tres estados para que no se pueda pintar un 0 que nadie midió.
+//                 Consumidores fuera de su propio archivo y sus pruebas: CERO.
+//   negocio.ts:50 la misma agregación sobre la misma tabla, con `round2` y sin
+//                 la distinción. Es la que alimenta la ÚNICA pantalla que hoy
+//                 enseña costo.
+//
+// Es decir: `costos.ts` parecía la capa de costo y no lo era para nadie. El
+// cambio que lo hacía estallar está escrito en el roadmap del propio archivo
+// («para el panel: margen real»): el día que la flota vea su costo habría dos
+// funciones sumando `llm_costo` por fase, con distinto redondeo y distinto
+// contrato de error. Y si cambia la atribución —p. ej. usar `liquidacion_id`
+// en vez de `viaje_id`, que `vincularCostosALiquidacion` ya escribe— se
+// arreglaría en el archivo que se llama `costos.ts` y `/admin` seguiría con su
+// copia: dos cifras distintas para «cuánto costó esto».
+//
+// Ahora las dos pasan por aquí. El agregador es PURO —recibe filas, no
+// consulta— para que cada llamador siga trayéndolas como le toca: el del tenant
+// con `.eq('tenant_id', …)`, el de la consola cruzando todos los tenants.
+// ═══════════════════════════════════════════════════════════════════════════
+export function agregarPorFase(filas: Array<{ fase?: unknown; costo_usd?: unknown }>): CostoPorFase[] {
+  const acc = new Map<string, { n: number; costoUsd: number }>();
+  for (const f of filas) {
+    const fase = String(f.fase ?? '');
+    const n = Number(f.costo_usd);
+    const cur = acc.get(fase) ?? { n: 0, costoUsd: 0 };
+    cur.n += 1;
+    // Un NaN no se suma pero la fila SÍ se cuenta: `registrarCosto` ya se niega
+    // a escribirlos, y si uno llegó, esconder la llamada además de su costo
+    // convierte un dato roto en un dato ausente.
+    cur.costoUsd += Number.isFinite(n) ? n : 0;
+    acc.set(fase, cur);
+  }
+  return [...acc.entries()]
+    .map(([fase, v]) => ({ fase, n: v.n, costoUsd: redondearUsd(v.costoUsd) }))
+    .sort((a, b) => b.costoUsd - a.costoUsd);
 }

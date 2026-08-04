@@ -46,6 +46,26 @@ export function esVinculante(j: Jerarquia): boolean {
  */
 export type EstadoVerificacion = 'verificado_fuente_primaria' | 'evidencia_corroborante' | 'sin_verificar';
 
+/**
+ * Qué puede hacer el producto con una ficha, según su estado. Es la tercera
+ * columna de la tabla de `normas/README.md`, literal:
+ *
+ *   | `verificado_fuente_primaria` | ... | **Sí** |
+ *   | `evidencia_corroborante`     | ... | Sí, condicionado |
+ *   | `sin_verificar`              | ... | **No.** Marcar como pendiente |
+ *
+ * AUDITORÍA 10, MEDIO (fiscal): existe porque `tools.ts` mandaba al agente un
+ * BOOLEANO (`estado !== 'sin_verificar'`) que colapsaba los tres estados en dos,
+ * y el que se perdía era el del medio. `lisr-27-fr-III` —la norma que funda
+ * `combustible_efectivo`, `efectivo_sobre_tope` y `sin_cfdi`, cuya ficha dice
+ * «NO se leyó en diputados.gob.mx»— le llegaba al modelo igual que una
+ * transcrita del PDF de la Cámara de Diputados: como permiso para afirmar
+ * tajante. El catálogo tiene tres estados; el runtime tiene que verlos.
+ */
+export function puedeAfirmar(e: EstadoVerificacion): 'si' | 'condicionado' | 'no' {
+  return e === 'verificado_fuente_primaria' ? 'si' : e === 'evidencia_corroborante' ? 'condicionado' : 'no';
+}
+
 export interface Norma {
   id: string;
   instrumento?: string;
@@ -203,7 +223,7 @@ export const NORMAS: Record<string, Norma> = {
     titulo: "Estímulo de IEPS de diésel para transporte, y estímulo del 50% de peaje",
     citas: ["LIF 2026 Art. 20", "LIF 2026 Art. 20-A", "LIF Art. 20-A fr. IV"],
     jerarquia: 1,
-    estado: "verificado_fuente_primaria",
+    estado: "evidencia_corroborante",
     ficha: "normas/lif-2026-20-A.yaml",
   },
   'lisr-27-fr-III': {
@@ -225,7 +245,7 @@ export const NORMAS: Record<string, Norma> = {
     titulo: "Viáticos y gastos de viaje — no deducibles y tope de alimentación",
     citas: ["LISR 28-V"],
     jerarquia: 1,
-    estado: "verificado_fuente_primaria",
+    estado: "evidencia_corroborante",
     ficha: "normas/lisr-28-V.yaml",
   },
   'liva-art-5': {

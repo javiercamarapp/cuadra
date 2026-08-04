@@ -51,7 +51,8 @@ export const BASE_ESTIMULO_PEAJE =
 /**
  * Las cuatro condiciones de elegibilidad del estímulo de peaje, transcritas de
  * `estimulo_peaje.condiciones` en `normas/lif-2026-20-A.yaml`
- * (`verificado_fuente_primaria`).
+ * (`evidencia_corroborante`: su nota admite dos reproducciones del articulado,
+ * no el DOF — auditoría 10).
  *
  * El motor no conoce NINGUNA: no sabe los ingresos de la flota, ni si es parte
  * relacionada, ni si la caseta pertenece a la Red Nacional de Autopistas de
@@ -80,13 +81,53 @@ export const NOTA_LITROS_DIESEL =
   'para que su contador aplique la cuota fechada.';
 
 /**
+ * Lo que condiciona la DEDUCIBILIDAD para ISR de un gasto condiciona también su
+ * IVA, porque LIVA 5-I no pone dos requisitos: pone uno solo.
+ *
+ * `normas/liva-5.yaml` (`verificado_fuente_primaria`), fracción I, literal:
+ *
+ *   «...se consideran estrictamente indispensables las erogaciones efectuadas
+ *   por el contribuyente QUE SEAN DEDUCIBLES PARA LOS FINES DEL IMPUESTO SOBRE
+ *   LA RENTA, aun cuando no se esté obligado al pago de este último impuesto.»
+ *
+ * Estos tres veredictos NO bajan la cubeta de deducibilidad (son "el sistema no
+ * verifica un requisito", no "el requisito falta"), y por eso mismo NO pueden
+ * estar en `SIN_ACREDITAMIENTO` de `engine.ts`: eso pondría el IVA en CERO en
+ * todo diésel bien facturado —`permiso_cre_no_verificable` se dispara SIEMPRE
+ * que hay XML— y le quitaría al cliente un acreditamiento que la ley le
+ * concede. La cifra se queda; lo que cambia es que el papel deja de afirmarla
+ * entera, igual que ya hace `deducibilidad.ts` con el renglón de al lado.
+ *
+ * El texto de cada motivo es el HECHO, no el nombre interno del veredicto: el
+ * contralor lee el pie, no el union de `types/cuadra.ts`.
+ */
+const CONDICIONAN_LA_DEDUCCION_ISR: Record<string, string> = {
+  permiso_cre_no_verificable: 'el permiso CRE vigente del proveedor de combustible, que el sistema no valida (LISR 27-III y RFA 2026 regla 2.9)',
+  complemento_no_verificable: 'el complemento de hidrocarburos del CFDI de combustible, que sin el XML no se puede verificar',
+  alimentacion_sin_soporte: 'el comprobante de hospedaje o transporte que ampare la alimentación (LISR 28-V)',
+};
+
+/** Cómo se dice, en el papel, que el IVA cuelga de la deducción para ISR. */
+export function pieIvaAtadoAlIsr(motivos: string[]): string {
+  return 'LIVA art. 5, fr. I define "estrictamente indispensable" como lo DEDUCIBLE para los fines del ISR: no son dos requisitos, es uno. '
+    + `Esta liquidación depende de ${motivos.join('; y de ')} — mientras eso no se confirme, este IVA tampoco está sostenido. Confírmelo con su contador.`;
+}
+
+/**
  * Devuelve los renglones de la sección, o `null` si no hay nada que acreditar.
  *
  * `piesGenerales` va debajo del bloque entero (aplica a todos los renglones);
  * lo específico de un renglón va en su propio `pies`.
  */
 export function filasAcreditables(
-  liq: Pick<Liquidacion, 'ivaAcreditable' | 'peajeAcreditable' | 'litrosDieselAcreditables'>,
+  liq: Pick<Liquidacion, 'ivaAcreditable' | 'peajeAcreditable' | 'litrosDieselAcreditables'> & {
+    // Estructural y no `Liquidacion['diferencias']` por la misma razón que en
+    // `filasDeducibilidad`: hay llamadores que traen `tipo` como `string` suelto
+    // (una fila ya leída de la base), y lo único que se hace aquí es comparar
+    // el texto. Opcional: quien solo prueba el reparto de cifras no tiene por
+    // qué construir un arreglo vacío a mano.
+    diferencias?: { tipo: string }[];
+  },
 ): { filas: FilaAcreditable[]; piesGenerales: string[] } | null {
   const litros = liq.litrosDieselAcreditables ?? 0;
   const filas: FilaAcreditable[] = [];
@@ -100,12 +141,26 @@ export function filasAcreditables(
     });
   }
   if (liq.ivaAcreditable > 0) {
-    filas.push({
-      label: 'IVA acreditable (LIVA art. 5)',
-      valor: mxn(liq.ivaAcreditable),
-      tono: 'bueno',
-      pies: [],
-    });
+    // AUDITORÍA 10, MEDIO (fiscal): este renglón salía en VERDE en la misma hoja
+    // donde 'Deducible para ISR' salía condicionado POR EL MISMO HECHO. Medido
+    // con el diésel de $5,800 del hallazgo: ISR `condicionado` con su pie, IVA
+    // $689.66 `bueno` y `pies: []`.
+    const motivos = [...new Set((liq.diferencias ?? []).map((d) => d.tipo))]
+      .map((t) => CONDICIONAN_LA_DEDUCCION_ISR[t])
+      .filter((m): m is string => !!m);
+    filas.push(motivos.length
+      ? {
+          label: 'IVA acreditable (LIVA art. 5) — sujeto a la deducibilidad para ISR',
+          valor: mxn(liq.ivaAcreditable),
+          tono: 'condicionado',
+          pies: [pieIvaAtadoAlIsr(motivos)],
+        }
+      : {
+          label: 'IVA acreditable (LIVA art. 5)',
+          valor: mxn(liq.ivaAcreditable),
+          tono: 'bueno',
+          pies: [],
+        });
   }
   if (liq.peajeAcreditable > 0) {
     filas.push({

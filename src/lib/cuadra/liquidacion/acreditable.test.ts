@@ -65,7 +65,11 @@ describe('filasAcreditables — el peaje deja de afirmarse solo', () => {
     expect(peaje.label).toContain('sujeto a elegibilidad');
   });
 
-  it('el IVA sí se sostiene entero: es la única cifra en verde', () => {
+  // AUDITORÍA 10: el título decía "el IVA sí se sostiene entero" a secas y eso
+  // ya no es cierto siempre — depende de que no haya nada condicionando la
+  // deducción para ISR del mismo viaje (LIVA 5-I; ver el bloque de abajo). Sin
+  // diferencias, que es este caso, sigue siendo la única cifra en verde.
+  it('sin nada condicionando la deducción, el IVA es la única cifra en verde', () => {
     const r = filasAcreditables(liq({ ivaAcreditable: 689.66, peajeAcreditable: 500, litrosDieselAcreditables: 200 }))!;
     const buenas = r.filas.filter((f) => f.tono === 'bueno').map((f) => f.label);
     expect(buenas).toEqual(['IVA acreditable (LIVA art. 5)']);
@@ -114,5 +118,93 @@ describe('filasAcreditables — el peaje deja de afirmarse solo', () => {
     const src = readFileSync(new URL('./pdf.ts', import.meta.url), 'utf8');
     expect(src).toContain('filasAcreditables');
     expect(src).not.toContain("acred('Estímulo de peaje");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDITORÍA 10 · MEDIO (fiscal, reincidente) — "el renglón 'IVA acreditable
+// (LIVA art. 5)' sale VERDE en la misma hoja donde el de ISR sale
+// CONDICIONADO por el mismo hecho".
+//
+// `normas/liva-5.yaml` (`verificado_fuente_primaria`), fracción I, literal:
+//
+//   «...se consideran estrictamente indispensables las erogaciones efectuadas
+//   por el contribuyente QUE SEAN DEDUCIBLES PARA LOS FINES DEL IMPUESTO SOBRE
+//   LA RENTA, aun cuando no se esté obligado al pago de este último impuesto.»
+//
+// y su propia `nota_verificacion`: «El IVA solo es acreditable si la erogación
+// es DEDUCIBLE para ISR. No es un requisito aparte: la ley DEFINE
+// "estrictamente indispensable" como "deducible para los fines del ISR"».
+//
+// Medido antes del arreglo, con el diésel de $5,800 del hallazgo (XML
+// verificado, clave 15101505, complemento presente, IVA $689.66):
+//
+//   DEDUC → 'Deducible para ISR — sujeto a permiso CRE vigente' $5,800 'condicionado'
+//   ACRED → 'IVA acreditable (LIVA art. 5)'                     $689.66 'bueno' → VERDE
+//
+// El mismo hecho —un requisito de la DEDUCCIÓN que el motor no verifica—
+// condicionaba una cifra y dejaba la otra afirmada sin una sola reserva.
+//
+// EL ARREGLO ES DE PRESENTACIÓN, NO DE CIFRA. Meter estos tres tipos en
+// `SIN_ACREDITAMIENTO` (`engine.ts`) pondría el IVA en CERO en todo diésel bien
+// facturado —incluido el del demo, donde `permiso_cre_no_verificable` se
+// dispara SIEMPRE que hay XML— y sería peor que el hallazgo: se le quitaría al
+// cliente un acreditamiento que la ley sí le concede. Lo que la ley pide es que
+// el papel no afirme entero lo que depende de algo sin verificar.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('filasAcreditables — el IVA no se afirma solo cuando el ISR va condicionado', () => {
+  const dieselConPermisoSinVerificar = () => cuadrarViaje({
+    viajeId: 'v-iva', anticipo: 5800, politica: [{ concepto: 'diesel' }],
+    hidrocarburos: { claves: ['15101505'], unidad: 'LTR', vigenteDesde: '2026-04-24' },
+    estimulos: { peajeFactor: 0.5, viaticosTopeFiscalDiarioMxn: 750, efectivoTopeMxn: 2000, clavesDieselIeps: ['15101505'] },
+    gastos: [{
+      id: 'g1', concepto: 'diesel', monto: 5800, fecha: '2026-07-15', cfdiUuid: 'uuid-1',
+      rfcReceptor: 'REC010101AA1', xmlVerificado: true, claveProdServ: '15101505', claveUnidad: 'LTR',
+      tipoComprobante: 'I', complementoHidrocarburos: true,
+      formaPago: '03', ivaTraslado: 689.66, iepsTraslado: 400, ocrExtra: { litros: 200 },
+    }],
+  });
+
+  it('permiso CRE sin verificar: el IVA deja de salir en verde y dice de qué depende', () => {
+    const liq = dieselConPermisoSinVerificar();
+    // Premisa del escenario: la cifra NO cambia, solo cómo se presenta.
+    expect(liq.ivaAcreditable).toBe(689.66);
+    expect(liq.diferencias.some((d) => d.tipo === 'permiso_cre_no_verificable')).toBe(true);
+
+    const iva = filasAcreditables(liq)!.filas.find((f) => f.label.startsWith('IVA acreditable'))!;
+    expect(iva.valor).toBe('$689.66');
+    expect(iva.tono, 'el IVA sigue afirmándose entero mientras el ISR va condicionado').toBe('condicionado');
+    // La condición también en el LABEL: el renglón es lo que se skimmea, mismo
+    // criterio que el peaje y que 'Deducible para ISR — sujeto a permiso CRE'.
+    expect(iva.label).toMatch(/sujeto a la deducibilidad para ISR/i);
+    // Y el pie tiene que decir POR QUÉ, con la norma que ata las dos cifras.
+    expect(iva.pies.join(' ')).toContain('LIVA art. 5');
+    expect(iva.pies.join(' ')).toMatch(/deducible para .*ISR/i);
+    expect(iva.pies.join(' ')).toMatch(/permiso CRE/i);
+  });
+
+  it('el mismo criterio aplica al complemento no verificable y a la alimentación sin soporte', () => {
+    for (const tipo of ['complemento_no_verificable', 'alimentacion_sin_soporte']) {
+      const r = filasAcreditables({ ...liq({ ivaAcreditable: 100 }), diferencias: [{ tipo }] })!;
+      const iva = r.filas.find((f) => f.label.startsWith('IVA acreditable'))!;
+      expect(iva.tono, `${tipo} no condiciona el IVA`).toBe('condicionado');
+      expect(iva.pies.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('sin ninguna condición abierta el IVA SIGUE en verde y sin pies: la cifra no se castiga de más', () => {
+    const r = filasAcreditables({ ...liq({ ivaAcreditable: 689.66 }), diferencias: [{ tipo: 'sobre_politica' }] })!;
+    const iva = r.filas.find((f) => f.label.startsWith('IVA acreditable'))!;
+    expect(iva.tono).toBe('bueno');
+    expect(iva.label).toBe('IVA acreditable (LIVA art. 5)');
+    expect(iva.pies).toEqual([]);
+  });
+
+  it('el arreglo es de PRESENTACIÓN: el motor sigue acreditando el IVA del diésel bien facturado', () => {
+    // El guardarraíl del hallazgo. Si alguien "arregla" esto metiendo los tres
+    // tipos en `SIN_ACREDITAMIENTO`, el demo del 6-ago imprime IVA $0.00 sobre
+    // un CFDI impecable y esta prueba se pone roja.
+    expect(dieselConPermisoSinVerificar().ivaAcreditable).toBe(689.66);
   });
 });

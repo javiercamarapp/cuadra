@@ -7,7 +7,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { randomUUID } from 'crypto';
-import { registerTool } from '@/lib/llm/tool-executor';
+import { registerTool, ToolErrorVisible } from '@/lib/llm/tool-executor';
 import { cuadrarDesdeDB } from './cuadre/desde_db';
 import { getViaje, getOperador, saveLiquidacion } from './repo';
 import { getConfig } from './config';
@@ -19,7 +19,35 @@ import { normasDe, normasDePolitica } from './normas/por_diferencia';
 import { getAcumuladoCombustible } from './repo';
 import { evaluarTope15 } from './periodo/combustible';
 import { avisoTope15 } from './periodo/aviso';
-import { NORMAS, esVinculante } from './normas/indice';
+import { NORMAS, esVinculante, puedeAfirmar } from './normas/indice';
+import { sanitizarTexto } from './intake/sanitizar';
+
+// ── EL RESULTADO DE UNA TOOL ES CONTEXTO DEL MODELO ─────────────────────────
+//
+// AUDITORÍA 10, MEDIO. `sanitizar.ts` se escribió para lo que se PERSISTE y lo
+// que se ENSEÑA, y nadie declaró que `ocrExtra` también se REMITE al modelo: el
+// resultado de esta tool se serializa con `JSON.stringify` y se empuja como
+// mensaje `role:'tool'`, que el modelo lee como dato del sistema.
+//
+// Dos campos llegaban crudos hasta ahí: `fechaRaw` (salida del modelo de visión,
+// schema sin `max` ni regex) y `codigoBarras` (lo que decodifica zxing; un
+// PDF417 impreso al pie de un comprobante cabe con 1,100 caracteres de texto
+// libre). Quien imprime el papel no es necesariamente el chofer — es la
+// gasolinera, o quien le venda un ticket falso—, y así decidía contenido y
+// tamaño dentro del prompt del turno que cierra el dinero.
+//
+// Se sanea el TEXTO y sólo el texto: litros, IVA y montos son datos y siguen
+// intactos, porque de ellos vive el cuadre.
+const TEXTO_OCR_MAX = 120;
+function sanearOcrExtra(extra: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(extra)) {
+    if (typeof v !== 'string') { out[k] = v; continue; }
+    const limpio = sanitizarTexto(v, TEXTO_OCR_MAX);
+    if (limpio !== undefined) out[k] = limpio;
+  }
+  return out;
+}
 
 // ── consultar_politica ──────────────────────────────────────────────────────
 registerTool('consultar_politica', {
@@ -32,6 +60,7 @@ registerTool('consultar_politica', {
     },
   },
   handler: async (_args, ctx) => {
+    ctx.signal?.throwIfAborted();
     const config = await getConfig(ctx.tenantId);
     // ── EL PERMISO DE CITAR TIENE QUE VIAJAR CON LA POLÍTICA ────────────────
     //
@@ -68,7 +97,21 @@ registerTool('consultar_politica', {
         norma_id: id,
         cita: NORMAS[id].citas[0],
         jerarquia: NORMAS[id].jerarquia,
-        verificada: NORMAS[id].estado !== 'sin_verificar',
+        // EL CATÁLOGO TIENE TRES ESTADOS Y ESTO MANDABA DOS. Era
+        // `verificada: NORMAS[id].estado !== 'sin_verificar'`, un booleano que
+        // juntaba `verificado_fuente_primaria` con `evidencia_corroborante` — y
+        // el del medio es el que trae el matiz. `normas/README.md` le asigna
+        // «Sí, condicionado», no «Sí»: `lisr-27-fr-III`, que funda
+        // `combustible_efectivo`, `efectivo_sobre_tope` y `sin_cfdi`, dice en su
+        // propia ficha «NO se leyó en diputados.gob.mx» y le llegaba al agente
+        // igual que `cff-30`, transcrita del PDF oficial.
+        //
+        // Van los dos campos a propósito: `verificacion` es el hecho auditable
+        // —el contralor puede abrir el YAML y leer el mismo valor— y `afirmar`
+        // es lo accionable, para que el modelo no tenga que interpretar la tabla
+        // del README por su cuenta.
+        verificacion: NORMAS[id].estado,
+        afirmar: puedeAfirmar(NORMAS[id].estado),
         vinculante: esVinculante(NORMAS[id].jerarquia),
       })),
     };
@@ -88,7 +131,8 @@ registerTool('cuadrar_viaje', {
     },
   },
   handler: async (_args, ctx) => {
-    if (!ctx.viajeId) throw new Error('sin viaje activo');
+    ctx.signal?.throwIfAborted();
+    if (!ctx.viajeId) throw new ToolErrorVisible('sin viaje activo');
     const liq = await computeCuadre(ctx.tenantId, ctx.viajeId);
 
     // LA CAPA DE PERIODO. El motor es puro y evalúa UN viaje, así que marca el
@@ -127,8 +171,11 @@ registerTool('cuadrar_viaje', {
         cita: NORMAS[id].citas[0],
         jerarquia: NORMAS[id].jerarquia,
         // Que el agente sepa si puede AFIRMAR o tiene que condicionar. Una ficha
-        // sin verificar no sostiene una afirmación tajante.
-        verificada: NORMAS[id].estado !== 'sin_verificar',
+        // sin verificar no sostiene una afirmación tajante — y una corroborada
+        // con fuentes secundarias tampoco la sostiene ENTERA: son tres estados,
+        // no dos (ver el comentario largo en `consultar_politica`).
+        verificacion: NORMAS[id].estado,
+        afirmar: puedeAfirmar(NORMAS[id].estado),
         vinculante: esVinculante(NORMAS[id].jerarquia),
       })),
     };
@@ -138,6 +185,23 @@ registerTool('cuadrar_viaje', {
 // ── guardar_liquidacion (MUTACIÓN) ──────────────────────────────────────────
 registerTool('guardar_liquidacion', {
   isMutation: true,
+  // ── EL SNAPSHOT ES PARA LA GUARDIA, NO PARA EL MODELO ──────────────────────
+  //
+  // AUDITORÍA 10, MEDIO. `liq` tiene que viajar (ver el comentario del `return`),
+  // pero viajaba por el MISMO canal que alimenta el prompt: con 12 comprobantes
+  // son 15,649 bytes (~4,000 tokens) serializados en el mensaje `role:'tool'`
+  // para que el modelo use 132 —los cinco campos de aquí abajo—, pagados otra
+  // vez en cada ronda posterior al cierre (~$0.008 por ronda a $2/1M de entrada,
+  // 16-27% del objetivo de $0.03-0.05 por liquidación de `models.ts`), y con 12
+  // RFC de emisor, 12 de receptor, 12 UUID y 12 rutas de foto saliendo al
+  // proveedor sin que nadie los lea. ZDR no es minimización; `models.ts` fija
+  // las dos.
+  // Lista BLANCA y no `delete liq`: así, el día que el cierre devuelva un campo
+  // nuevo, ese campo no se cuela al prompt sólo por existir.
+  paraModelo: (r) => {
+    const { liquidacion_id, estatus, diferencia, pdf_generado, pdf_contralor_generado } = r as Record<string, unknown>;
+    return { liquidacion_id, estatus, diferencia, pdf_generado, pdf_contralor_generado };
+  },
   schema: {
     type: 'function',
     function: {
@@ -147,7 +211,17 @@ registerTool('guardar_liquidacion', {
     },
   },
   handler: async (_args, ctx) => {
-    if (!ctx.viajeId) throw new Error('sin viaje activo');
+    // ── EL RELOJ DEL TURNO TAMBIÉN ES DE LAS TOOLS ───────────────────────────
+    //
+    // `run.ts` construye `ctx.signal` desde el AbortController del turno (40s) y
+    // ningún handler lo miraba: si el turno se agotaba, `generateWithTools`
+    // abortaba y esta tool seguía contra su propio reloj — dos PDF generados,
+    // dos subidas a Storage y una liquidación escrita para un turno que ya nadie
+    // va a leer. Se mira al ENTRAR y ANTES DE ESCRIBIR, nunca después: una vez
+    // que `saveLiquidacion` corrió, abortar no desharía nada y sí convertiría un
+    // cierre bueno en un error.
+    ctx.signal?.throwIfAborted();
+    if (!ctx.viajeId) throw new ToolErrorVisible('sin viaje activo');
     const [liq, viaje, operador] = await Promise.all([
       computeCuadre(ctx.tenantId, ctx.viajeId),
       getViaje(ctx.viajeId, ctx.tenantId),
@@ -159,6 +233,7 @@ registerTool('guardar_liquidacion', {
     // filtro que su mensaje de WhatsApp. Sin esta separación, la defensa de
     // `SOLO_CONTRALOR` en el texto no servía de nada: al chofer le llegaban los
     // veredictos por el adjunto, en un documento que además puede reenviar.
+    ctx.signal?.throwIfAborted();
     let pdfPath: string | undefined;
     let pdfOperadorPath: string | undefined;
     try {
@@ -206,7 +281,15 @@ registerTool('guardar_liquidacion', {
       // Se manda el snapshot completo para que la guardia lo REUSE en vez de
       // recalcular — el mismo principio que ya aplica el resto del sistema: una
       // sola fotografía de la verdad por cierre, nunca dos.
-      liq,
+      //
+      // Sale con el texto del papel saneado (ver `sanearOcrExtra`): las cifras
+      // son las mismas que se imprimieron y se persistieron —la guardia sigue
+      // narrando el MISMO cuadre—, pero ningún texto de un tercero cruza esta
+      // frontera sin cap ni charset.
+      liq: {
+        ...liq,
+        gastos: liq.gastos.map((g) => (g.ocrExtra ? { ...g, ocrExtra: sanearOcrExtra(g.ocrExtra) } : g)),
+      },
     };
   },
 });

@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
 import type { DatosIntegral } from './privacidad';
 import { acotada } from './presupuesto';
+import { round2 } from '@/lib/formato';
 import type { Gasto, Liquidacion, Viaje, Operador } from '@/types/cuadra';
 import type { CodigoPendiente } from './intake/emparejar';
 
@@ -107,12 +108,38 @@ export async function listOperadores(tenantId: string): Promise<Array<{ id: stri
  * tirantes, no el único candado.
  */
 export async function reasignarOperador(tenantId: string, viajeId: string, operadorId: string): Promise<void> {
-  const { error } = await acotada(supabaseAdmin()
+  // EL VALOR SE VALIDA AQUÍ, no en el `<select>`. Ese selector lista solo los
+  // choferes del tenant, pero es una lista en el navegador: quien reenvíe la
+  // acción manda el `operadorId` que quiera, y la FK
+  // `viaje.operador_id references operador(id)` acepta cualquier operador de
+  // CUALQUIER flota. Con un UUID de otra flota, el viaje quedaba apuntando a un
+  // chofer ajeno — y la policy `operador_ve_su_viaje` de la 0045 filtra por
+  // `operador_id` SIN `tenant_id`, así que ese chofer abría /mis-viajes y leía
+  // el viaje, los gastos y la liquidación de otra flota (auditoría 10, ALTO de
+  // backend). Es el único punto del repo donde una escritura de aplicación
+  // podía romper el aislamiento multi-tenant.
+  const { data: dueño, error: errDueño } = await acotada(supabaseAdmin()
+    .from('operador')
+    .select('id')
+    .eq('id', operadorId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle(), 'reasignarOperador.pertenencia');
+  if (errDueño) throw new Error(`reasignarOperador: ${errDueño.message}`);
+  if (!dueño) throw new Error(`reasignarOperador: el operador ${operadorId} no pertenece al tenant ${tenantId}`);
+
+  const { data, error } = await acotada(supabaseAdmin()
     .from('viaje')
     .update({ operador_id: operadorId })
     .eq('id', viajeId)
-    .eq('tenant_id', tenantId), 'reasignarOperador');
+    .eq('tenant_id', tenantId)
+    .select('id'), 'reasignarOperador');
   if (error) throw new Error(`reasignarOperador: ${error.message}`);
+  // Sin mirar filas afectadas, un `viajeId` que no empata (viaje borrado,
+  // tenant equivocado) NO lanzaba: el server action redirigía como si hubiera
+  // funcionado y el panel seguía enseñando el chofer anterior, sin un log.
+  if (!data || data.length === 0) {
+    throw new Error(`reasignarOperador: no se reasignó ninguna fila (viaje ${viajeId}, tenant ${tenantId})`);
+  }
 }
 
 export async function addGasto(tenantId: string, viajeId: string, g: Gasto): Promise<void> {
@@ -805,5 +832,9 @@ export async function getAcumuladoCombustible(
     throw new Error(`getAcumuladoCombustible: solo se leyeron ${leidas} de ${esperadas} cargas del ejercicio ${ejercicio}`);
   }
 
-  return { efectivo: Math.round(efectivo * 100) / 100, totalCombustible: Math.round(totalCombustible * 100) / 100 };
+  // `round2` de `formato.ts`, no `Math.round(x*100)/100` a mano: esta cifra es
+  // el acumulado de efectivo del ejercicio que dispara la alerta del tope RFA
+  // 2026 2.9 (`periodo/combustible.ts`), y redondear distinto que el resto del
+  // dinero es cómo el aviso salta —o no— por un centavo (auditoría 10, BAJO).
+  return { efectivo: round2(efectivo), totalCombustible: round2(totalCombustible) };
 }

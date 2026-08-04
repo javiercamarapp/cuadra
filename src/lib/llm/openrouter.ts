@@ -55,10 +55,28 @@ const FALLBACK: Record<string, string> = {
   'google/gemini-3.6-flash': 'anthropic/claude-haiku-4.5',
   'google/gemini-3.5-flash-lite': 'openai/gpt-5.6-luna',
   'anthropic/claude-sonnet-5': 'openai/gpt-5.6-terra',
+  // Opus ya no es el default de ningún rol (se retiró `cuadre_fallback`, que
+  // nadie ejecutaba), pero esta tabla se llavea por SLUG y cualquier rol puede
+  // apuntarse a él por env (`CUADRA_MODEL_CUADRE=anthropic/claude-opus-5`). Por
+  // eso su fallback —y su precio en PRICES— se quedan: no son entradas muertas,
+  // son la red de la configuración.
   'anthropic/claude-opus-5': 'anthropic/claude-sonnet-5',
 };
 
 export function isTransientError(err: unknown): boolean {
+  // ESTO CLASIFICA FALLOS DEL TRANSPORTE, Y HAY DOS QUE NUNCA LO SON.
+  //
+  // `StructuredError` (y su hija `TruncatedError`) las fabricamos NOSOTROS
+  // DESPUÉS de que el proveedor respondió bien, y `SyntaxError` sale de nuestro
+  // `JSON.parse`. Clasificarlos por texto era un falso positivo real: el mensaje
+  // del `SyntaxError` lleva el offset ("Unterminated string in JSON at position
+  // 536"), la regex de tres dígitos lo leía como código de estado, y cualquier
+  // JSON de OCR roto en un offset de 500-599 —o 408, 429, 502-504— disparaba una
+  // llamada de visión completa contra el fallback, que iba a fallar por lo
+  // mismo. Un ticket produce ~500 bytes de JSON: la ventana no es exótica. Y
+  // dejaba en el log un `llm.fallback` diciendo "proveedor caído" con el
+  // proveedor sano.
+  if (err instanceof StructuredError || err instanceof SyntaxError) return false;
   // POR TIPO ANTES QUE POR TEXTO. El SDK de OpenAI aplasta CUALQUIER fallo de
   // conexión —DNS, TCP rechazado, TLS, `fetch failed` de undici— en un
   // `APIConnectionError` con el mensaje literal "Connection error."; el detalle
@@ -92,6 +110,24 @@ const PRICES: Record<string, [number, number]> = {
 };
 
 /**
+ * El slug SIN el sufijo de proveedor con el que OpenRouter a veces responde
+ * (`:nitro`, `:floor`).
+ *
+ * El precio ya lo ignoraba; la IDENTIDAD no. Como el slug que se guarda en
+ * `llm_costo.modelo` salía tal cual de `res.model`, dos liquidaciones idénticas
+ * —una respondida como `anthropic/claude-sonnet-5` y otra como
+ * `anthropic/claude-sonnet-5:floor`— producían DOS renglones del mismo modelo en
+ * Model Ops, y lo mismo dentro de cada fase en `getCostoPorFaseModelo` (llave
+ * `fase::modelo`). El total no cambia; el desglose sí, que es justo la columna
+ * con la que se va a fijar el precio por liquidación.
+ *
+ * `:floor` y `:nitro` son enrutamiento del gateway, no modelos distintos.
+ */
+export function normalizarSlug(model: string): string {
+  return model.split(':')[0];
+}
+
+/**
  * Costo en USD de una llamada.
  *
  * Un modelo sin precio NO cuesta $0. Antes devolvía 0 en silencio, y eso pasa de
@@ -105,7 +141,7 @@ const PRICES: Record<string, [number, number]> = {
  */
 export function calcCost(model: string, tokIn: number, tokOut: number): number {
   // El sufijo de proveedor no cambia el precio del modelo.
-  const limpio = model.split(':')[0];
+  const limpio = normalizarSlug(model);
   const r = PRICES[model] ?? PRICES[limpio];
   if (r) return (tokIn * r[0] + tokOut * r[1]) / 1_000_000;
 
@@ -121,6 +157,33 @@ export function calcCost(model: string, tokIn: number, tokOut: number): number {
 
 // OpenRouter: no retener input (compliance de datos fiscales).
 const PROVIDER_OPTS = { provider: { data_collection: 'deny' } } as const;
+
+/**
+ * Consumo atribuido al modelo que DE VERDAD respondió cada llamada.
+ *
+ * `model` + `tokensIn/Out/cost` a secas mienten en cuanto hay fallback: el
+ * consumo que se devuelve es de N llamadas a M proveedores y la etiqueta es de
+ * UNO SOLO —el último que respondió en el camino de éxito, el primario en el de
+ * error—. Con eso, `llm_costo` acaba diciendo que Anthropic consumió tokens que
+ * facturó Google, y eso es lo que /admin agrupa bajo «Costo por modelo».
+ *
+ * Invariante que las pruebas fijan: `Σ porModelo == { tokensIn, tokensOut, cost }`.
+ * Quien escriba la fila decide cuántas filas escribe; lo que ya no puede es
+ * inventarse la etiqueta.
+ */
+export type UsoPorModelo = { model: string; tokensIn: number; tokensOut: number; cost: number };
+
+/** Acumula consumo por slug, conservando el orden en que respondieron. */
+function sumarUso(mapa: Map<string, UsoPorModelo>, u: UsoPorModelo): void {
+  const previo = mapa.get(u.model);
+  if (previo) {
+    previo.tokensIn += u.tokensIn;
+    previo.tokensOut += u.tokensOut;
+    previo.cost += u.cost;
+    return;
+  }
+  mapa.set(u.model, { ...u });
+}
 
 // ── generateResponse: chat simple con fallback ──────────────────────────────
 export async function generateResponse(opts: {
@@ -144,7 +207,7 @@ export async function generateResponse(opts: {
     const text = (res.choices[0]?.message?.content ?? '').trim();
     return {
       text,
-      model: res.model || m,
+      model: normalizarSlug(res.model || m),
       tokensIn: res.usage?.prompt_tokens ?? 0,
       tokensOut: res.usage?.completion_tokens ?? 0,
       cost: calcCost(m, res.usage?.prompt_tokens ?? 0, res.usage?.completion_tokens ?? 0),
@@ -179,7 +242,7 @@ export class StructuredError extends Error {
     public cause?: unknown,
     public raw?: string,
     /** Consumo de la llamada que falló: se cobra igual, hay que contabilizarlo. */
-    public usage?: { model: string; tokensIn: number; tokensOut: number; cost: number },
+    public usage?: { model: string; tokensIn: number; tokensOut: number; cost: number; porModelo?: UsoPorModelo[] },
   ) {
     super(message);
     this.name = 'StructuredError';
@@ -199,7 +262,7 @@ export class TruncatedError extends StructuredError {
     public tokensUsados: number,
     public tope: number,
     raw?: string,
-    usage?: { model: string; tokensIn: number; tokensOut: number; cost: number },
+    usage?: { model: string; tokensIn: number; tokensOut: number; cost: number; porModelo?: UsoPorModelo[] },
   ) {
     super(message, undefined, raw, usage);
     this.name = 'TruncatedError';
@@ -225,7 +288,7 @@ export async function generateStructured<T>(opts: {
   images?: string[];
   maxTokens?: number;
   temperature?: number;
-}): Promise<{ data: T; raw: string; model: string; tokensIn: number; tokensOut: number; cost: number }> {
+}): Promise<{ data: T; raw: string; model: string; tokensIn: number; tokensOut: number; cost: number; porModelo: UsoPorModelo[] }> {
   const model = modelFor(opts.role);
   const fallback = FALLBACK[model] ?? null;
   const jsonSchema = z.toJSONSchema(opts.schema, { target: 'draft-7' }) as Record<string, unknown>;
@@ -263,13 +326,22 @@ export async function generateStructured<T>(opts: {
   // habiendo pagado dos, tres o cuatro. Likida va a cobrar por liquidación, así
   // que un costo unitario subestimado se propaga directo al precio.
   const gastado = { tokensIn: 0, tokensOut: 0, cost: 0 };
-  const cobrar = (u: { tokensIn: number; tokensOut: number; cost: number }) => {
+  // El acumulado NO es de un solo modelo: cada intento puede haberlo respondido
+  // otro proveedor. Se guarda quién gastó qué (`uso`) y quién respondió el
+  // último intento que sí volvió (`ultimoModelo`), porque la etiqueta escalar
+  // que sale a la superficie —de éxito o de error— tiene que ser ésa y no el
+  // primario de `modelFor`.
+  const uso = new Map<string, UsoPorModelo>();
+  let ultimoModelo = model;
+  const cobrar = (u: UsoPorModelo) => {
     gastado.tokensIn += u.tokensIn;
     gastado.tokensOut += u.tokensOut;
     gastado.cost += u.cost;
+    ultimoModelo = u.model;
+    sumarUso(uso, u);
   };
 
-  const attempt = async (m: string, note?: string, tope?: number): Promise<{ data: T; raw: string; model: string; tokensIn: number; tokensOut: number; cost: number }> => {
+  const attempt = async (m: string, note?: string, tope?: number): Promise<{ data: T; raw: string; model: string; tokensIn: number; tokensOut: number; cost: number; porModelo: UsoPorModelo[] }> => {
     // Si el presupuesto ya se agotó, no se paga una llamada que se va a cortar a
     // media respuesta.
     opts.signal?.throwIfAborted();
@@ -297,7 +369,7 @@ export async function generateStructured<T>(opts: {
     // contador por liquidación no reporte $0 en los intentos fallidos.
     const tokIn = res.usage?.prompt_tokens ?? 0;
     const tokOut = res.usage?.completion_tokens ?? 0;
-    const usage = { model: res.model || m, tokensIn: tokIn, tokensOut: tokOut, cost: calcCost(m, tokIn, tokOut) };
+    const usage = { model: normalizarSlug(res.model || m), tokensIn: tokIn, tokensOut: tokOut, cost: calcCost(m, tokIn, tokOut) };
     // Se cobra AQUÍ, antes de cualquier salida: pase lo que pase debajo —
     // truncado, JSON roto, schema inválido— esta llamada ya se pagó.
     cobrar(usage);
@@ -325,8 +397,10 @@ export async function generateStructured<T>(opts: {
     if (!v.success) throw new StructuredError(`Validación falló: ${v.error.message}`, v.error, raw, usage);
     // Se devuelve el ACUMULADO del turno, no el de este intento: el llamador
     // quiere saber qué costó extraer este comprobante, no qué costó el último
-    // reintento.
-    return { data: v.data, raw, model: usage.model, ...gastado };
+    // reintento. `model` es sólo la etiqueta de quién resolvió; la atribución
+    // del consumo va en `porModelo`, porque el acumulado puede ser de dos
+    // proveedores distintos.
+    return { data: v.data, raw, model: usage.model, ...gastado, porModelo: [...uso.values()] };
   };
 
   /**
@@ -336,7 +410,10 @@ export async function generateStructured<T>(opts: {
    */
   const conGastado = (e: unknown, msg: string): StructuredError => {
     const err = e instanceof StructuredError ? e : new StructuredError(msg, e);
-    err.usage = { model, ...gastado };
+    // La etiqueta es el ÚLTIMO que respondió, no el primario: cuando el fallback
+    // también falla, el consumo acumulado ya incluye el suyo y ponerle el slug
+    // del primario le atribuye a Google tokens que facturó Anthropic.
+    err.usage = { model: ultimoModelo, ...gastado, porModelo: [...uso.values()] };
     return err;
   };
 
@@ -357,7 +434,26 @@ export async function generateStructured<T>(opts: {
         // pasándolo por la escalera de "formato malo". Se relanza tal cual para
         // conservar el diagnóstico, pero con el consumo de AMBOS intentos: el
         // error trae el suyo, y el del primero se perdía.
-        if (eT instanceof TruncatedError) { eT.usage = { model, ...gastado }; throw eT; }
+        if (eT instanceof TruncatedError) { eT.usage = { model: ultimoModelo, ...gastado, porModelo: [...uso.values()] }; throw eT; }
+      }
+    }
+    // PRIMERO POR COSTO DEL REINTENTO, DESPUÉS POR TIPO DE FALLO.
+    //
+    // La escalera estaba ordenada al revés (formato → proveedor): tras un 503
+    // se ejecutaba `attempt(model, note)`, una segunda llamada COMPLETA —con la
+    // imagen del ticket adjunta— al MISMO proveedor caído, y sólo si ésa también
+    // fallaba se miraba el fallback. `getClient()` no fija `maxRetries`, así que
+    // cada `attempt()` son hasta 3 peticiones con backoff: ~2.2s tirados por
+    // foto, dentro de una invocación de 60s que ya reserva 12s para el cierre.
+    //
+    // Un 503 no se arregla repitiéndole la petición al que lo devolvió. La nota
+    // sigue viajando por si el otro proveedor es laxo con el formato.
+    if (fallback && isTransientError(e1)) {
+      logger.warn('llm.fallback', { fn: 'generateStructured', from: model, to: fallback, motivo: 'transitorio' });
+      try {
+        return await attempt(fallback, note);
+      } catch (eF) {
+        throw conGastado(eF, 'Falló generación estructurada (fallback)');
       }
     }
     // Reintento con el MISMO modelo + nota (típicamente errores de formato JSON).
@@ -366,7 +462,9 @@ export async function generateStructured<T>(opts: {
     } catch (e2) {
       // CR-5: si el fallo es transient (provider caído/429/timeout) y hay
       // fallback cross-provider, intentar con OTRO proveedor antes de rendirse.
-      if (fallback && (isTransientError(e1) || isTransientError(e2))) {
+      // Aquí sólo puede serlo `e2`: un `e1` transitorio ya salió por el atajo de
+      // arriba sin gastar esta llamada.
+      if (fallback && isTransientError(e2)) {
         logger.warn('llm.fallback', { fn: 'generateStructured', from: model, to: fallback });
         try {
           return await attempt(fallback, note);
@@ -380,9 +478,30 @@ export async function generateStructured<T>(opts: {
 }
 
 // ── generateWithTools: ciclo agéntico completo ──────────────────────────────
-export type ToolExecResult = { success: boolean; result: unknown; error?: string; durationMs: number };
+/**
+ * `result` es para el LLAMADOR; `paraModelo`, si existe, es lo único que ve el
+ * MODELO.
+ *
+ * Un solo `result` servía a dos consumidores con necesidades opuestas: la
+ * guardia de cifras necesita el snapshot completo del cierre (lo REUSA para no
+ * recalcular y narrar dos cuadres distintos del mismo cierre) y el modelo
+ * necesita cinco campos. Como el canal era uno, el snapshot entero —15.6 KB con
+ * 12 comprobantes: RFC de emisor y receptor, UUID de CFDI y rutas de foto— se
+ * serializaba en el `content` del mensaje `role:'tool'` y se pagaba en cada
+ * ronda posterior al cierre.
+ */
+export type ToolExecResult = { success: boolean; result: unknown; paraModelo?: unknown; error?: string; durationMs: number };
 export type ToolExecutor = (name: string, args: Record<string, unknown>) => Promise<ToolExecResult>;
-export type ToolCallRecord = { toolName: string; args: Record<string, unknown>; result: unknown; durationMs: number; error?: string };
+/**
+ * `args` es el que PRODUJO el `result`, no necesariamente el de esta llamada.
+ *
+ * Cuando la caché acierta —entre rondas o dentro de la misma— el registro se
+ * escribía con el `args` de ESTE llamador y el `result` de OTRO. La llave de
+ * caché colapsa por nombre para las tools sin parámetros (el handler recibe
+ * `_args` y no lo lee), así que servir el mismo resultado es correcto; afirmar
+ * que lo produjo otro JSON no lo es. `desdeCache` dice que no hubo ejecución.
+ */
+export type ToolCallRecord = { toolName: string; args: Record<string, unknown>; result: unknown; durationMs: number; error?: string; desdeCache?: true };
 
 export class LoopGuardError extends Error {
   constructor(public rounds: number) {
@@ -408,6 +527,17 @@ export class PartialExecutionError extends Error {
     public tokensIn = 0,
     public tokensOut = 0,
     public cost = 0,
+    /**
+     * Quién respondió la última ronda que sí volvió, y el desglose de qué
+     * modelo gastó qué.
+     *
+     * Sin ellos el llamador no tiene con qué etiquetar la fila de `llm_costo` y
+     * escribe una constante —`'parcial'`— que ningún proveedor facturó nunca,
+     * en la rama que MÁS tokens consume. `/admin` la agrupa junto a los slugs
+     * reales bajo el encabezado «Costo por modelo».
+     */
+    public model = '',
+    public porModelo: UsoPorModelo[] = [],
   ) {
     super(message);
     this.name = 'PartialExecutionError';
@@ -422,6 +552,15 @@ export class PartialExecutionError extends Error {
 // ejercicio, que barre el año entero del tenant.
 const READ_PREFIXES = ['get_', 'check_', 'list_', 'find_', 'consultar_', 'validar_', 'cuadrar_'];
 const isReadOnly = (n: string) => READ_PREFIXES.some((p) => n.startsWith(p));
+
+/**
+ * Lo que se le sirve al MODELO de un resultado exitoso.
+ *
+ * Si la tool declaró un resumen (`paraModelo`), es ése y sólo ése; si no, el
+ * resultado tal cual, que es el comportamiento de siempre. El llamador sigue
+ * recibiendo `result` completo por `ToolCallRecord`.
+ */
+const paraElModelo = (r: ToolExecResult): unknown => (r.paraModelo !== undefined ? r.paraModelo : r.result);
 
 /**
  * Nombres de tools cuyo schema NO declara ni un solo parámetro.
@@ -470,7 +609,7 @@ export async function generateWithTools(opts: {
    *  omite temperature (los modelos de razonamiento la ignoran/rechazan). */
   reasoning?: 'low' | 'medium' | 'high';
   signal?: AbortSignal;
-}): Promise<{ finalText: string; toolCalls: ToolCallRecord[]; model: string; tokensIn: number; tokensOut: number; cost: number }> {
+}): Promise<{ finalText: string; toolCalls: ToolCallRecord[]; model: string; tokensIn: number; tokensOut: number; cost: number; porModelo: UsoPorModelo[] }> {
   const model = modelFor(opts.role);
   const fallback = FALLBACK[model] ?? null;
   const maxRounds = opts.maxToolRounds ?? 6;
@@ -483,23 +622,33 @@ export async function generateWithTools(opts: {
   // las cuatro al precio del fallback.
   let costo = 0;
   let activeModel = model; // cambia a fallback si el primario cae (persiste el resto del ciclo)
+  // El costo por ronda ya se calculaba bien; lo que se perdía era A QUIÉN
+  // atribuirlo. `used` guarda sólo el modelo de la ÚLTIMA ronda, así que un
+  // ciclo mixto reportaba todos los tokens bajo el proveedor que respondió al
+  // final. Aquí queda el desglose real, ronda a ronda.
+  const uso = new Map<string, UsoPorModelo>();
 
   const convo: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: opts.system },
     ...opts.messages,
   ];
-  const crossRound = new Map<string, ToolExecResult>();
+  // Se guarda el `args` JUNTO al resultado: es el que lo produjo, y es el que el
+  // registro tiene que citar cuando la caché acierta.
+  const crossRound = new Map<string, { exec: ToolExecResult; args: Record<string, unknown> }>();
   const llave = llaveDeCache(opts.tools);
 
   // CR-5: completado con fallback cross-provider. Reintentar SÓLO la llamada de
   // completado (las tools se ejecutan DESPUÉS, en nuestro código) es seguro: una
   // caída del provider nunca re-ejecuta una mutación ni duplica una liquidación.
-  const complete = async (msgs: OpenAI.Chat.ChatCompletionMessageParam[]) => {
+  const complete = async (msgs: OpenAI.Chat.ChatCompletionMessageParam[], sinTools = false) => {
     const body = () => ({
       model: activeModel,
       messages: msgs,
+      // Los schemas siguen viajando aunque no se puedan usar: el historial ya
+      // lleva mensajes `role:'tool'` y quitarlos deja esa conversación sin la
+      // declaración que la explica.
       tools: opts.tools.length ? opts.tools : undefined,
-      tool_choice: opts.tools.length ? ('auto' as const) : undefined,
+      tool_choice: opts.tools.length ? (sinTools ? ('none' as const) : ('auto' as const)) : undefined,
       // El MISMO techo que las respuestas estructuradas, y por la misma razón
       // (ver DEFAULT_MAX_TOKENS): con `reasoning: 'high'` —que es como corre el
       // rol `cuadre`— el razonamiento invisible y la respuesta comparten este
@@ -526,15 +675,25 @@ export async function generateWithTools(opts: {
 
   try {
     for (let round = 0; round < maxRounds; round++) {
-      const res = await complete(convo);
+      // LA ÚLTIMA RONDA SE GASTA EN CERRAR, NO EN PEDIR MÁS TOOLS.
+      //
+      // El `for` corría las 6 rondas completas: las tools de la sexta se
+      // ejecutaban, se pagaban, se serializaban a `convo` y sólo entonces se
+      // lanzaba `LoopGuardError`. El conteo estaba bien; lo que se perdía era la
+      // oportunidad de usar esa ronda para responder con lo que ya se tiene, en
+      // vez de correr a ciegas hasta el tope y salir por excepción.
+      const ultima = round === maxRounds - 1;
+      const res = await complete(convo, ultima);
       const rIn = res.usage?.prompt_tokens ?? 0;
       const rOut = res.usage?.completion_tokens ?? 0;
       tokIn += rIn;
       tokOut += rOut;
       // `activeModel` ya refleja quién respondió ESTA ronda: `complete` lo mueve
       // al fallback antes de devolver.
-      costo += calcCost(activeModel, rIn, rOut);
-      used = res.model || activeModel;
+      const costoRonda = calcCost(activeModel, rIn, rOut);
+      costo += costoRonda;
+      used = normalizarSlug(res.model || activeModel);
+      sumarUso(uso, { model: used, tokensIn: rIn, tokensOut: rOut, cost: costoRonda });
       const choice = res.choices[0];
       const calls = choice?.message?.tool_calls;
 
@@ -551,18 +710,23 @@ export async function generateWithTools(opts: {
             tokOut,
             opts.maxTokens ?? DEFAULT_MAX_TOKENS,
             choice?.message?.content ?? undefined,
-            { model: used, tokensIn: tokIn, tokensOut: tokOut, cost: costo },
+            { model: used, tokensIn: tokIn, tokensOut: tokOut, cost: costo, porModelo: [...uso.values()] },
           );
         }
         // El costo ya viene sumado ronda a ronda, cada una al precio del modelo
         // que la respondió. (Antes se precificaba aquí, de una vez, con el
         // modelo activo al final: correcto solo si el ciclo entero corrió en el
         // mismo modelo.)
-        return { finalText: choice?.message?.content ?? '', toolCalls: executed, model: used, tokensIn: tokIn, tokensOut: tokOut, cost: costo };
+        return { finalText: choice?.message?.content ?? '', toolCalls: executed, model: used, tokensIn: tokIn, tokensOut: tokOut, cost: costo, porModelo: [...uso.values()] };
       }
 
+      // Si aun con `tool_choice: 'none'` insiste en pedir tools, se conserva el
+      // loop-guard como respaldo — pero sin ejecutar ni pagar unas tools cuyo
+      // resultado el modelo nunca va a leer.
+      if (ultima) throw new LoopGuardError(maxRounds);
+
       convo.push({ role: 'assistant', content: choice.message.content ?? null, tool_calls: calls });
-      const inRound = new Map<string, Promise<ToolExecResult>>();
+      const inRound = new Map<string, { p: Promise<ToolExecResult>; args: Record<string, unknown> }>();
 
       const results = await Promise.all(
         calls.map(async (call) => {
@@ -578,28 +742,40 @@ export async function generateWithTools(opts: {
           }
           const key = llave(call.function.name, args);
           if (isReadOnly(call.function.name) && crossRound.has(key)) {
-            const c = crossRound.get(key)!;
-            executed.push({ toolName: call.function.name, args, result: c.result, durationMs: c.durationMs, error: c.error });
-            return { role: 'tool' as const, tool_call_id: call.id, content: JSON.stringify(c.success ? c.result : { error: c.error }) };
+            const { exec: c, args: argsQueLoProdujo } = crossRound.get(key)!;
+            executed.push({ toolName: call.function.name, args: argsQueLoProdujo, result: c.result, durationMs: c.durationMs, error: c.error, desdeCache: true });
+            return { role: 'tool' as const, tool_call_id: call.id, content: JSON.stringify(c.success ? paraElModelo(c) : { error: c.error }) };
           }
-          let p = inRound.get(key);
-          if (!p) { p = opts.toolExecutor(call.function.name, args); inRound.set(key, p); }
+          const yaEnRonda = inRound.get(key);
+          const p = yaEnRonda?.p ?? opts.toolExecutor(call.function.name, args);
+          if (!yaEnRonda) inRound.set(key, { p, args });
           const exec = await p;
           // Solo se cachea el ÉXITO, igual que la rejilla de mutaciones
           // (`tool-executor.ts`). Guardar el fracaso convierte un blip de un
           // segundo en un fallo permanente del turno: el modelo reintenta, se le
           // sirve el mismo error desde memoria, y nadie vuelve a preguntarle a
           // una base que ya se curó sola.
-          if (isReadOnly(call.function.name) && exec.success) crossRound.set(key, exec);
-          executed.push({ toolName: call.function.name, args, result: exec.result, durationMs: exec.durationMs, error: exec.error });
-          return { role: 'tool' as const, tool_call_id: call.id, content: JSON.stringify(exec.success ? exec.result : { error: exec.error }) };
+          if (isReadOnly(call.function.name) && exec.success) crossRound.set(key, { exec, args: yaEnRonda?.args ?? args });
+          executed.push({
+            toolName: call.function.name,
+            // Si otra llamada de ESTA ronda ya había lanzado la ejecución, el
+            // `args` que la produjo es el suyo, no el de este llamador.
+            args: yaEnRonda?.args ?? args,
+            result: exec.result,
+            durationMs: exec.durationMs,
+            error: exec.error,
+            ...(yaEnRonda ? { desdeCache: true as const } : {}),
+          });
+          return { role: 'tool' as const, tool_call_id: call.id, content: JSON.stringify(exec.success ? paraElModelo(exec) : { error: exec.error }) };
         }),
       );
       convo.push(...results);
     }
+    // Inalcanzable: la última vuelta o devuelve texto o lanza arriba. Se conserva
+    // por si `maxRounds` llegara a ser 0.
     throw new LoopGuardError(maxRounds);
   } catch (err) {
     if (err instanceof PartialExecutionError) throw err;
-    throw new PartialExecutionError(err instanceof Error ? err.message : String(err), err, executed, tokIn, tokOut, costo);
+    throw new PartialExecutionError(err instanceof Error ? err.message : String(err), err, executed, tokIn, tokOut, costo, used, [...uso.values()]);
   }
 }

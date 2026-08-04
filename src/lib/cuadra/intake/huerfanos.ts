@@ -43,6 +43,26 @@ export function mensajeGuardadoTrasLiquidar(monto: number): string {
     `Pero *no se perdió*: lo guardé y te lo agrego en cuanto abras tu siguiente viaje. 📸`;
 }
 
+/**
+ * Dijo que sí, y para cuando se fueron a insertar la liquidación de este viaje
+ * ya estaba emitida (mig. 0036, `CU001`).
+ *
+ * Antes este caso caía en «No pude agregarlos ⚙️. Siguen guardados; lo intento
+ * otra vez en un momento», y ese reintento NO EXISTE: no hay cron ni job que
+ * vuelva a pasar por la sala de espera. El operador quedaba esperando algo que
+ * nadie iba a hacer mientras su liquidación ya había cerrado sin sus
+ * comprobantes.
+ *
+ * Lo que se le dice es lo único cierto y lo único accionable: no entraron, no
+ * se perdieron, y con su siguiente viaje abierto un «sí» los pone ahí.
+ */
+export function mensajeAdjuntarTrasCierre(cuantos: number): string {
+  const n = cuantos === 1 ? 'ese comprobante' : `esos ${cuantos} comprobantes`;
+  return `Ya cerré la liquidación de este viaje, así que ${n} no ${cuantos === 1 ? 'entró' : 'entraron'} en ella. 😕\n\n` +
+    `*No se ${cuantos === 1 ? 'perdió' : 'perdieron'}*: ${cuantos === 1 ? 'lo sigo teniendo' : 'los sigo teniendo'} guardado${cuantos === 1 ? '' : 's'}. ` +
+    `En cuanto la oficina te abra el siguiente viaje, contéstame *sí* aquí mismo y ${cuantos === 1 ? 'lo agrego' : 'los agrego'} ahí. 📸`;
+}
+
 /** El ofrecimiento, con lo que trae cada uno para que el operador pueda decir que no. */
 export function mensajeOfrecer(pendientes: Esperando[], ruta?: string): string {
   const total = pendientes.reduce((s, p) => s + p.monto, 0);

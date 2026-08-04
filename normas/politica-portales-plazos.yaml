@@ -34,7 +34,7 @@ advertencia_de_jerarquia: >
   listada por el propio SAT, con remedio en la Conciliación de Factura.
   El producto NUNCA debe presentar estos plazos como una obligación fiscal.
 uso_permitido_hoy: >
-  Con `plazoVerificado: false` —el default y el caso de 12 de las 13 entradas—, solo
+  Con `plazoVerificado: false` —el default y el caso de 33 de las 37 entradas—, solo
   como advertencia genérica: "la ventana del comercio puede ser menor". El aviso usa
   la regla general del mes natural, no estos números.
 
@@ -45,6 +45,16 @@ uso_permitido_hoy: >
   CFDI, y no es cierto.
 verificado_por: "ola1 / 08-competencia.md (fuente secundaria) · Office Depot: ticket de campo del 25-jul-2026 (fuente directa)"
 verificado_el: 2026-07-28
+# AUDITORÍA 10, BAJO (fiscal): las dos líneas de abajo decían «12 de 13
+# entradas; `true` SOLO en office_depot» —son 37 y 4— y afirmaban de sí mismas
+# algo que el código desmentía: que las dos ramas decían que el plazo legal es
+# todo el ejercicio. La rama NO VENCIDA sin verificar no lo decía, y es la que
+# leen 33 de los 37 comercios. Las dos cosas se corrigieron: la ficha aquí, y el
+# motor en el commit anterior (ahora lo dicen las TRES ramas que afirman una
+# fecha; la cuarta —fecha del ticket en duda— no afirma ninguna).
+# `cuadre/fichas_usado_en_codigo.test.ts` ata estos conteos al catálogo y esta
+# afirmación a la salida real del motor, para que no se vuelvan a separar.
 usado_en_codigo:
-  - "facturacion/comercios.ts — `plazoVerificado: false` en 12 de 13 entradas; `true` SOLO en office_depot (plazo `mes_siguiente`, leído del ticket)"
-  - "cuadre/engine.ts — regla factura_por_vencer: usa el plazo de la cadena solo si `plazoVerificado`, y en las dos ramas (vencida y no vencida) dice que el plazo LEGAL es todo el ejercicio"
+  - "facturacion/comercios.ts — `plazoVerificado: false` en 33 de 37 entradas; `true` en 4: g500, office_depot, megasur, la_gas"
+  - "cuadre/engine.ts — regla factura_por_vencer: usa el plazo de la cadena solo si `plazoVerificado`, y en las TRES ramas que afirman una fecha (vencida, urgente y no vencida) dice que el plazo LEGAL es todo el ejercicio. La cuarta —fecha del ticket en duda— no afirma ninguna fecha."
+  - "normas/por_diferencia.ts — `factura_por_vencer`: es una de las dos fichas que el agente puede citar al explicar ese aviso"

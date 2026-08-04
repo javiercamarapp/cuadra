@@ -7,11 +7,29 @@ titulo: "Estímulo de IEPS de diésel para transporte, y estímulo del 50% de pe
 citas_en_codigo: ["LIF 2026 Art. 20", "LIF 2026 Art. 20-A", "LIF Art. 20-A fr. IV"]
 fecha_publicacion: 2025-11-07
 fuente_url: "http://www.diputados.gob.mx/LeyesBiblio/pdf/LIF_2026.pdf"
-fuente_tipo: diputados_oficial
-estado_verificacion: verificado_fuente_primaria
+fuente_tipo: fuente_secundaria
+estado_verificacion: evidencia_corroborante
 nota_verificacion: >
   Texto obtenido de dos reproducciones del articulado (leyes-mx.com y mley.mx) y
   corroborado con el documento de Reducciones y Estímulos Fiscales 2026 de PRODECON.
+
+  CORREGIDO el 3-ago-2026 (auditoría 10): esta ficha decía
+  `estado_verificacion: verificado_fuente_primaria` con `fuente_tipo:
+  diputados_oficial` sobre esas dos reproducciones más un documento de PRODECON
+  —que es una corroboración excelente, y aun así secundaria—. `normas/README.md`
+  reserva el estado primario para «se leyó el texto en el DOF, el SAT o
+  diputados.gob.mx». El `fuente_url` se conserva porque es la fuente que hay que
+  abrir para cerrarla, no la que se leyó.
+
+  Lo que cuelga de esta ficha: los litros de diésel del estímulo de IEPS y el 50%
+  del estímulo de peaje, las dos cifras de la sección "ACREDITABLE / RECUPERABLE"
+  del PDF. Las dos ya se imprimen con `tono: 'condicionado'` y con sus
+  condiciones al pie (`liquidacion/acreditable.ts`), que es la presentación que
+  este estado pide.
+
+  PARA CERRAR: leer el PDF de la LIF 2026 en diputados.gob.mx o el DOF del
+  7-nov-2025, confirmar el articulado del apartado A —incluido el 4º párrafo del
+  medio de pago, que hoy ninguna ficha transcribe— y subir el estado.
 
 estimulo_diesel_transporte:
   texto_vigente: >
@@ -33,6 +51,45 @@ estimulo_diesel_transporte:
     "con los ajustes que, en su caso, correspondan" es la cuota DISMINUIDA, y la
     cuota cambia SEMANALMENTE. Ver criterio-1-LIF-PI: usar la cuota entera es
     práctica indebida que alcanza a quien presta el servicio.
+
+# ── El requisito de MEDIO DE PAGO del estímulo de diésel ──────────────────────
+#
+# AUDITORÍA 10, BAJO (fiscal): `cuadre/engine.ts` decide con una lista CERRADA de
+# seis códigos de `c_FormaPago` qué litros de diésel son elegibles, y esa lista
+# no la transcribía ninguna ficha del repo: salía del comentario del propio
+# archivo. El comentario del arreglo del 2-ago lo declaraba y dejaba el hallazgo
+# abierto. Esta sección lo cierra en la única dirección honesta que hay sin red
+# hacia la fuente: dejar la decisión ESCRITA, con su alcance y su procedencia
+# real, en vez de una transcripción que nadie leyó.
+#
+# NO se transcribe el párrafo. Esta ronda corre sin acceso al DOF, al SAT ni a
+# diputados.gob.mx (verificado: 403 del proxy). Inventar el texto para llenar
+# `texto_vigente` sería exactamente lo que `normas/README.md` prohíbe.
+requisito_medio_de_pago:
+  texto_vigente: null
+  estado_transcripcion: sin_transcribir
+  donde_deberia_estar: "LIF 2026, art. 20, apartado A, fracción IV, 4º párrafo"
+  que_afirma_el_codigo: >
+    Que el estímulo de IEPS de diésel exige que el pago se haya hecho con
+    monedero electrónico autorizado por el SAT, tarjeta (crédito, débito o
+    servicios), cheque nominativo de la cuenta del contribuyente o transferencia
+    electrónica de fondos; y que este requisito NO tiene la válvula del 15% que
+    la RFA 2026 regla 2.9 concede para la deducción de ISR — la facilidad salva
+    un beneficio, no los dos.
+  codigos_c_formapago: ["02", "03", "04", "05", "28", "29"]
+  procedencia_real: >
+    Decisión de ingeniería tomada del comentario de `cuadre/engine.ts`, del lado
+    conservador (contar de menos, nunca de más). NO se leyó en fuente primaria ni
+    en reproducción del articulado. Mientras `texto_vigente` sea null, el producto
+    no puede citar este párrafo como fundamento de un veredicto: los litros se
+    entregan como dato para el contador, nunca como una cifra en pesos afirmada.
+  como_verificarlo: >
+    Bajar el PDF de la LIF 2026 de diputados.gob.mx o el DOF del 07-nov-2025,
+    transcribir el 4º párrafo de la fracción IV en `texto_vigente`, poner
+    `estado_transcripcion: transcrito` y cotejar la lista de códigos contra el
+    catálogo `c_FormaPago` vigente. La prueba
+    `cuadre/medios_lif_con_ficha.test.ts` ata esta lista a la del motor: si una
+    cambia sin la otra, falla.
 
 estimulo_peaje:
   texto_vigente: >

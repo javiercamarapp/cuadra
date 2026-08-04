@@ -44,12 +44,31 @@ describe('el flete no ampara un viático de alimentos', () => {
     expect(sinSoporte([comida, ...guias])).toHaveLength(1);
   });
 
+  // AUDITORÍA 10, MEDIO (fiscal) — LOS DOS FIXTURES DE ABAJO SE REESCRIBIERON,
+  // NO SE BORRARON. La premisa que fijaban era «basta con que exista un renglón
+  // con concepto hospedaje o transporte», y dejó de sostenerse: LISR 28-V pide
+  // acompañar «el comprobante fiscal O LA DOCUMENTACIÓN COMPROBATORIA QUE
+  // AMPARE el hospedaje o transporte», o sea un DOCUMENTO. Con la premisa vieja,
+  // un hospedaje de $1 sin UUID, sin RFC y sin XML apagaba esta advertencia y la
+  // de la tarjeta de crédito del mismo viaje, sobre un dato que el operador
+  // controla (mandar una foto etiquetada "hospedaje"); y como la regla advierte
+  // en vez de quitar deducción, apagarla no dejaba rastro en ninguna cifra.
+  //
+  // Lo que la prueba afirma NO cambió —el transporte de la persona y el
+  // hospedaje sí amparan la comida—; cambió lo que el fixture tiene que traer
+  // para ser un comprobante: UUID o, como aquí, el folio del ticket. Es el mismo
+  // folio que traen los fixtures de flete de arriba, tomados de tickets reales.
   it('el transporte de la PERSONA sí la ampara', () => {
-    expect(sinSoporte([comida, g({ concepto: 'transporte', monto: 180 })])).toHaveLength(0);
+    expect(sinSoporte([comida, g({ concepto: 'transporte', monto: 180, folio: 'TR-4471' })])).toHaveLength(0);
   });
 
   it('y el hospedaje también', () => {
-    expect(sinSoporte([comida, g({ concepto: 'hospedaje', monto: 900 })])).toHaveLength(0);
+    expect(sinSoporte([comida, g({ concepto: 'hospedaje', monto: 900, folio: 'HOT-2210' })])).toHaveLength(0);
+  });
+
+  // El caso que la premisa vieja dejaba pasar, fijado aquí para que no vuelva.
+  it('un renglón de hospedaje SIN comprobante (ni UUID ni folio) no la ampara', () => {
+    expect(sinSoporte([comida, g({ concepto: 'hospedaje', monto: 1 })])).toHaveLength(1);
   });
 
   // El otro efecto de haberlos mezclado: un flete de $1,370 se trataba como

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { logger } from '@/lib/logger';
 
 // Cabeceras de seguridad + gate de sesión del dashboard. El matcher EXCLUYE
 // /api (webhook, demo, export manejan lo suyo y no deben pasar por el gate ni
@@ -56,8 +57,34 @@ export async function proxy(req: NextRequest) {
         },
       },
     );
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error } = await supabase.auth.getUser();
     if (!user) {
+      // ── LA ÚNICA CAPA POR LA QUE PASA TODO EL TRÁFICO DEL PANEL ──────────
+      //
+      // `getUser()` señala el fallo por VALOR de retorno, no lanzando
+      // (GoTrueClient.js:2666-2676): con la anon key rotada o el endpoint de
+      // auth caído 30 s, CADA /dashboard, /admin y /mis-viajes se contestaba
+      // con un 307 a /login y CERO líneas — y como no se lanza,
+      // `onRequestError` tampoco lo veía. A la mañana siguiente no había forma
+      // de distinguir "nadie ha iniciado sesión" de "el gate rebotó las 40
+      // peticiones del último minuto".
+      //
+      // Se registra SOLO lo que no es una respuesta legítima del auth:
+      // `AuthSessionMissingError` y cualquier 4xx —el visitante anónimo, el
+      // refresh token caducado— son el camino normal de esta capa y una línea
+      // por petición ahogaría a la de arriba, que es la que se busca a las 3
+      // a.m. Mismo criterio que `noPudePreguntar` en lib/auth/session.ts; va
+      // repetido aquí y no importado porque este archivo corre en el runtime
+      // EDGE y no puede arrastrar el cliente de servidor.
+      const noContesto = !!error &&
+        (error.name === 'AuthRetryableFetchError' ||
+          error.status === undefined || error.status === 0 || error.status >= 500);
+      if (noContesto) {
+        logger.error('proxy.auth_error', {
+          msg: 'El gate del panel NO pudo verificar la sesión (Supabase Auth no contestó) y está rebotando a /login a usuarios que SÍ la tienen. Revisa la anon key y el estado del endpoint de auth.',
+          ruta: path, err: error!.message, name: error!.name, status: error!.status,
+        });
+      }
       const url = req.nextUrl.clone();
       url.pathname = '/login';
       url.searchParams.set('next', path);
