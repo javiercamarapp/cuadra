@@ -18,21 +18,26 @@ misma deuda contada dos veces porque nadie la pagó.
 
 | | Grupos |
 |---|---:|
-| **Cerrados con prueba que los reproduce** | **44** |
+| **Cerrados con prueba que los reproduce** | **49** |
 | Propuestos — exigen Postgres, credenciales o red | 9 |
 | Decisión humana (aviso de privacidad, dominio, base del 50%) | 4 |
-| Pendientes fuera de dominio, anotados con su trinquete | 5 |
 | Descartado por falso | 1 |
 
-Los 44 salieron en dos movimientos: **16 llegaron completos desde el PR #7**
+**No queda ningún hallazgo cerrable sin cerrar.** Los 14 restantes son 9 que
+exigen una base de datos que aquí no existe, 4 que son decisiones tuyas, y 1
+falso.
+
+Los 49 salieron en tres movimientos: **16 llegaron completos desde el PR #7**
 —`989ca62` trajo 132 archivos que `master` nunca tocó, sin resolver un solo
-conflicto— y **28 se cerraron aquí**, uno a uno, con prueba roja antes del
-arreglo, por seis agentes sobre dominios de archivo disjuntos.
+conflicto—, **28 se cerraron por dominio**, uno a uno, con prueba roja antes del
+arreglo, por seis agentes sobre dominios de archivo disjuntos, y **5 eran
+arreglos que cruzaban la frontera entre dominios** y se cerraron al final, ya
+sin agentes corriendo (`503dde9`).
 
 ## Compuerta sobre el árbol final
 
 ```
-$ npx vitest run        → exit 0 · 269 archivos · 2520 pruebas · 1 saltada
+$ npx vitest run        → exit 0 · 269 archivos · 2530 pruebas · 1 saltada
 $ npx tsc --noEmit      → exit 0
 $ npm run lint          → exit 0 · 4 warnings
 $ npm run test:coverage → exit 0 · líneas 84.19% · funciones 85.03%
@@ -40,7 +45,7 @@ $ git status            → limpio
 ```
 
 Línea base al arrancar: 172 archivos / 1670 pruebas, y `test:coverage` en
-**exit 1** (líneas 64.32% contra umbral 78). **+97 archivos, +850 pruebas.**
+**exit 1** (líneas 64.32% contra umbral 78). **+97 archivos, +860 pruebas.**
 
 Sin `npm run build`: en la nube pide Supabase, OpenRouter, Facturapi y Upstash.
 
