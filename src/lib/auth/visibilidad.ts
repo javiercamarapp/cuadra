@@ -64,18 +64,31 @@ const AREA_POR_RUTA: Record<string, Area> = {
 
   // Operación
   '/dashboard/despacho': 'operacion',
-  '/dashboard/viajes': 'operacion',
   '/dashboard/pod': 'operacion',
   '/dashboard/incidencias': 'operacion',
   '/dashboard/unidades': 'operacion',
   '/dashboard/operadores': 'operacion',
   '/dashboard/mapa': 'operacion',
-  '/dashboard/documentos': 'operacion',
-  '/dashboard/analitica': 'operacion',
   '/dashboard/chat': 'operacion',
   '/dashboard/soporte': 'operacion',
 
   // Dinero — lo que el encargado no ve
+  //
+  // AUDITORÍA 11, G-26 (ALTO). Estas tres estaban en 'operacion' y las tres
+  // pintan pesos de la flota, con la contradicción escrita en el propio repo:
+  // `despacho/page.tsx:36-39` declara de este mismo rol «NO hay una sola cifra
+  // de dinero en esta pantalla, y no es un descuido», y el link de al lado en
+  // su sidebar listaba el anticipo de cada viaje y lo sumaba en un KPI.
+  //   · viajes     → "Anticipo en viajes abiertos" + columna Anticipo por viaje
+  //   · analitica  → "Gasto por concepto · Todo el histórico de la flota"
+  //   · documentos → monto por comprobante
+  // El jefe de tráfico conserva su trabajo en Despacho, POD, Incidencias,
+  // Unidades y el Inicio de operación (`inicio-operacion.tsx`), que existe
+  // exactamente para esto. `visibilidad_dinero.test.ts` ata esta tabla a lo
+  // que las páginas RENDERIZAN, para que no vuelvan a divergir.
+  '/dashboard/viajes': 'dinero',
+  '/dashboard/analitica': 'dinero',
+  '/dashboard/documentos': 'dinero',
   '/dashboard/valor-ahorro': 'dinero',
   '/dashboard/rentabilidad': 'dinero',
   '/dashboard/clientes': 'dinero',

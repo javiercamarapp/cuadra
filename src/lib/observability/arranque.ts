@@ -57,6 +57,51 @@ const SILENCIOSAS: Array<{ nombre: string; consecuencia: string }> = [
 ];
 
 /**
+ * Lo que tiene de malo el valor de `NEXT_PUBLIC_APP_URL`, o null si está bien.
+ *
+ * AUDITORÍA 11, G-36 (ALTO). La comprobación era `!process.env[v.nombre]`:
+ * PRESENCIA, no valor — cualquier cadena pasaba. Y `scripts/deploy-vercel.sh`
+ * le escribía lo que imprimiera `vercel --prod --yes`, que es la URL POR
+ * DEPLOY (`likida-a1b2c3d4e-javier.vercel.app`), no el alias estable. Ese host
+ * no está en las *Redirect URLs* de Supabase: GoTrue ignora el
+ * `emailRedirectTo`, el navegador se va a otro dominio y Likida NUNCA recibe
+ * esa petición — no hay log que pueda existir. El contralor recibe su link,
+ * hace clic, y no entra. Con el semáforo del arranque en verde.
+ *
+ * Esto NO decide cuál de los dominios es el bueno (eso es decisión humana y
+ * hay que alinearlo con el Site URL de Supabase); exige que el valor sea uno
+ * que PUEDA funcionar. Nunca devuelve el valor: solo el defecto.
+ */
+function defectoDeAppUrl(): string | null {
+  const crudo = process.env.NEXT_PUBLIC_APP_URL;
+  if (!crudo) return null; // la ausencia ya la reporta SILENCIOSAS
+
+  let u: URL;
+  try {
+    u = new URL(crudo);
+  } catch {
+    return 'no es una URL absoluta (falta el esquema https://)';
+  }
+  if (u.protocol !== 'https:') return 'no es https (la cookie de sesión es `secure`)';
+  if (crudo.endsWith('/')) return 'termina en "/": el redirect quedaría como //auth/callback';
+  if (u.pathname !== '/' || u.search || u.hash) return 'lleva ruta o query: debe ser solo el origen';
+  if (/localhost|127\.0\.0\.1/.test(u.hostname)) return 'apunta a localhost en un despliegue real';
+
+  // La URL EFÍMERA del deploy. Dos formas de cazarla: `VERCEL_URL` ES esa URL
+  // (exacta, cuando la plataforma la expone), y el patrón del hostname
+  // generado —`<proyecto>-<hash>-<scope>.vercel.app`— para cuando no está. El
+  // alias estable (`likidaai.vercel.app`) no lleva ese sufijo.
+  const efimera = process.env.VERCEL_URL;
+  if (efimera && u.host === efimera) {
+    return 'es la URL efímera del deploy (VERCEL_URL), no el alias estable: el magic link apunta a un host que Supabase no reconoce';
+  }
+  if (/-[a-z0-9]{8,}(-[a-z0-9-]+)?\.vercel\.app$/i.test(u.hostname)) {
+    return 'parece la URL efímera de un deploy y no el alias estable: el magic link apunta a un host que Supabase no reconoce';
+  }
+  return null;
+}
+
+/**
  * Emite una línea en el arranque con el estado de esas variables.
  *
  * Solo en despliegues reales: en local estas ausencias son normales y el aviso
@@ -69,14 +114,17 @@ export function avisarConfiguracionSilenciosa(): void {
   const desplegado = !!process.env.VERCEL_ENV || process.env.NODE_ENV === 'production';
   if (!desplegado) return;
 
-  const faltan = SILENCIOSAS.filter((v) => !process.env[v.nombre]);
+  const faltan = SILENCIOSAS.filter((v) => !process.env[v.nombre])
+    .map((v) => `${v.nombre}: ${v.consecuencia}`);
+
+  // Estar puesta no basta: ver `defectoDeAppUrl`.
+  const mal = defectoDeAppUrl();
+  if (mal) faltan.push(`NEXT_PUBLIC_APP_URL: ${mal}`);
+
   if (faltan.length === 0) {
     logger.info('startup.config_silenciosa', { ok: true, revisadas: SILENCIOSAS.length });
   } else {
-    logger.error('startup.config_silenciosa', {
-      ok: false,
-      faltan: faltan.map((v) => `${v.nombre}: ${v.consecuencia}`),
-    });
+    logger.error('startup.config_silenciosa', { ok: false, faltan });
   }
 
   avisarGruposDeConfiguracion();

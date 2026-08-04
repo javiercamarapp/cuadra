@@ -124,6 +124,29 @@ export async function verificarMigracionesCriticas(): Promise<void> {
       reportarProbe(e45, 'FALTA la migración 0045 (app_user.operador_id): NADIE puede entrar al panel —ni el contralor ni el superadmin—, porque el select de la sesión pide esa columna y falla entero; todos acaban en /sin-acceso como si no tuvieran alta. Y la RLS del chofer tampoco está. Corre `supabase db push`.');
       faltan = true;
     }
+    // Migración 0046 (app_user.avatar_url). AUDITORÍA 11, G-30 (residual).
+    // EXACTAMENTE el mismo fallo que la 0045 y por la misma línea:
+    // `getSessionTenant` pide `avatar_url` en el MISMO select que `tenant_id`,
+    // así que sin la columna PostgREST contesta `42703` y falla la consulta
+    // entera. La 0045 se sondeaba desde la ronda 10 y esta no, aunque nació
+    // después y por el mismo camino. Y el orden por default del despliegue es
+    // el peligroso: el push a `master` redespliega Vercel solo, mientras la
+    // migración se aplica a mano.
+    const { error: e46 } = await admin.from('app_user').select('avatar_url').limit(1);
+    if (e46) {
+      reportarProbe(e46, 'FALTA la migración 0046 (app_user.avatar_url): NADIE puede entrar al panel —el select de la sesión pide esa columna y falla entero—; todos acaban en /sin-acceso como si no tuvieran alta. Corre `supabase db push`.');
+      faltan = true;
+    }
+    // Migración 0047 (unidad / mantenimiento / incidencia / pod — el panel del
+    // jefe de tráfico). AUDITORÍA 11, G-30 (residual). Sin ella, las cuatro
+    // pantallas nuevas leen contra tablas que no existen: falla en el turno del
+    // encargado, una pantalla a la vez, y no en el arranque. Se sonda `pod`
+    // porque es la última que crea el archivo: si está, la serie corrió entera.
+    const { error: e47 } = await admin.from('pod').select('id').limit(1);
+    if (e47) {
+      reportarProbe(e47, 'FALTA la migración 0047 (unidad/mantenimiento/incidencia/pod): las cuatro pantallas de operación del encargado —Unidades, Incidencias, POD y Despacho— leen contra tablas que no existen. Corre `supabase db push`.');
+      faltan = true;
+    }
     // ── EL PAPEL DEL GASTO: BUCKET (0039) Y SALA DE ESPERA (0040) ───────────
     //
     // AUDITORÍA 10, MEDIO. Las dos se pierden EN SILENCIO, que es el criterio

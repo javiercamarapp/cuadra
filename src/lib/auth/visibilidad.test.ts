@@ -40,15 +40,21 @@ describe('las rutas que el encargado NO puede abrir aunque teclee la URL', () =>
     '/dashboard/clientes', '/dashboard/cotizador', '/dashboard/cuadre',
     '/dashboard/valor-ahorro', '/dashboard/combustible-casetas',
     '/dashboard/usuarios', '/dashboard/configuracion', '/dashboard/politicas',
+    // AUDITORÍA 11, G-26 (ALTO): las tres estaban aquí arriba como "suyas" y
+    // las tres pintan pesos de la flota — anticipo por viaje, gasto por
+    // concepto del histórico, monto por comprobante. Ver la nota de
+    // `AREA_POR_RUTA` y `visibilidad_dinero.test.ts`, que ata la tabla a lo
+    // que las páginas renderizan para que no vuelva a divergir.
+    '/dashboard/viajes', '/dashboard/analitica', '/dashboard/documentos',
   ];
   it.each(PROHIBIDAS)('%s le está negada al encargado', (href) => {
     expect(puedeVerRuta('encargado', href)).toBe(false);
   });
 
   const SUYAS = [
-    '/dashboard', '/dashboard/despacho', '/dashboard/viajes', '/dashboard/pod',
+    '/dashboard', '/dashboard/despacho', '/dashboard/pod',
     '/dashboard/incidencias', '/dashboard/unidades', '/dashboard/operadores',
-    '/dashboard/mapa', '/dashboard/documentos',
+    '/dashboard/mapa',
   ];
   it.each(SUYAS)('%s sí es suya', (href) => {
     expect(puedeVerRuta('encargado', href)).toBe(true);

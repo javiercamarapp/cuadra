@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { rateLimit, clientIp } from '@/lib/ratelimit';
 import { getSessionTenant } from '@/lib/auth/session';
+import { puedeExportar } from '@/lib/auth/permisos';
 import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
@@ -31,6 +32,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const s = await getSessionTenant();
   if (!s || !s.tenantId) return new NextResponse('No autorizado', { status: 401 });
+  // AUDITORÍA 11, G-24 (CRÍTICO). El gate era "¿hay sesión?" y nada más: con la
+  // cookie de un `operador` y cualquier `id` —que el CSV hermano repartía— salía
+  // firmada la URL del ejemplar DEL CONTRALOR, el que lleva los veredictos.
+  // `/api` está fuera del matcher del proxy y `admin.storage` corre con
+  // service-role, así que esta línea es la única puerta. Se corta ANTES de leer
+  // la fila y antes de firmar: no se prepara una descarga para luego tirarla.
+  if (!puedeExportar(s.rol)) {
+    logger.warn('export.pdf.rol_no_autorizado', { tenant: s.tenantId, rol: s.rol });
+    return new NextResponse('No autorizado', { status: 403 });
+  }
   const tenantId = s.tenantId;
 
   const { id } = await params;

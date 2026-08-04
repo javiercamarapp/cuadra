@@ -51,8 +51,31 @@ const POLITICA: PoliticaGasto[] = [
 export async function POST(req: Request) {
   if (bodyExcede(req, 64 * 1024)) return NextResponse.json({ error: 'payload muy grande' }, { status: 413 });
   if (!rateLimit(`demo:${clientIp(req)}`, 30, 60_000)) return NextResponse.json({ error: 'demasiadas peticiones' }, { status: 429 });
-  const body = (await req.json()) as { comprobantes: Partial<Gasto>[]; anticipo: number };
-  const gastos: Gasto[] = (body.comprobantes ?? []).map((c, i) => ({
+  // AUDITORÍA 11, G-61 (residual). Dos entradas que el simulador aceptaba:
+  //   · un cuerpo que no es JSON → `req.json()` lanzaba y Next servía un 500
+  //     genérico en la pantalla que se proyecta cuando Meta falla;
+  //   · `{"anticipo": "cinco mil"}` → entraba TAL CUAL al motor —que es real,
+  //     no una maqueta— y salía `"diferencia": null`. El simulador anuncia «El
+  //     cuadre es real»; un veredicto nulo sobre una cifra inventada es
+  //     exactamente lo que este producto no puede enseñar.
+  let body: { comprobantes?: Partial<Gasto>[]; anticipo?: number };
+  try {
+    body = (await req.json()) as { comprobantes?: Partial<Gasto>[]; anticipo?: number };
+  } catch {
+    return NextResponse.json({ error: 'el cuerpo no es JSON válido' }, { status: 400 });
+  }
+  const comprobantes = body.comprobantes ?? [];
+  if (!Array.isArray(comprobantes)) {
+    return NextResponse.json({ error: '`comprobantes` tiene que ser una lista' }, { status: 400 });
+  }
+  const anticipo = body.anticipo ?? 0;
+  if (typeof anticipo !== 'number' || !Number.isFinite(anticipo)) {
+    return NextResponse.json({ error: '`anticipo` tiene que ser un número' }, { status: 400 });
+  }
+  if (comprobantes.some((c) => c?.monto != null && (typeof c.monto !== 'number' || !Number.isFinite(c.monto)))) {
+    return NextResponse.json({ error: 'cada `monto` tiene que ser un número' }, { status: 400 });
+  }
+  const gastos: Gasto[] = comprobantes.map((c, i) => ({
     id: `g${i}`,
     concepto: c.concepto ?? 'otro',
     monto: c.monto ?? 0,
@@ -67,7 +90,7 @@ export async function POST(req: Request) {
     ocrConfianza: c.ocrConfianza ?? 0.96,
   }));
   const liq = cuadrarViaje({
-    viajeId: 'demo', anticipo: body.anticipo ?? 0, gastos, politica: POLITICA, ruta: 'Silao-Laredo',
+    viajeId: 'demo', anticipo, gastos, politica: POLITICA, ruta: 'Silao-Laredo',
     // Sin `empresaRfc` el motor no puede comparar contra nadie, así que la
     // verificación del receptor quedaba a medias: detectaba "no lo pude leer"
     // pero nunca "está a nombre de otro". Con la flota del demo declarada, las

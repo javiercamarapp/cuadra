@@ -20,7 +20,10 @@ const RAIZ = process.cwd();
 
 // Las pone la plataforma o el arnés de pruebas: no van en `.env.example`.
 const DE_LA_PLATAFORMA = new Set([
-  'NODE_ENV', 'VERCEL_ENV', 'NEXT_RUNTIME',
+  // `VERCEL_URL` la inyecta la plataforma con la URL POR DEPLOY. No se
+  // configura: se LEE, precisamente para detectar que alguien la copió a
+  // `NEXT_PUBLIC_APP_URL` (auditoría 11, G-36).
+  'NODE_ENV', 'VERCEL_ENV', 'VERCEL_URL', 'NEXT_RUNTIME',
   'TICKET_PATH', 'TICKET_HOY', 'TICKET_ANTICIPO',
 ]);
 
@@ -106,5 +109,63 @@ describe('DEPLOY.md pide lo que hace falta para que el sistema no arranque ciego
     // Es el documento al que se acude a las 3 a.m. y no contenía nada de lo que
     // a esa hora se necesita.
     expect(deploy()).toMatch(/vercel logs|runtime log/i);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDITORÍA 11 · G-38 — una máquina limpia no quedaba corriendo, y el runbook
+// nombraba los mensajes de arranque equivocados.
+//
+// El README describía un producto que ya no se llama así y un arranque de tres
+// comandos que NO deja el sistema en pie: no menciona migraciones, ni seed, ni
+// el script `setup` que sí existe en `package.json`, ni el alta del primer
+// usuario. Y sin esa alta el camino se cierra solo: `/login` va con
+// `shouldCreateUser:false`, `auth.users` está vacío, la pantalla dice «Te
+// mandamos un link» (a propósito, para no filtrar qué correos existen) y el
+// link no llega nunca. El único alta del árbol, `/admin/usuarios/nuevo`,
+// empieza con `requireSuperadmin()`.
+//
+// Y `DEPLOY.md` listaba `startup.entorno` —que solo cubre `DASHBOARD_SECRET`—
+// omitiendo `startup.config_silenciosa` y `startup.entorno_grupos`, que son
+// justamente los que `GUION_DEMO.md` manda mirar como semáforo antes de entrar
+// a la sala.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('G-38 · una máquina limpia queda corriendo si se sigue el README', () => {
+  const readme = () => readFileSync(join(RAIZ, 'README.md'), 'utf8');
+
+  it('el arranque nombra las migraciones/seed, no solo `npm install`', () => {
+    const texto = readme();
+    expect(texto, 'el README arranca el server contra una base vacía').toMatch(/npm run (setup|seed)/);
+  });
+
+  it('y nombra el alta del primer superadmin, sin la cual nadie entra', () => {
+    expect(readme(), 'sin el primer `app_user` el magic link no llega nunca')
+      .toContain('scripts/crear-superadmin.mjs');
+  });
+
+  it('el README llama al producto por su nombre', () => {
+    // «Un rótulo tiene que ser verdad» (CLAUDE.md). Una auditoría externa ya
+    // calificó cuatro tecnologías que el proyecto no usa por leer este archivo.
+    expect(readme().split('\n')[0]).toContain('Likida');
+  });
+});
+
+describe('G-38 · DEPLOY.md nombra los mensajes de arranque que el código emite', () => {
+  it('incluye los dos que el guion del demo usa como semáforo', () => {
+    const texto = readFileSync(join(RAIZ, 'DEPLOY.md'), 'utf8');
+    for (const msg of ['startup.config_silenciosa', 'startup.entorno_grupos']) {
+      expect(texto, `DEPLOY.md no nombra ${msg}`).toContain(msg);
+    }
+  });
+
+  it('el script del primer superadmin escribe las MISMAS columnas que `provisionar.ts`', () => {
+    // Si divergen, el usuario que crea el script no es el mismo tipo de fila
+    // que el que crea el producto, y el fallo aparece en la sesión, no aquí.
+    const script = readFileSync(join(RAIZ, 'scripts', 'crear-superadmin.mjs'), 'utf8');
+    for (const col of ['id', 'tenant_id', 'email', 'nombre', 'rol']) {
+      expect(script, `el script no escribe ${col}`).toMatch(new RegExp(`\\b${col}\\s*:`));
+    }
+    expect(script).toContain("rol: 'superadmin'");
   });
 });

@@ -36,7 +36,17 @@ es lo que menos falta se hace a las 3 a.m.
      **nadie va a recibir el siguiente fallo**. Es lo primero que hay que
      arreglar si aparece.
    - `startup.migraciones` — el esquema del camino del dinero.
-   - `startup.entorno` — falta configuración crítica.
+   - `startup.entorno` — falta `DASHBOARD_SECRET`, y **nada más**: cubre una
+     sola variable. No es el semáforo de la configuración.
+   - `startup.config_silenciosa` — **este sí es el semáforo**, y es el que el
+     `GUION_DEMO.md` manda mirar antes de entrar a la sala. `ok:false` lista
+     las variables cuya ausencia (o cuyo VALOR equivocado, en el caso de
+     `NEXT_PUBLIC_APP_URL`) no rompe nada visible y hace contestar mal:
+     el panel pinta cero liquidaciones, o el magic link se va a otro dominio y
+     nadie entra.
+   - `startup.entorno_grupos` — las variables cuya ausencia sí rompe, agrupadas
+     por lo que apagan (LLM, WhatsApp, Supabase). `msg` propio a propósito:
+     Sentry agrupa por mensaje y meterlo en el cubo anterior lo perdería.
 
 4. **Si el panel falló para el contralor.** Pídele el `Digest: <número>` que
    Next enseña en pantalla y busca ese número en los logs: `onRequestError`
