@@ -13,8 +13,17 @@ import { HBars, MultiLine } from '../../admin/ui/graficas';
 // contralor (auditoría 11, G-46). El mapa tipado vive en `admin/fases.ts`.
 import { FASE_LABEL } from '../../admin/fases';
 import { safeLog } from '@/lib/cuadra/pg';
+import type { SearchParamsPanel } from '../sufijo';
 
 export const dynamic = 'force-dynamic';
+/**
+ * TECHO DE LA PÁGINA. Sin él, una Supabase degradada deja la pestaña girando
+ * hasta el tope de la plataforma —300 s en el plan pro— contra un contralor
+ * que está mirando. El tope POR CONSULTA ya existe (`acotada`, 8 s); esto
+ * acota la suma de las que la página monta en paralelo (auditoría 11, G-52).
+ */
+export const maxDuration = 60;
+
 
 /** Una sección caída no tira la pantalla: devuelve `null` y la tarjeta
  *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
@@ -38,7 +47,7 @@ const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/valor-ahorro')
 export default async function ValorAhorroPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vista?: string; tenant?: string }>;
+  searchParams: Promise<SearchParamsPanel>;
 }) {
   const sp = await searchParams;
   const { tenantId } = await resolverTenantEfectivo('/dashboard/valor-ahorro', sp);

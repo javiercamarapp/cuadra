@@ -18,10 +18,19 @@ import { InicioOperacion } from './inicio-operacion';
 import { puedeVerArea } from '@/lib/auth/visibilidad';
 import { sufijoTenant } from './sufijo';
 import { acreditableMedido, notaAcreditable } from './medicion';
+import { ETIQUETA_PEAJE_CORTA, NOTA_PEAJE_PANEL } from '@/lib/cuadra/liquidacion/acreditable';
 import { resolverVentana } from './ventana';
 import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
+/**
+ * TECHO DE LA PÁGINA. Sin él, una Supabase degradada deja la pestaña girando
+ * hasta el tope de la plataforma —300 s en el plan pro— contra un contralor
+ * que está mirando. El tope POR CONSULTA ya existe (`acotada`, 8 s); esto
+ * acota la suma de las que la página monta en paralelo (auditoría 11, G-52).
+ */
+export const maxDuration = 60;
+
 
 /** Una sección caída no tira la pantalla: devuelve `null` y la tarjeta
  *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
@@ -252,9 +261,14 @@ export async function InicioContenido({
                   <KpiTile icono={<Receipt width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
                     etiqueta="IVA acreditable" valor={acreditableMedido(acred, 'iva')} formato="mxn"
                     nota={notaAcreditable(acred, 'iva', 'LIVA, Art. 5 — CFDI con IVA desglosado')} />
+                  {/* La etiqueta y el pie del peaje salen del MOTOR
+                      (`liquidacion/acreditable.ts`), que es quien decide la
+                      reserva: el estímulo exige cuatro condiciones que Likida
+                      no verifica, el PDF ya las imprime, y el panel lo pintaba
+                      como un derecho ya ganado (auditoría 11, G-05). */}
                   <KpiTile icono={<RouteIcon width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
-                    etiqueta="Peaje (50%)" valor={acreditableMedido(acred, 'peaje')} formato="mxn"
-                    nota={notaAcreditable(acred, 'peaje', 'Estímulo de autopistas · LIF 2026, Art. 20-A')} />
+                    etiqueta={ETIQUETA_PEAJE_CORTA} valor={acreditableMedido(acred, 'peaje')} formato="mxn"
+                    nota={notaAcreditable(acred, 'peaje', NOTA_PEAJE_PANEL)} />
                 </div>
               )}
             </section>

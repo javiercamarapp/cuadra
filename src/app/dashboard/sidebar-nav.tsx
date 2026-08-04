@@ -7,7 +7,15 @@ import { LayoutGrid, ChevronDown } from 'lucide-react';
 import { type Item, INICIO, NEGOCIO, OPERACION, DOCUMENTOS_DINERO, GESTION } from './rutas';
 import { puedeVerRuta } from '@/lib/auth/visibilidad';
 
-const ITEM = 'flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm hover:bg-[color-mix(in_srgb,var(--muted)_10%,transparent)] transition-colors';
+// AUDITORÍA 11 · G-17. Debajo de `lg` el carril mide 72 px (`MARCO_SIDEBAR`),
+// así que los items se centran y enseñan SOLO el ícono; el nombre reaparece
+// desde `lg`. Es la misma técnica que `chrome.tsx` ya usa para el badge de rol
+// y el nombre del usuario, y la variante de solo íconos que /admin tiene desde
+// que se colapsó su sidebar.
+const ITEM = 'flex items-center justify-center lg:justify-start gap-2.5 px-2.5 py-2 rounded-lg text-sm hover:bg-[color-mix(in_srgb,var(--muted)_10%,transparent)] transition-colors';
+/** El nombre del item: presente en el DOM (el lector de pantalla lo lee) y
+ *  oculto en el carril angosto, donde no cabe. */
+const ETIQUETA = 'hidden lg:inline';
 const ICONO = { width: 16, height: 16, strokeWidth: 1.75, color: 'var(--muted)' } as const;
 
 /** Mismo patrón que admin/sidebar-nav.tsx: una sección plegable, abierta
@@ -26,15 +34,23 @@ function Seccion({ titulo, items, defaultAbierto = false, sufijo }: { titulo: st
       <button
         type="button"
         onClick={() => setAbierto((a) => !a)}
-        className="w-full flex items-center justify-between gap-2 px-2.5 mb-1.5 text-[11px] font-semibold uppercase tracking-wide hover:opacity-70 transition-opacity"
+        className="w-full hidden lg:flex items-center justify-between gap-2 px-2.5 mb-1.5 text-[11px] font-semibold uppercase tracking-wide hover:opacity-70 transition-opacity"
         style={{ color: 'var(--muted)' }}
       >
         {titulo}
         <ChevronDown width={12} height={12} strokeWidth={2} className="transition-transform" style={{ transform: abierto ? 'rotate(180deg)' : 'none' }} />
       </button>
       {abierto && items.map(({ href, nombre, Icono }) => (
-        <Link key={href} href={`${href}${sufijo}`} className={ITEM}>
-          <Icono {...ICONO} /> {nombre}
+        <Link
+          key={href}
+          href={`${href}${sufijo}`}
+          className={ITEM}
+          title={nombre}
+          // Sin esto los 23 links se anuncian idénticos y quien navega con
+          // lector de pantalla no sabe en cuál está (G-17).
+          aria-current={href === pathname ? 'page' : undefined}
+        >
+          <Icono {...ICONO} /> <span className={ETIQUETA}>{nombre}</span>
         </Link>
       ))}
     </div>
@@ -55,6 +71,7 @@ function Seccion({ titulo, items, defaultAbierto = false, sufijo }: { titulo: st
  */
 export default function SidebarNav({ rol }: { rol: string }) {
   const sp = useSearchParams();
+  const pathname = usePathname();
   const tenant = sp.get('tenant');
   const vista = sp.get('vista');
   // EL SUPERADMIN QUE LLEGA A UNA SUBPÁGINA SIN PARÁMETRO SE EXPULSABA SOLO.
@@ -97,8 +114,13 @@ export default function SidebarNav({ rol }: { rol: string }) {
     <>
       {puedeVerRuta(rolMenu, '/dashboard') && (
         <div>
-          <Link href={`/dashboard${sufijo}`} className={`${ITEM} font-medium`}>
-            <LayoutGrid {...ICONO} /> Resumen
+          <Link
+            href={`/dashboard${sufijo}`}
+            className={`${ITEM} font-medium`}
+            title="Resumen"
+            aria-current={pathname === '/dashboard' ? 'page' : undefined}
+          >
+            <LayoutGrid {...ICONO} /> <span className={ETIQUETA}>Resumen</span>
           </Link>
         </div>
       )}

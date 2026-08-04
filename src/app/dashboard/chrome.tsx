@@ -33,10 +33,16 @@ const ROL_BADGE: Record<string, string> = {
 };
 
 export default function DashboardChrome({
-  nombre, rol, cerrarSesion, children,
+  nombre, rol, tenantId, cerrarSesion, children,
 }: {
   nombre: string | null;
   rol: string;
+  /** Para enlazar el aviso de privacidad de LA FLOTA (el responsable de los
+   *  datos es la empresa; Likida es persona encargada). La LFPDPPP art. 15
+   *  exige que el aviso esté DISPONIBLE al titular, y ninguna de las 20
+   *  páginas del panel lo enlazaba: un aviso que nadie enlaza está archivado,
+   *  no disponible (auditoría 11, G-56). `/mis-viajes` ya lo hace. */
+  tenantId?: string | null;
   /** Server action. Opcional: el render de prueba no cierra sesión de nadie. */
   cerrarSesion?: () => Promise<void>;
   children: React.ReactNode;
@@ -66,6 +72,16 @@ export default function DashboardChrome({
                 {nombre ?? 'Mi cuenta'}
               </Link>
             </div>
+
+            {tenantId && (
+              <a
+                href={`/aviso/${tenantId}`}
+                className="hidden lg:block px-2 pb-1.5 text-[11px] hover:opacity-70 transition-opacity"
+                style={{ color: 'var(--muted)' }}
+              >
+                Aviso de privacidad
+              </a>
+            )}
 
             {cerrarSesion && (
               <form action={cerrarSesion} className="mt-0.5">

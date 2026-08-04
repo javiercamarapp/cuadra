@@ -4,8 +4,17 @@ import { etiquetaConcepto } from '@/lib/cuadra/cuadre/engine';
 import { mxn } from '@/lib/utils';
 import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
 import { EstadoVacio } from '../../admin/ui/kit';
+import type { SearchParamsPanel } from '../sufijo';
 
 export const dynamic = 'force-dynamic';
+/**
+ * TECHO DE LA PÁGINA. Sin él, una Supabase degradada deja la pestaña girando
+ * hasta el tope de la plataforma —300 s en el plan pro— contra un contralor
+ * que está mirando. El tope POR CONSULTA ya existe (`acotada`, 8 s); esto
+ * acota la suma de las que la página monta en paralelo (auditoría 11, G-52).
+ */
+export const maxDuration = 60;
+
 
 /**
  * Configuración (PASO 23) — lo que de verdad está configurado para esta
@@ -19,7 +28,7 @@ export const dynamic = 'force-dynamic';
 export default async function ConfiguracionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vista?: string; tenant?: string }>;
+  searchParams: Promise<SearchParamsPanel>;
 }) {
   const sp = await searchParams;
   const { tenantId } = await resolverTenantEfectivo('/dashboard/configuracion', sp);

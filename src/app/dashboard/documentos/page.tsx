@@ -4,10 +4,20 @@ import { etiquetaConcepto } from '@/lib/cuadra/cuadre/engine';
 import { mxn } from '@/lib/utils';
 import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
 import { fechaMx } from '../formato';
-import { KpiTile, EstadoVacio, StatusPill, type Estado } from '../../admin/ui/kit';
+import { KpiTile, EstadoVacio, StatusPill } from '../../admin/ui/kit';
+import { estadoSat } from './estado-sat';
 import { safeLog } from '@/lib/cuadra/pg';
+import type { SearchParamsPanel } from '../sufijo';
 
 export const dynamic = 'force-dynamic';
+/**
+ * TECHO DE LA PÁGINA. Sin él, una Supabase degradada deja la pestaña girando
+ * hasta el tope de la plataforma —300 s en el plan pro— contra un contralor
+ * que está mirando. El tope POR CONSULTA ya existe (`acotada`, 8 s); esto
+ * acota la suma de las que la página monta en paralelo (auditoría 11, G-52).
+ */
+export const maxDuration = 60;
+
 
 /** Umbral bajo el cual el OCR pide que un humano confirme lo que leyó
  *  (human-in-the-loop, PASO 17). Es el mismo criterio que usa el flujo de
@@ -18,18 +28,6 @@ const CONFIANZA_BAJA = 0.7;
  *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
  *  por eso pasa por `safeLog` y no por un `catch` vacío local (G-32). */
 const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/documentos');
-
-/** Qué dice el SAT del CFDI de ese comprobante. `null` = no hay CFDI que
- *  validar (un ticket de papel sin factura), que NO es lo mismo que "no
- *  válido" — pintarlos igual haría ver como problema lo que es normal. */
-function estadoSat(d: DocumentoRow): { label: string; estado: Estado } {
-  if (d.efos) return { label: 'Emisor en lista EFOS', estado: 'bad' };
-  if (!d.cfdiUuid) return { label: 'Sin CFDI', estado: 'neutral' };
-  if (d.estadoSat === 'vigente') return { label: 'Vigente', estado: 'ok' };
-  if (d.estadoSat === 'cancelado') return { label: 'Cancelado', estado: 'bad' };
-  if (d.estadoSat) return { label: d.estadoSat, estado: 'warn' };
-  return { label: 'Sin verificar', estado: 'warn' };
-}
 
 /**
  * Documentos / Agente OCR (PASO 17) — la bandeja real de `gasto`: cada fila
@@ -42,7 +40,7 @@ function estadoSat(d: DocumentoRow): { label: string; estado: Estado } {
 export default async function DocumentosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vista?: string; tenant?: string }>;
+  searchParams: Promise<SearchParamsPanel>;
 }) {
   const sp = await searchParams;
   const { tenantId } = await resolverTenantEfectivo('/dashboard/documentos', sp);
@@ -51,6 +49,12 @@ export default async function DocumentosPage({
   const conCfdi = docs?.filter((d) => d.cfdiUuid).length ?? 0;
   const bajaConfianza = docs?.filter((d) => d.ocrConfianza !== null && d.ocrConfianza < CONFIANZA_BAJA).length ?? 0;
   const conFoto = docs?.filter((d) => d.tieneImagen).length ?? 0;
+  // Los KPI de arriba cuentan TODA la bandeja (`getDocumentos` ya no corta a
+  // 100 ni pide el `max_rows` de PostgREST); la tabla pinta las 100 más
+  // recientes, que es lo que su propio pie dice. Rótulo y consulta, otra vez,
+  // diciendo lo mismo (auditoría 11, G-14).
+  const EN_TABLA = 100;
+  const visibles = docs?.slice(0, EN_TABLA) ?? [];
 
   return (
     <div className="flex flex-col gap-4">
@@ -114,7 +118,7 @@ export default async function DocumentosPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {docs.map((d) => {
+                    {visibles.map((d) => {
                       const sat = estadoSat(d);
                       const baja = d.ocrConfianza !== null && d.ocrConfianza < CONFIANZA_BAJA;
                       return (
@@ -133,9 +137,9 @@ export default async function DocumentosPage({
                     })}
                   </tbody>
                 </table>
-                {docs.length >= 100 && (
+                {docs.length > EN_TABLA && (
                   <p className="text-xs px-5 pt-2" style={{ color: 'var(--muted)' }}>
-                    Se muestran los 100 más recientes.
+                    Se muestran los {EN_TABLA} más recientes, de {docs.length} en la bandeja.
                   </p>
                 )}
               </div>

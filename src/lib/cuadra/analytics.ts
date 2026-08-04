@@ -8,7 +8,7 @@ import { detectarDuplicadosEntreViajes, type Anomalia } from './duplicados';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { cuadrarDesdeDB } from './cuadre/desde_db';
 import { filasImprimibles } from './liquidacion/omitidos';
-import { round2 } from '@/lib/formato';
+import { round2, TZ_MX } from '@/lib/formato';
 import { logger } from '@/lib/logger';
 
 // Los dos bordes de PostgREST (error por valor, y el recorte silencioso a
@@ -162,6 +162,26 @@ export async function detectarAnomalias(tenantId: string): Promise<Anomalia[]> {
  * `lib/admin/negocio.ts`; `hoy` inyectable por la misma razón que ahí
  * (una prueba de ventana no puede depender del reloj real).
  */
+/**
+ * El día CALENDARIO en México de un `timestamptz`, como llave de agrupación.
+ *
+ * `.slice(0, 10)` se queda con el día UTC, y México es UTC−6: una liquidación
+ * cerrada el viernes a las 20:00 hora local se contaba en la barra del sábado
+ * (auditoría 11, G-14 — el mismo defecto que `fechaMx` ya paga del lado de la
+ * presentación). No es formato de presentación y por eso no vive en
+ * `lib/formato.ts`: es una LLAVE (ISO, ordenable) con la que se agrupa, y las
+ * barras se rotulan aparte.
+ */
+function diaMx(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  // 'en-CA' da 'YYYY-MM-DD'; la zona es la que decide el día.
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ_MX, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(t));
+}
+
 export async function getLiquidacionesPorDia(
   tenantId: string,
   ventanaDias: number = 7,
@@ -178,8 +198,8 @@ export async function getLiquidacionesPorDia(
   );
   const porDiaMap = new Map<string, number>();
   for (const r of rows) {
-    const dia = (r.created_at as string).slice(0, 10);
-    porDiaMap.set(dia, (porDiaMap.get(dia) ?? 0) + 1);
+    const dia = diaMx(r.created_at as string);
+    if (dia) porDiaMap.set(dia, (porDiaMap.get(dia) ?? 0) + 1);
   }
   const cortes = (diasAtras: number) => {
     const d = new Date(`${hoy}T00:00:00Z`);
@@ -364,14 +384,25 @@ export interface ViajeRow {
  *  de unidad ni de POD (no existen en el esquema), así que la tabla enseña lo
  *  que sí hay — inventar columnas vacías haría ver el producto más completo y
  *  la pantalla más inútil. */
-export async function getViajes(tenantId: string, limite = 100): Promise<ViajeRow[]> {
-  const res = await supabaseAdmin()
-    .from('viaje')
-    .select('id, folio, origen, destino, estatus, anticipo, fecha_inicio, intake_pendientes, operador:operador_id(nombre)')
-    .eq('tenant_id', tenantId)
-    .order('created_at', { ascending: false })
-    .limit(limite);
-  const filas = exigir(res, 'getViajes') ?? [];
+export async function getViajes(tenantId: string): Promise<ViajeRow[]> {
+  // ERA LA ÚNICA LECTURA DE ESTE ARCHIVO SIN `traerTodo`, y alimenta la barra
+  // de "Avance de cierre", que filtra por periodo EN EL CLIENTE. Con `limite =
+  // 100`, la pestaña "Todo" de una flota de 25 viajes/día pintaba los últimos
+  // cuatro días bajo el rótulo del histórico —25% donde el histórico es ~95%—
+  // y daba el mismo número que la pestaña "Mes" (auditoría 11, G-14).
+  //
+  // El orden se conserva (más reciente primero) y se desempata por `id` para
+  // que la paginación no baraje filas entre páginas.
+  const filas = await traerTodo<Record<string, unknown>>(
+    (desde, hasta) => supabaseAdmin()
+      .from('viaje')
+      .select('id, folio, origen, destino, estatus, anticipo, fecha_inicio, intake_pendientes, operador:operador_id(nombre)')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .order('id')
+      .range(desde, hasta),
+    'getViajes',
+  );
   return filas.map((v) => ({
     id: v.id as string,
     folio: (v.folio as string) || (v.id as string).slice(0, 8),
@@ -394,14 +425,20 @@ export interface DocumentoRow {
 
 /** La bandeja del Agente OCR — cada fila de `gasto` es un comprobante que
  *  entró por WhatsApp y pasó por el agente. */
-export async function getDocumentos(tenantId: string, limite = 100): Promise<DocumentoRow[]> {
-  const res = await supabaseAdmin()
-    .from('gasto')
-    .select('id, concepto, monto, fecha, folio, rfc_emisor, cfdi_uuid, estado_sat, ocr_confianza, efos, xml_verificado, imagen_url')
-    .eq('tenant_id', tenantId)
-    .order('created_at', { ascending: false })
-    .limit(limite);
-  const filas = exigir(res, 'getDocumentos') ?? [];
+export async function getDocumentos(tenantId: string): Promise<DocumentoRow[]> {
+  // `.limit(1000)` era EXACTAMENTE el `max_rows` de PostgREST: pedir el tope
+  // no distingue "hay mil" de "hay doce mil", y la conciliación del trimestre
+  // se cortaba a mitad del segundo mes con HTTP 200 (auditoría 11, G-14).
+  const filas = await traerTodo<Record<string, unknown>>(
+    (desde, hasta) => supabaseAdmin()
+      .from('gasto')
+      .select('id, concepto, monto, fecha, folio, rfc_emisor, cfdi_uuid, estado_sat, ocr_confianza, efos, xml_verificado, imagen_url')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .order('id')
+      .range(desde, hasta),
+    'getDocumentos',
+  );
   return filas.map((g) => ({
     id: g.id as string,
     concepto: (g.concepto as string) ?? 'otro',

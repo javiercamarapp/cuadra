@@ -47,3 +47,25 @@ describe('el rail del asistente no se monta para quien no ve el dinero', () => {
     expect(render('flota_admin')).toContain('contenido');
   });
 });
+
+// ── AUDITORÍA 11 · G-56 (MEDIO, legal) ────────────────────────────────────
+//
+// El aviso de privacidad de la flota estaba publicado en `/aviso/[tenant]` y
+// ninguna de las 20 páginas del panel lo enlazaba. La LFPDPPP art. 15 exige
+// que esté DISPONIBLE al titular; un aviso que nadie enlaza está archivado, no
+// disponible. `/mis-viajes` ya lo enlazaba desde el PR #7; el panel no.
+describe('el aviso de privacidad de la flota se alcanza desde el panel', () => {
+  it('el marco enlaza /aviso/<tenant> cuando hay tenant', () => {
+    const html = renderToStaticMarkup(
+      <DashboardChrome nombre="Javier" rol="flota_admin" tenantId="t-123"><p>x</p></DashboardChrome>,
+    );
+    expect(html).toContain('/aviso/t-123');
+  });
+
+  it('sin tenant no se inventa un enlace roto', () => {
+    const html = renderToStaticMarkup(
+      <DashboardChrome nombre="Javier" rol="superadmin" tenantId={null}><p>x</p></DashboardChrome>,
+    );
+    expect(html).not.toContain('/aviso/');
+  });
+});

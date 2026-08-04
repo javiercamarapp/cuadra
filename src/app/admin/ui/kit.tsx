@@ -83,15 +83,21 @@ export function KpiTile({
           <div className="text-xs mt-0.5 truncate" style={{ color: 'var(--muted)' }}>{etiqueta}</div>
         </div>
       </div>
+      {/* `--faint` (#a1a1aa) mide 2.56:1 sobre blanco — por debajo del 3:1 que
+          AA pide hasta para texto grande. Y este pie no es decoración: es
+          donde va "LIF 2026, Art. 20-A", "LIVA, Art. 5" y el supuesto
+          declarado de las estimaciones, o sea la defensa del producto contra
+          "¿de dónde salió ese número?" (auditoría 11, G-13). `--muted`
+          (#6b7280) es el mismo gris de la familia y mide 4.83:1. */}
       {vacio ? (
-        <p className="text-xs mt-2" style={{ color: 'var(--faint)' }}>{vacio}</p>
+        <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>{vacio}</p>
       ) : sparkline && sparkline.length > 1 ? (
         <div className="mt-2 flex items-center gap-2">
           <div className="flex-1 min-w-0"><Sparkline valores={sparkline} alto={20} /></div>
           {tendencia !== undefined && <Tendencia valor={tendencia} />}
         </div>
       ) : null}
-      {nota && <p className="text-xs mt-2" style={{ color: 'var(--faint)' }}>{nota}</p>}
+      {nota && <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>{nota}</p>}
     </div>
   );
 }
@@ -153,7 +159,7 @@ export function ChartCard({
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
           <h3 className="text-xs font-semibold uppercase tracking-wide truncate" style={{ color: 'var(--muted)' }}>{titulo}</h3>
-          {subtitulo && <p className="text-xs mt-0.5" style={{ color: 'var(--faint)' }}>{subtitulo}</p>}
+          {subtitulo && <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{subtitulo}</p>}
         </div>
         {accion}
       </div>

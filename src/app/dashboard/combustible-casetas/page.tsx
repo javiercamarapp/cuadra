@@ -11,8 +11,17 @@ import { acreditableMedido, notaAcreditable } from '../medicion';
 import { HBars } from '../../admin/ui/graficas';
 import { Dona } from '../../admin/charts';
 import { safeLog } from '@/lib/cuadra/pg';
+import type { SearchParamsPanel } from '../sufijo';
 
 export const dynamic = 'force-dynamic';
+/**
+ * TECHO DE LA PÁGINA. Sin él, una Supabase degradada deja la pestaña girando
+ * hasta el tope de la plataforma —300 s en el plan pro— contra un contralor
+ * que está mirando. El tope POR CONSULTA ya existe (`acotada`, 8 s); esto
+ * acota la suma de las que la página monta en paralelo (auditoría 11, G-52).
+ */
+export const maxDuration = 60;
+
 
 /** Una sección caída no tira la pantalla: devuelve `null` y la tarjeta
  *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
@@ -35,7 +44,7 @@ const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/combustible-ca
 export default async function CombustibleCasetasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vista?: string; tenant?: string }>;
+  searchParams: Promise<SearchParamsPanel>;
 }) {
   const sp = await searchParams;
   const { tenantId } = await resolverTenantEfectivo('/dashboard/combustible-casetas', sp);
@@ -45,7 +54,7 @@ export default async function CombustibleCasetasPage({
     // El histórico, declarado: esta pantalla no tiene filtro de rango.
     safe<Acreditables>(() => getAcreditables(tenantId, null)),
     safe<Anomalia[]>(() => detectarAnomalias(tenantId)),
-    safe<DocumentoRow[]>(() => getDocumentos(tenantId, 1000)),
+    safe<DocumentoRow[]>(() => getDocumentos(tenantId)),
   ]);
 
   const diesel = porConcepto?.find((c) => c.concepto === 'diesel');

@@ -3,9 +3,19 @@ import { getDocumentos, getAcreditables, type DocumentoRow, type Acreditables } 
 import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
 import { KpiTile, EstadoVacio } from '../../admin/ui/kit';
 import { acreditableMedido, notaAcreditable } from '../medicion';
+import { ETIQUETA_PEAJE_CORTA, NOTA_PEAJE_PANEL } from '@/lib/cuadra/liquidacion/acreditable';
 import { safeLog } from '@/lib/cuadra/pg';
+import type { SearchParamsPanel } from '../sufijo';
 
 export const dynamic = 'force-dynamic';
+/**
+ * TECHO DE LA PÁGINA. Sin él, una Supabase degradada deja la pestaña girando
+ * hasta el tope de la plataforma —300 s en el plan pro— contra un contralor
+ * que está mirando. El tope POR CONSULTA ya existe (`acotada`, 8 s); esto
+ * acota la suma de las que la página monta en paralelo (auditoría 11, G-52).
+ */
+export const maxDuration = 60;
+
 
 /** Una sección caída no tira la pantalla: devuelve `null` y la tarjeta
  *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
@@ -28,13 +38,13 @@ const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/facturacion');
 export default async function FacturacionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vista?: string; tenant?: string }>;
+  searchParams: Promise<SearchParamsPanel>;
 }) {
   const sp = await searchParams;
   const { tenantId } = await resolverTenantEfectivo('/dashboard/facturacion', sp);
 
   const [docs, acred] = await Promise.all([
-    safe<DocumentoRow[]>(() => getDocumentos(tenantId, 1000)),
+    safe<DocumentoRow[]>(() => getDocumentos(tenantId)),
     // Sin filtro de rango en esta pantalla: el histórico, declarado.
     safe<Acreditables>(() => getAcreditables(tenantId, null)),
   ]);
@@ -99,9 +109,11 @@ export default async function FacturacionPage({
               <KpiTile icono={<Receipt width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
                 etiqueta="IVA acreditable" valor={acreditableMedido(acred, 'iva')} formato="mxn"
                 nota={notaAcreditable(acred, 'iva', 'LIVA, Art. 5 — CFDI con IVA desglosado')} />
+              {/* Misma reserva que en Inicio y que en el PDF, desde la misma
+                  fuente: el motor (auditoría 11, G-05). */}
               <KpiTile icono={<Receipt width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
-                etiqueta="Peaje acreditable (50%)" valor={acreditableMedido(acred, 'peaje')} formato="mxn"
-                nota={notaAcreditable(acred, 'peaje', 'LIF 2026, Art. 20-A')} />
+                etiqueta={ETIQUETA_PEAJE_CORTA} valor={acreditableMedido(acred, 'peaje')} formato="mxn"
+                nota={notaAcreditable(acred, 'peaje', NOTA_PEAJE_PANEL)} />
               <KpiTile icono={<Receipt width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
                 etiqueta="Litros de diésel elegibles" valor={acreditableMedido(acred, 'litrosDiesel')} formato="litros"
                 nota={notaAcreditable(acred, 'litrosDiesel', 'El estímulo en pesos lo calcula tu contador con la cuota semanal del DOF')} />

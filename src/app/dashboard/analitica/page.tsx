@@ -9,8 +9,17 @@ import { EstadoVacio, ChartCard } from '../../admin/ui/kit';
 import { HBars } from '../../admin/ui/graficas';
 import { BarChartSimple } from '../../admin/charts';
 import { safeLog } from '@/lib/cuadra/pg';
+import { sufijoTenant, type SearchParamsPanel } from '../sufijo';
 
 export const dynamic = 'force-dynamic';
+/**
+ * TECHO DE LA PÁGINA. Sin él, una Supabase degradada deja la pestaña girando
+ * hasta el tope de la plataforma —300 s en el plan pro— contra un contralor
+ * que está mirando. El tope POR CONSULTA ya existe (`acotada`, 8 s); esto
+ * acota la suma de las que la página monta en paralelo (auditoría 11, G-52).
+ */
+export const maxDuration = 60;
+
 
 /** Una sección caída no tira la pantalla: devuelve `null` y la tarjeta
  *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
@@ -30,7 +39,7 @@ const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/analitica');
 export default async function AnaliticaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vista?: string; tenant?: string; rango?: string }>;
+  searchParams: Promise<SearchParamsPanel>;
 }) {
   const sp = await searchParams;
   const { tenantId, rol } = await resolverTenantEfectivo('/dashboard/analitica', sp);
@@ -114,7 +123,10 @@ export default async function AnaliticaPage({
                   </div>
                 </div>
               </a>
-              <Link href="/dashboard/cuadre" className="card p-4 flex items-start gap-3 hover:shadow-md transition-shadow">
+              {/* Era el único link desnudo del panel: perdía hasta `?tenant=`,
+                  y `resolverTenantEfectivo` caía al tenant DEMO con los folios
+                  y montos de otra empresa bajo el mismo encabezado (G-47). */}
+              <Link href={`/dashboard/cuadre${sufijoTenant(sp)}`} className="card p-4 flex items-start gap-3 hover:shadow-md transition-shadow">
                 <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--canvas)', border: '1px solid var(--line)' }}>
                   <FileText width={17} height={17} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />
                 </div>

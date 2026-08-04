@@ -3,6 +3,14 @@ import SeccionPendiente from '../pendiente';
 import { exigirVerRuta } from '@/lib/auth/guard';
 
 export const dynamic = 'force-dynamic';
+/**
+ * TECHO DE LA PÁGINA. Sin él, una Supabase degradada deja la pestaña girando
+ * hasta el tope de la plataforma —300 s en el plan pro— contra un contralor
+ * que está mirando. El tope POR CONSULTA ya existe (`acotada`, 8 s); esto
+ * acota la suma de las que la página monta en paralelo (auditoría 11, G-52).
+ */
+export const maxDuration = 60;
+
 
 export default async function CotizadorPage() {
   await exigirVerRuta('/dashboard/cotizador');

@@ -1,4 +1,8 @@
 import { logger } from '@/lib/logger';
+// El tope de consulta vive en `presupuesto.ts` (dominio del webhook): aquí se
+// IMPORTA, no se reimplementa — un segundo tope sería un segundo número que
+// alguien tiene que acordarse de mover.
+import { acotada } from './presupuesto';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOS DOS BORDES DE POSTGREST — extraídos de analytics.ts para que el módulo
@@ -46,7 +50,16 @@ export async function traerTodo<T>(
   const filas: T[] = [];
   for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
     const desde = pagina * PAGINA;
-    const pag = exigir(await construir(desde, desde + PAGINA - 1), consulta) ?? [];
+    // CADA PÁGINA CON SU TECHO. `acotada` estaba en las escrituras del
+    // encargado y no en las lecturas del panel, que son once y pasan todas por
+    // aquí. Sin tope, una Supabase degradada no hace la página lenta: la deja
+    // en blanco — `safeLog` atrapa excepciones, no esperas, así que el
+    // fallback que la pantalla tiene escrito nunca se pinta y la invocación
+    // muere por corte de la plataforma (auditoría 11, G-52).
+    const pag = exigir(
+      await acotada(construir(desde, desde + PAGINA - 1), `${consulta}[${pagina}]`),
+      consulta,
+    ) ?? [];
     filas.push(...pag);
     if (pag.length < PAGINA) break;
   }

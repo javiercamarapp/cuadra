@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { KpiTile } from '../admin/ui/kit';
+import { ETIQUETA_PEAJE_CORTA, NOTA_PEAJE_PANEL } from '@/lib/cuadra/liquidacion/acreditable';
 import { Acred } from './acred';
 import { resumenCuadre } from '@/lib/cuadra/cuadre/resumen';
 
@@ -74,5 +77,44 @@ describe('WhatsApp tampoco lo afirma', () => {
     const texto = resumenCuadre(liq as never, true, 'contralor');
     expect(texto).toContain('12,400');
     expect(texto, 'el PDF sí lo dice y el mensaje no').toMatch(/sujeto a elegibilidad/i);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDITORÍA 11 · G-05, la mitad de D1 — «el panel CONSUME la etiqueta
+// condicionada, no la reescribe».
+//
+// Las pruebas de arriba ejercen `Acred`, un componente que el panel de HOY no
+// monta: `master` reestructuró /dashboard y las tres tarjetas fiscales son
+// `KpiTile`. Así que la reserva estaba probada en una pieza que nadie ve, y la
+// pantalla que se proyecta seguía diciendo «Peaje (50%) · Estímulo de
+// autopistas · LIF 2026, Art. 20-A», sin ninguna de las cuatro condiciones.
+//
+// Las cadenas vienen de `liquidacion/acreditable.ts` —el motor, que es quien
+// decide la reserva— y no se reescriben aquí: si el panel las teclea por su
+// cuenta, vuelve a ser una cuarta superficie que puede divergir.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('las pantallas que HOY se montan también llevan la reserva', () => {
+  const fuentes = [
+    ['dashboard/page.tsx', readFileSync(new URL('./page.tsx', import.meta.url), 'utf8')],
+    ['facturacion/page.tsx', readFileSync(new URL('./facturacion/page.tsx', import.meta.url), 'utf8')],
+  ] as const;
+
+  it.each(fuentes)('%s usa la etiqueta del motor, no una propia', (_n, src) => {
+    expect(src, 'el rótulo del peaje se estaba escribiendo a mano en la pantalla').toContain('ETIQUETA_PEAJE_CORTA');
+    expect(src).toContain('NOTA_PEAJE_PANEL');
+  });
+
+  it('y esa etiqueta dice lo que el PDF dice', () => {
+    expect(ETIQUETA_PEAJE_CORTA).toMatch(/sujeto a elegibilidad/i);
+    expect(NOTA_PEAJE_PANEL).toMatch(/no verifica/i);
+  });
+
+  it('el pie condicionado se puede leer en la tarjeta que sí se monta', () => {
+    const html = renderToStaticMarkup(
+      <KpiTile icono={<span />} etiqueta={ETIQUETA_PEAJE_CORTA} valor={12400} formato="mxn" nota={NOTA_PEAJE_PANEL} />,
+    );
+    expect(html).toMatch(/sujeto a elegibilidad/i);
+    expect(html).toMatch(/no verifica/i);
   });
 });

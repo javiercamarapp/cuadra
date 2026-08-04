@@ -22,6 +22,10 @@ import { resolverVentana } from '@/app/dashboard/ventana';
 import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
+/** El rail se monta en las páginas del panel y consulta tres veces. Con techo,
+ *  una base degradada le devuelve un 503 con motivo en vez de dejar la
+ *  petición colgada hasta el corte de la plataforma (auditoría 11, G-52). */
+export const maxDuration = 30;
 
 const TENANT_DEMO = () => process.env.DEMO_TENANT_ID ?? '11111111-1111-1111-1111-111111111111';
 

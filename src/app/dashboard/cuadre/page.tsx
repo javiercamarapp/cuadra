@@ -10,12 +10,20 @@ import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
 import { puedeExportar } from '@/lib/auth/permisos';
 import { fechaMx } from '../formato';
 import { etiquetaEstatus } from '../estatus';
-import { sufijoTenant } from '../sufijo';
+import { sufijoTenant, type SearchParamsPanel } from '../sufijo';
 import { KpiTile, EstadoVacio } from '../../admin/ui/kit';
 import { Gauge } from '../../admin/ui/graficas';
 import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
+/**
+ * TECHO DE LA PÁGINA. Sin él, una Supabase degradada deja la pestaña girando
+ * hasta el tope de la plataforma —300 s en el plan pro— contra un contralor
+ * que está mirando. El tope POR CONSULTA ya existe (`acotada`, 8 s); esto
+ * acota la suma de las que la página monta en paralelo (auditoría 11, G-52).
+ */
+export const maxDuration = 60;
+
 
 interface LiqRow { id: string; folio: string; creadoEn: string; comprobado: number; diferencia: number; estatus: string }
 
@@ -59,7 +67,7 @@ const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/cuadre');
 export default async function CuadrePage({
   searchParams,
 }: {
-  searchParams: Promise<{ vista?: string; tenant?: string }>;
+  searchParams: Promise<SearchParamsPanel>;
 }) {
   const sp = await searchParams;
   const { tenantId, rol } = await resolverTenantEfectivo('/dashboard/cuadre', sp);

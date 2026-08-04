@@ -66,8 +66,11 @@ export default function CifraGrande({
       >
         {etiqueta}
       </div>
+      {/* La ventana de tiempo y la base legal de la cifra más grande de la
+          pantalla: `--faint` medía 2.56:1, el texto menos legible del panel
+          (auditoría 11, G-13). */}
       {nota && (
-        <div className="text-[11px] mt-1 whitespace-nowrap" style={{ color: 'var(--faint)' }}>
+        <div className="text-[11px] mt-1 whitespace-nowrap" style={{ color: 'var(--muted)' }}>
           {nota}
         </div>
       )}

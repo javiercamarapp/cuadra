@@ -2,8 +2,20 @@ import { Users, ShieldCheck } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
 import { EstadoVacio, StatusPill } from '../../admin/ui/kit';
+import type { SearchParamsPanel } from '../sufijo';
+// El pill imprimía `flota_admin` en crudo teniendo el repo este mapa tipado
+// escrito exactamente para eso (auditoría 11, G-15).
+import { etiquetaRol } from '../../admin/roles';
 
 export const dynamic = 'force-dynamic';
+/**
+ * TECHO DE LA PÁGINA. Sin él, una Supabase degradada deja la pestaña girando
+ * hasta el tope de la plataforma —300 s en el plan pro— contra un contralor
+ * que está mirando. El tope POR CONSULTA ya existe (`acotada`, 8 s); esto
+ * acota la suma de las que la página monta en paralelo (auditoría 11, G-52).
+ */
+export const maxDuration = 60;
+
 
 /** Los cinco roles que la base admite (`app_user.rol`, check constraint) y
  *  qué puede cada uno — el texto sale de `lib/auth/permisos.ts`, que es
@@ -45,7 +57,7 @@ async function getUsuarios(tenantId: string): Promise<UsuarioRow[]> {
 export default async function UsuariosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vista?: string; tenant?: string }>;
+  searchParams: Promise<SearchParamsPanel>;
 }) {
   const sp = await searchParams;
   const { tenantId, userId } = await resolverTenantEfectivo('/dashboard/usuarios', sp);
@@ -103,7 +115,7 @@ export default async function UsuariosPage({
                           )}
                         </td>
                         <td className="px-5 py-3">
-                          <StatusPill estado={u.rol === 'flota_admin' ? 'ok' : 'neutral'}>{u.rol}</StatusPill>
+                          <StatusPill estado={u.rol === 'flota_admin' ? 'ok' : 'neutral'}>{etiquetaRol(u.rol)}</StatusPill>
                         </td>
                         <td className="px-5 py-3" style={{ color: 'var(--muted)' }}>
                           {ROLES[u.rol] ?? 'Rol sin descripción'}
