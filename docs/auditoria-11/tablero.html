@@ -96,11 +96,11 @@
 </div>
 
 <div class="fila">
-  <div class="kpi"><div class="n" id="global">4.0</div><div class="l">Nota global (antes 4.9)</div></div>
+  <div class="kpi"><div class="n" id="global">3.9</div><div class="l">Nota global (antes 4.9)</div></div>
   <div class="kpi"><div class="n">12</div><div class="l">Rubros auditados</div></div>
   <div class="kpi"><div class="n" id="tot">—</div><div class="l">Hallazgos verificados</div></div>
   <div class="kpi"><div class="n" id="crit">—</div><div class="l">Críticos</div></div>
-  <div class="kpi"><div class="n">1</div><div class="l">Cerrado con prueba</div></div>
+  <div class="kpi"><div class="n" id="cerr">—</div><div class="l">Grupos cerrados</div></div>
   <div class="kpi"><div class="n">1</div><div class="l">Descartado por falso</div></div>
 </div>
 
@@ -159,7 +159,7 @@ const RUBROS = [
   ['Cumplimiento fiscal', 5, 3, 'deuda que cobró factura', 2,4,6,3],
   ['Cumplimiento legal',  4, 3, 'deuda que cobró factura', 2,4,3,2],
   ['Arquitectura',        6, 5, 'deuda que cobró factura', 2,4,6,4],
-  ['Pruebas',             5, PRUEBAS_NOTA, 'PRUEBAS_RAZON', PRUEBAS_C,PRUEBAS_A,PRUEBAS_M,PRUEBAS_B],
+  ['Pruebas',             5, 3, 'deuda que cobró factura', 3,2,4,0],
   ['Operabilidad y DX',   5, 4, 'deuda que cobró factura', 4,5,4,1],
   ['Rendimiento y costo', 4, 3, 'deuda que cobró factura', 2,6,5,1],
   ['Modelo de datos',     5, 4, 'deuda que cobró factura', 3,6,4,2],
@@ -184,6 +184,7 @@ const global = (suma/RUBROS.length).toFixed(1);
 document.getElementById('global').textContent = global;
 document.getElementById('tot').textContent = C+A+M+B;
 document.getElementById('crit').textContent = C;
+document.getElementById('cerr').textContent = document.querySelectorAll('.e-cerrado').length;
 
 const SERIE = [['2',6.2],['3',6.2],['4',5.9],['5',5.2],['6',5.3],['7',5.5],['8',6.5],['9',7.7],['10',4.9],['11',+global]];
 const maxv = 8;
@@ -193,7 +194,7 @@ document.getElementById('serie').innerHTML = SERIE.map(([e,v],i)=>
    <div class="e">${e}</div></div>`).join('');
 
 const COMP = [
-  ['npx vitest run','173 archivos · 1678 pruebas · exit 0',1],
+  ['npx vitest run','225 archivos · 2024 pruebas · exit 0',1],
   ['npx tsc --noEmit','exit 0',1],
   ['npm run lint','exit 0 · 6 warnings',1],
   ['npm run test:coverage','exit 1 · líneas 64.32% < 78%',0],
@@ -205,6 +206,8 @@ document.getElementById('comp').innerHTML = COMP.map(([k,v,ok])=>
 
 const CRITICOS = [
   ['e-cerrado','CERRADO','El rail servía el dinero de la flota al encargado y al chofer por <code>/api/dashboard/asistente</code>','backend + seguridad · commit 2fb1982, prueba con 4 casos y 3 controles'],
+  ['e-cerrado','CERRADO','23 grupos que ya tenían arreglo probado en el PR #7 y llevaban desde el 3-ago sin llegar a producción','commit 989ca62 · 132 archivos traídos sin un solo conflicto: el motor del dinero completo y sus arneses'],
+  ['e-cerrado','CERRADO','Cuatro guardarraíles del PR #7 cazaron defectos que <code>master</code> volvió a cometer: token de aviso sin declarar, formato mexicano duplicado, mapa de fases en su QUINTA copia y ya divergido, 64 <code>&lt;th&gt;</code> sin <code>scope</code>','commit 2e332ae'],
   ['e-prop','PROPUESTO','<code>viaje.operador_id</code> es NOT NULL y todo el módulo del encargado lo asume nullable: «Viajes sin asignar» no puede devolver una fila jamás','modelo de datos · el arreglo es una migración y aquí no hay Postgres para reproducirlo'],
   ['e-prop','PROPUESTO','<code>KpiTile</code> siempre imprime el número: tres tarjetas fiscales afirman una medición que nunca ocurrió','frontend · el arreglo correcto ya existe en el PR #7 (<code>acred.tsx</code>, 5365ca0) — una tercera variante sería una tercera copia'],
   ['e-prop','PROPUESTO','El CI de <code>master</code> lleva rojo desde el 3-ago y el paso de Build no ha corrido sobre el código del demo','operabilidad · reproducido: cobertura 64.32% contra umbral 78%'],
