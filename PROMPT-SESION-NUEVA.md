@@ -195,8 +195,33 @@ inventar.
   `useEffect` no corre y el resultado se lee como "todo bien" cuando en
   realidad no pasó nada. Dio dos falsos verdes seguidos.
 - **Chrome headless no siempre cierra solo.** Lánzalo en background, espera
-  ~20 s y `pkill -f "Google Chrome"`. El archivo suele existir aunque el
-  comando devuelva error.
+  ~20 s y ciérralo. El archivo suele existir aunque el comando devuelva error.
+
+  **NUNCA `pkill -f "Google Chrome"` a secas.** Ese patrón NO dice "headless":
+  dice "cualquier proceso cuya línea de comando contenga Google Chrome", y eso
+  incluye el navegador de diario de Javier, con sus pestañas y su trabajo
+  abierto. Medido el 4-ago-2026: mataba 23 procesos, de los cuales 0 eran
+  headless.
+
+  Esta línea, tal como estaba escrita antes, es la causa de los "se me cierra
+  Chrome solo" que Javier reportó desde el 3-ago. Tres sesiones distintas la
+  obedecieron 29 veces —17 el día 3, 12 el día 4— y las dos primeras
+  investigaciones culparon a sus extensiones de IA, porque buscaron el `pkill`
+  en el historial del shell y no en las llamadas del propio agente.
+
+  Lo correcto es matar SOLO lo que se lanzó, y lanzarlo marcado:
+
+  ```bash
+  PERFIL=$(mktemp -d)                       # perfil propio: no toca el suyo
+  "$CHROME" --headless --user-data-dir="$PERFIL" ... &
+  sleep 20
+  pkill -f "user-data-dir=$PERFIL"          # solo el que yo lancé
+  ```
+
+  Si no se usó `--user-data-dir`, el filtro mínimo aceptable es
+  `pkill -f "Google Chrome.*--headless"`. Antes de cualquier `pkill`, correr el
+  mismo patrón con `pgrep -fl` y MIRAR la lista: `pgrep` no mata nada y enseña
+  exactamente qué caería.
 - **Reproduce con el contexto completo.** Un bug del rail no apareció porque el
   preview omitía el sidebar, que era justo la causa.
 - Al borrar una ruta de preview, `.next/dev/types/validator.ts` queda obsoleto
