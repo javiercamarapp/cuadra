@@ -42,6 +42,11 @@ verificado_el: 2026-07-27
 usado_en_codigo:
   - "cuadre/engine.ts — nota de combustible_efectivo"
   - "cuadre/engine.ts — SIN_ACREDITAMIENTO (sigue sin acreditar IEPS)"
+  # AUDITORÍA 11 (G-08): §1.2 prometía el contador «este mes» sobre una regla que
+  # se mide por EJERCICIO. El párrafo cuelga de esta ficha y ahora lo declara,
+  # que es lo que hace calculable el radio de impacto si la RFA 2027 lo mueve.
+  - "FISCAL_LEGAL.md §1.2 — la facilidad del 15%, su periodo (ejercicio) y su límite (no habilita IEPS)"
+  - "FISCAL_LEGAL.md §3 — el contador del 15% pendiente en producto"
 pendiente_en_producto: >
   El CONTADOR del 15% por ejercicio no existe todavía. Hoy el motor avisa que hay
   que contarlo pero no lleva la cuenta.

@@ -67,6 +67,30 @@ export const CONDICIONES_ESTIMULO_PEAJE =
   'de carga, pasaje o turismo; que las casetas sean de la Red Nacional de Autopistas de Cuota; ingresos anuales ' +
   'menores a $300 millones; y no ser parte relacionada (LISR art. 179). Confírmelas con su contador.';
 
+/**
+ * LA RESERVA, EN TRES PALABRAS, PARA EL RENGLÓN QUE SOLO TIENE UNA LÍNEA.
+ *
+ * AUDITORÍA 11, ALTO (fiscal, G-05): el literal «sujeto a elegibilidad» estaba
+ * escrito a mano en tres archivos —este, `cuadre/resumen.ts` y
+ * `app/dashboard/acred.tsx`— y las otras cuatro superficies del panel no lo
+ * llevaban. Un dictamen fiscal con tres redacciones son tres dictámenes: la
+ * misma razón por la que `lib/formato.ts` es el único que formatea pesos.
+ * Vive aquí porque aquí vive la regla, no en la vista que la pinta.
+ */
+export const RESERVA_PEAJE = 'sujeto a elegibilidad';
+
+/** El label del renglón de peaje. ÚNICO: quien lo imprima, lo importa. */
+export const ETIQUETA_PEAJE = `Estímulo de peaje 50% (LIF 2026 art. 20, ap. A) — ${RESERVA_PEAJE}`;
+
+/**
+ * La misma reserva para una tarjeta de panel, donde el label es corto y la cita
+ * legal va en la nota de abajo. Se exporta para que `/dashboard` no vuelva a
+ * escribir una cuarta redacción: la regla es de este archivo, la pintura no.
+ */
+export const ETIQUETA_PEAJE_CORTA = `Peaje 50% — ${RESERVA_PEAJE}`;
+export const NOTA_PEAJE_PANEL =
+  `LIF 2026, Art. 20-A. ${CONDICIONES_ESTIMULO_PEAJE}`;
+
 /** El estímulo del art. 20 ap. A es ingreso acumulable: el neto es menor. */
 export const NOTA_INGRESO_ACUMULABLE =
   'Los estímulos del art. 20 ap. A son ingreso acumulable para ISR: el beneficio neto es menor.';
@@ -107,6 +131,25 @@ const CONDICIONAN_LA_DEDUCCION_ISR: Record<string, string> = {
   alimentacion_sin_soporte: 'el comprobante de hospedaje o transporte que ampare la alimentación (LISR 28-V)',
 };
 
+/**
+ * Los motivos, ya en texto, por los que el IVA de ESTA liquidación cuelga de la
+ * deducción para ISR. Vacío = no cuelga de nada y la cifra se afirma entera.
+ *
+ * AUDITORÍA 11, ALTO (fiscal, G-05): la regla vivía dentro de
+ * `filasAcreditables`, así que solo el PDF la aplicaba. `cuadre/resumen.ts`
+ * imprimía «• IVA: $689.66» a secas sobre las MISMAS diferencias con las que el
+ * papel decía «— sujeto a la deducibilidad para ISR». Se extrae para que las dos
+ * superficies decidan con la misma función y no con dos criterios.
+ */
+export function motivosQueCondicionanElIva(diferencias?: { tipo: string }[]): string[] {
+  return [...new Set((diferencias ?? []).map((d) => d.tipo))]
+    .map((t) => CONDICIONAN_LA_DEDUCCION_ISR[t])
+    .filter((m): m is string => !!m);
+}
+
+/** La reserva del IVA, en una línea, para el renglón que no cabe en dos. */
+export const RESERVA_IVA_ATADO_AL_ISR = 'sujeto a la deducibilidad para ISR';
+
 /** Cómo se dice, en el papel, que el IVA cuelga de la deducción para ISR. */
 export function pieIvaAtadoAlIsr(motivos: string[]): string {
   return 'LIVA art. 5, fr. I define "estrictamente indispensable" como lo DEDUCIBLE para los fines del ISR: no son dos requisitos, es uno. '
@@ -145,12 +188,10 @@ export function filasAcreditables(
     // donde 'Deducible para ISR' salía condicionado POR EL MISMO HECHO. Medido
     // con el diésel de $5,800 del hallazgo: ISR `condicionado` con su pie, IVA
     // $689.66 `bueno` y `pies: []`.
-    const motivos = [...new Set((liq.diferencias ?? []).map((d) => d.tipo))]
-      .map((t) => CONDICIONAN_LA_DEDUCCION_ISR[t])
-      .filter((m): m is string => !!m);
+    const motivos = motivosQueCondicionanElIva(liq.diferencias);
     filas.push(motivos.length
       ? {
-          label: 'IVA acreditable (LIVA art. 5) — sujeto a la deducibilidad para ISR',
+          label: `IVA acreditable (LIVA art. 5) — ${RESERVA_IVA_ATADO_AL_ISR}`,
           valor: mxn(liq.ivaAcreditable),
           tono: 'condicionado',
           pies: [pieIvaAtadoAlIsr(motivos)],
@@ -167,7 +208,7 @@ export function filasAcreditables(
       // La condición va en el LABEL y no solo en el pie: el renglón es lo que se
       // skimmea, y "Estímulo de peaje 50%" a secas se lee como un derecho ya
       // ganado.
-      label: 'Estímulo de peaje 50% (LIF 2026 art. 20, ap. A) — sujeto a elegibilidad',
+      label: ETIQUETA_PEAJE,
       valor: mxn(liq.peajeAcreditable),
       tono: 'condicionado',
       pies: [BASE_ESTIMULO_PEAJE, CONDICIONES_ESTIMULO_PEAJE],

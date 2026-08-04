@@ -3,6 +3,7 @@
 // llamado la tool. Los números salen del motor, nunca del modelo.
 
 import { LEYENDA_CORTA } from './leyendas';
+import { RESERVA_PEAJE, RESERVA_IVA_ATADO_AL_ISR, motivosQueCondicionanElIva } from '../liquidacion/acreditable';
 import {litros, mxn} from '@/lib/formato';
 import type { Liquidacion, TipoDiferencia } from '@/types/cuadra';
 
@@ -92,7 +93,24 @@ export function resumenCuadre(
     // `utils.ts` que ya formatean el PDF (`acreditable.ts`) y el panel
     // (`formato.ts`) — una sola fuente de formato, no tres copias a mano.
     if (liq.litrosDieselAcreditables > 0) lines.push(`• Diésel elegible para el estímulo de IEPS: ${litros(liq.litrosDieselAcreditables)}`);
-    if (liq.ivaAcreditable > 0) lines.push(`• IVA: ${mxn(liq.ivaAcreditable)}`);
+    // EL IVA CUELGA DE LA DEDUCCIÓN PARA ISR, Y AQUÍ SE AFIRMABA SOLO.
+    //
+    // AUDITORÍA 11, ALTO (fiscal, G-05): `normas/liva-5.yaml`
+    // (`verificado_fuente_primaria`), fracción I, literal: «se consideran
+    // estrictamente indispensables las erogaciones efectuadas por el
+    // contribuyente QUE SEAN DEDUCIBLES PARA LOS FINES DEL IMPUESTO SOBRE LA
+    // RENTA». No son dos requisitos: es uno.
+    //
+    // El PDF ya lo decía —`liquidacion/acreditable.ts` imprime «IVA acreditable
+    // (LIVA art. 5) — sujeto a la deducibilidad para ISR» cuando hay un motivo
+    // vivo, y `permiso_cre_no_verificable` se dispara SIEMPRE que hay XML de
+    // combustible—. Este mensaje, sobre las mismas diferencias, imprimía
+    // «• IVA: $689.66» a secas. El motivo se pregunta con la MISMA función que
+    // usa el papel, no con un criterio propio.
+    if (liq.ivaAcreditable > 0) {
+      const condicionado = motivosQueCondicionanElIva(liq.diferencias).length > 0;
+      lines.push(`• IVA: ${mxn(liq.ivaAcreditable)}${condicionado ? ` (${RESERVA_IVA_ATADO_AL_ISR})` : ''}`);
+    }
     // «sujeto a elegibilidad» va aquí igual que en el PDF y en el panel: el
     // motor aplica el 50% a todo gasto con concepto `caseta` y no conoce
     // ninguna de las cuatro condiciones del art. 20 ap. A —dedicación
@@ -100,7 +118,10 @@ export function resumenCuadre(
     // parte relacionada—. Afirmar la cifra sin la reserva en dos de las tres
     // superficies era una inconsistencia con el papel que sí la lleva
     // (auditoría 10, ALTO fiscal).
-    if (liq.peajeAcreditable > 0) lines.push(`• Peaje 50%: ${mxn(liq.peajeAcreditable)} (sujeto a elegibilidad)`);
+    // La reserva se IMPORTA (auditoría 11, G-05): estaba escrita a mano aquí, en
+    // `acreditable.ts` y en `app/dashboard/acred.tsx` — tres copias del mismo
+    // dictamen fiscal, que es como se separan.
+    if (liq.peajeAcreditable > 0) lines.push(`• Peaje 50%: ${mxn(liq.peajeAcreditable)} (${RESERVA_PEAJE})`);
   }
 
   // El descargo va SOLO al contralor: es quien toma decisiones fiscales con

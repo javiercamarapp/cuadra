@@ -43,11 +43,21 @@ carga federal** cumplen el requisito del Art. 27 aunque paguen combustible por
 medios distintos a los electrónicos, **siempre que eso no exceda el 15% del
 total de los pagos por consumo de combustible**.
 
+**El periodo es el EJERCICIO, no el mes.** La regla dice *"del total de los pagos
+efectuados por consumo de combustible para realizar su actividad"* y no pone
+ningún corte intermedio; la RFA 2026 rige del 18-feb-2026 al 31-dic-2026. Un
+11.4% acumulado en julio puede convivir con un 19% al 31 de diciembre: un
+contador mensual consuela justo cuando el cliente ya excedió. El motor lo dice
+bien en la nota que sí se imprime (`cuadre/engine.ts`: *"cuenta contra el tope
+del 15% del combustible del ejercicio"*); este documento decía "este mes" y
+contradecía a la vez al código y a `normas/rfa-2026-2.9.yaml`, que está
+`verificado_fuente_primaria` contra el DOF (auditoría 11, G-08).
+
 - Pasaje y turismo foráneo: **regla 3.12** (mismo 15%).
 - Agrícolas, silvícolas, ganaderas y pesqueras: **regla 1.9**.
 
 **Lo que Likida tiene que hacer con esto:** llevar el contador. *"Llevas 11.4% de
-tu diésel en efectivo este mes; el tope es 15%."* Ningún competidor generalista
+tu diésel en efectivo en lo que va del ejercicio; el tope es 15%."* Ningún competidor generalista
 (Zumma, Clara, FacturaGPT) puede darle eso a una flota, porque no saben en qué
 régimen está su usuario. **Aquí es donde Likida gana y no en leer mejor el
 ticket.**
@@ -215,7 +225,7 @@ algún día Likida toca dinero. Hoy no aplica.
 |---|---|
 | `facturacion/caducidad.ts` | Hoy modela vencido/no vencido. Faltan **dos relojes**: la ventana del comercio (política, corta) y el límite fiscal (el ejercicio). Vencer la primera manda a conciliación, no a la basura. |
 | `facturacion/comercios.ts` | `plazo` debe llamarse `ventanaPortal` y dejar claro que no es el plazo legal. |
-| Cuadre | Falta el **contador del 15% de combustible en efectivo** por flota y por mes. Es la pieza de más valor para el contralor. |
+| Cuadre | Falta el **contador del 15% de combustible en efectivo** por flota y por **ejercicio** (el periodo de la regla 2.9; ver §1.2). Es la pieza de más valor para el contralor. |
 | Validación de CFDI | Falta verificar el **permiso de hidrocarburos** en el XML del combustible. |
 | Aviso de privacidad y contrato | No existen. Consentimiento expreso, transferencias a proveedores de IA, y custodia de credenciales. |
 
