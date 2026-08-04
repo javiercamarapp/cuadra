@@ -111,8 +111,21 @@ async function idDeRespuesta(res: Response): Promise<string | undefined> {
   } catch { return undefined; }
 }
 
-/** Envía un documento (PDF de liquidación) por link público o media id. */
-export async function sendDocument(to: string, link: string, filename: string, caption?: string): Promise<void> {
+/**
+ * Envía un documento (PDF de liquidación) por link público o media id.
+ * Devuelve el `wamid` que Meta acusó, o `null` si NO se entregó.
+ *
+ * AUDITORÍA 11, ALTO (G-22). Devolvía `void`: un 400 de Meta —`131047` (ventana
+ * de 24 h cerrada), `131030` (destinatario fuera de la lista), un `link` que
+ * Meta no pudo descargar— se registraba y la función retornaba igual que en el
+ * camino feliz. Aguas arriba, `processor.ts` daba el PDF por entregado: NO
+ * salía el mensaje «…pero no pude generarte el PDF» que existe justo para eso,
+ * y se registraba el costo de WhatsApp de un documento que nunca llegó.
+ *
+ * Es el paso 3 del guion del demo, y era el único de los tres envíos sin acuse:
+ * `sendText` devuelve su id desde `fc760c3`.
+ */
+export async function sendDocument(to: string, link: string, filename: string, caption?: string): Promise<string | null> {
   const res = await fetch(`${GRAPH}/${phoneNumberId()}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
@@ -124,11 +137,15 @@ export async function sendDocument(to: string, link: string, filename: string, c
     }),
     signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
   });
-  if (!res.ok) { logger.error('wa.sendDocument', { status: res.status, body: await res.text().catch(() => '') }); return; }
+  if (!res.ok) { logger.error('wa.sendDocument', { status: res.status, body: await res.text().catch(() => '') }); return null; }
   // Igual que en `sendText`: el envío del PDF es EL entregable, y su éxito no
   // dejaba ninguna huella. Meta acepta el mensaje y descarga el `link` después,
   // por su cuenta; sin el wamid no hay forma de preguntarle qué pasó con él.
-  logger.info('wa.sendDocument.ok', { id: await idDeRespuesta(res), filename });
+  const id = await idDeRespuesta(res);
+  logger.info('wa.sendDocument.ok', { id, filename });
+  // Un 200 sin `messages[0].id` no es un acuse: Meta no se hizo cargo de nada.
+  // Mismo criterio que `sendText`.
+  return id ?? null;
 }
 
 /**

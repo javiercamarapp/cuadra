@@ -21,6 +21,7 @@ import { evaluarTope15 } from './periodo/combustible';
 import { avisoTope15 } from './periodo/aviso';
 import { NORMAS, esVinculante, puedeAfirmar } from './normas/indice';
 import { sanitizarTexto } from './intake/sanitizar';
+import { acotada } from './presupuesto';
 
 // ── EL RESULTADO DE UNA TOOL ES CONTEXTO DEL MODELO ─────────────────────────
 //
@@ -240,11 +241,27 @@ registerTool('guardar_liquidacion', {
       const full: Liquidacion = { ...liq, id: randomUUID(), creadaEn: new Date().toISOString() };
       const v = viaje ?? { id: ctx.viajeId, anticipo: liq.totalAnticipo };
       const o = operador ?? { id: ctx.operadorId ?? '', nombre: 'Operador', telefono: ctx.telefono ?? '' };
+      // ── LAS DOS SUBIDAS TIENEN TECHO ────────────────────────────────────────
+      //
+      // AUDITORÍA 11, CRÍTICO (G-22). `storage.upload` era el último `fetch` del
+      // camino del dinero sin `acotada`: `supabaseAdmin()` construye el cliente
+      // sin `fetch` propio, así que heredaba el default de undici —300 000 ms de
+      // `headersTimeout`/`bodyTimeout`— DOS VECES, dentro del tramo que
+      // `presupuesto.ts` cree acotado a 40 000. Con Storage degradado la tool
+      // habría terminado a los 643 500 ms y Vercel corta a los 120 000, o sea
+      // ANTES de `saveLiquidacion`: no queda liquidación, no queda PDF, no queda
+      // log —el proceso muere antes de cualquier `catch`— y Meta no reintenta.
+      // Es el paso 3 del guion del demo.
+      //
+      // `acotada` traduce el tope agotado a `{ data: null, error }`, que es
+      // exactamente la forma que este `if` ya sabía manejar: el PDF se pierde
+      // con su `logger.warn` y la liquidación SÍ se persiste. Mismo camino que
+      // `createSignedUrl` en `processor.ts`.
       const subir = async (bytes: Uint8Array, path: string) => {
-        const up = await supabaseAdmin().storage.from('liquidaciones').upload(path, Buffer.from(bytes), {
+        const up = await acotada(supabaseAdmin().storage.from('liquidaciones').upload(path, Buffer.from(bytes), {
           contentType: 'application/pdf',
           upsert: true,
-        });
+        }), `guardar_liquidacion.upload ${path.endsWith('-operador.pdf') ? 'operador' : 'contralor'}`);
         if (up.error) { logger.warn('pdf.upload', { path, err: up.error.message }); return undefined; }
         return path;
       };

@@ -501,14 +501,14 @@ export function respuestaPrivacidad(r: DatosResponsable): string {
 //     5   procedimiento ARCO ................... art. 15 fr. V
 //     6   cómo se comunican los cambios ........ art. 15 fr. VI
 //     7   cláusula de transferencias ........... art. 35
-//     8   revocación del consentimiento ........ art. 7 último párr.; Regl. 21
+//     8   revocación del consentimiento ........ art. 7 último párr.
 //     10  contacto de datos personales ......... art. 29
 //     11  oposición al tratamiento automatizado  art. 26 fr. II
 //
 // ── POR QUÉ LO ALOJA LIKIDA Y NO LA FLOTA ─────────────────────────────────
 //
 // El responsable es la FLOTA (art. 14) y Likida es persona encargada (art. 2
-// fr. XX). Pero el obligado de la fr. II es señalar un sitio, no ser el dueño
+// fr. XII). Pero el obligado de la fr. II es señalar un sitio, no ser el dueño
 // del dominio: alojarlo aquí no traslada la responsabilidad, igual que un
 // despacho que publica el aviso de su cliente no se vuelve el responsable. El
 // texto lo dice en la primera línea, para que quien lo lea sepa a quién le
@@ -561,7 +561,13 @@ export function avisoIntegral(r: DatosIntegral): SeccionAviso[] {
       fundamento: 'LFPDPPP art. 15 fr. I',
       parrafos: [
         `**${razonSocial}**, con domicilio en ${domicilio}, es la responsable de tus datos personales. A ella le reclamas y ante ella ejerces tus derechos.`,
-        `Likida opera la herramienta con la que se procesan: es **persona encargada** (art. 2 fr. XX), trata los datos por cuenta de la empresa y siguiendo sus instrucciones, y no decide sobre ellos. Este aviso está alojado en el sitio de Likida por encargo de la empresa; eso no cambia quién responde.`,
+        // AUDITORÍA 11, G-54: decía «art. 2 fr. XX», que es la definición de
+        // TRANSFERENCIA. La de persona encargada es la fr. XII
+        // (`normas/lfpdppp-2-XII-XX.yaml`, verificado_fuente_primaria, texto
+        // literal de diputados.gob.mx). El documento que sostiene «esto no es
+        // una transferencia» citaba como fundamento la definición de
+        // transferencia, y el `fundamento` se PINTA en la página.
+        `Likida opera la herramienta con la que se procesan: es **persona encargada** (art. 2 fr. XII), trata los datos por cuenta de la empresa y siguiendo sus instrucciones, y no decide sobre ellos. Este aviso está alojado en el sitio de Likida por encargo de la empresa; eso no cambia quién responde.`,
       ],
     },
     {
@@ -617,7 +623,13 @@ export function avisoIntegral(r: DatosIntegral): SeccionAviso[] {
     },
     {
       titulo: 'Cómo revocar tu consentimiento',
-      fundamento: 'LFPDPPP art. 7 último párrafo; Reglamento art. 21',
+      // AUDITORÍA 11, G-54: se retira «Reglamento art. 21». Es el reglamento de
+      // la ley ABROGADA, y `normas/lfpdppp-2-XII-XX.yaml` ya corrigió una vez
+      // este mismo error en otro párrafo: «venía del Reglamento de la ley
+      // abrogada. Citarla ante un cliente es citar derecho derogado». No se
+      // sustituye por otra cita: cuál es su equivalente en la ley vigente no lo
+      // respalda ninguna ficha, y ponerlo a ojo sería el mismo error al revés.
+      fundamento: 'LFPDPPP art. 7 último párrafo',
       parrafos: [
         `Puedes retirar tu consentimiento en cualquier momento, por el mismo medio: escribe **PRIVACIDAD** por WhatsApp o preséntalo en el domicilio de la empresa.`,
         `**Lo que la revocación no alcanza:** los comprobantes fiscales que ya se usaron para liquidar viajes pasados. La ley obliga a la empresa a conservarlos cinco años (CFF art. 30), y esa obligación no se puede revocar. Se te dice aquí para que no te sorprenda después.`,

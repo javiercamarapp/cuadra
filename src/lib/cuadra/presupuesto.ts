@@ -98,22 +98,35 @@ export const TECHO_ENVIO_META_MS = 10_000;
  * ya no hay presupuesto: lo que no es el entregable —la respuesta y el PDF— ni
  * una guardia de corrección.
  */
+// ── EL `donde` TIENE QUE APUNTAR A DONDE DICE ─────────────────────────────
+//
+// AUDITORÍA 11, CRÍTICO (G-22). Los trece `donde` apuntaban a `processor.ts:591,
+// 595, 658, 715, 734, 755, 757, 774, 814` y NINGUNA de esas líneas contenía el
+// paso que decía contener: el archivo se reescribió y la tabla se quedó con las
+// coordenadas viejas. Una tabla de presupuesto que apunta a otro lado no se
+// puede auditar, y este documento es lo único que dice qué se sacrifica cuando
+// el reloj aprieta.
+//
+// Por eso cada paso lleva ahora el SÍMBOLO que lo identifica, y
+// `presupuesto.test.ts` abre `processor.ts`, va a esa línea y comprueba que lo
+// contenga. Si esta prueba falla al mover código: no se afloja la prueba, se
+// corrige el número — es la única forma de que el `donde` siga sirviendo.
 export const PASOS_CIERRE: ReadonlyArray<{
-  paso: string; donde: string; ms: number; techo: number; opcional: boolean;
+  paso: string; donde: string; simbolo: string; ms: number; techo: number; opcional: boolean;
 }> = [
-  { paso: 'registrarCosto del turno',              donde: 'processor.ts:1278', ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
-  { paso: 'vincularCostosALiquidacion',            donde: 'processor.ts:1282', ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
-  { paso: 'guardiaCifras → cuadrarDesdeDB',        donde: 'processor.ts:1351', ms: 300,   techo: techoPasoSupabaseMs(), opcional: false },
-  { paso: 'sendText de la respuesta',              donde: 'processor.ts:1436', ms: 1_500, techo: TECHO_ENVIO_META_MS,   opcional: false },
-  { paso: 'registrarCostoWhatsApp de la respuesta', donde: 'processor.ts:380', ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
-  { paso: 'getGastos para el aviso de barrera',    donde: 'processor.ts:1470', ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
-  { paso: 'sendText del aviso de barrera',         donde: 'processor.ts:1474', ms: 1_500, techo: TECHO_ENVIO_META_MS,   opcional: true },
-  { paso: 'registrarCostoWhatsApp de ese aviso',   donde: 'processor.ts:380',  ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
-  { paso: 'createSignedUrl del PDF',               donde: 'processor.ts:1522', ms: 500,   techo: techoPasoSupabaseMs(), opcional: false },
-  { paso: 'sendDocument del PDF',                  donde: 'processor.ts:1524', ms: 2_500, techo: TECHO_ENVIO_META_MS,   opcional: false },
-  { paso: 'registrarCostoWhatsApp del PDF',        donde: 'processor.ts:380',  ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
-  { paso: 'saveConversation',                      donde: 'processor.ts:1551', ms: 500,   techo: techoPasoSupabaseMs(), opcional: false },
-  { paso: 'releaseViajeLock',                      donde: 'processor.ts:1589', ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
+  { paso: 'registrarCosto del turno',               donde: 'processor.ts:1393', simbolo: 'registrarCostoDesglosado',     ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
+  { paso: 'vincularCostosALiquidacion',             donde: 'processor.ts:1399', simbolo: 'vincularCostosALiquidacion',   ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
+  { paso: 'guardiaCifras → cuadrarDesdeDB',         donde: 'processor.ts:1493', simbolo: 'guardiaCifras',                ms: 300,   techo: techoPasoSupabaseMs(), opcional: false },
+  { paso: 'sendText de la respuesta',               donde: 'processor.ts:1577', simbolo: 'await say(reply)',             ms: 1_500, techo: TECHO_ENVIO_META_MS,   opcional: false },
+  { paso: 'registrarCostoWhatsApp de la respuesta', donde: 'processor.ts:414',  simbolo: 'registrarCostoWhatsApp',       ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
+  { paso: 'getGastos para el aviso de barrera',     donde: 'processor.ts:1614', simbolo: 'getGastos',                    ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
+  { paso: 'sendText del aviso de barrera',          donde: 'processor.ts:1618', simbolo: 'await say(aviso)',             ms: 1_500, techo: TECHO_ENVIO_META_MS,   opcional: true },
+  { paso: 'registrarCostoWhatsApp de ese aviso',    donde: 'processor.ts:414',  simbolo: 'registrarCostoWhatsApp',       ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
+  { paso: 'createSignedUrl del PDF',                donde: 'processor.ts:1663', simbolo: 'createSignedUrl',              ms: 500,   techo: techoPasoSupabaseMs(), opcional: false },
+  { paso: 'sendDocument del PDF',                   donde: 'processor.ts:1671', simbolo: 'sendDocument',                 ms: 2_500, techo: TECHO_ENVIO_META_MS,   opcional: false },
+  { paso: 'registrarCostoWhatsApp del PDF',         donde: 'processor.ts:1673', simbolo: 'registrarCostoWhatsApp',       ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
+  { paso: 'saveConversation',                       donde: 'processor.ts:1696', simbolo: 'saveConversation',             ms: 500,   techo: techoPasoSupabaseMs(), opcional: false },
+  { paso: 'releaseViajeLock',                       donde: 'processor.ts:1745', simbolo: 'releaseViajeLock',             ms: 300,   techo: techoPasoSupabaseMs(), opcional: true },
 ];
 
 /** Suma de los costos NOMINALES. 8.9s con los costos unitarios de este archivo. */

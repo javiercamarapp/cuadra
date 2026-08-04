@@ -147,7 +147,27 @@ async function atenderPrivacidad(tenantId: string, operadorId: string, telefono:
 }
 
 /**
- * Devuelve `false` cuando el aviso NO se pudo poner a disposición.
+ * Por qué NO se pudo poner el aviso a disposición — o `puesto` si sí.
+ *
+ * SON DOS HECHOS DISTINTOS Y NO SE PUEDEN CONFUNDIR (auditoría 11, ALTO G-58):
+ *
+ *   · `sin_datos`   — la flota no capturó razón social o domicilio. Es culpa
+ *                     suya, es determinista, y reintentar no arregla nada.
+ *   · `no_se_pudo`  — la consulta no contestó, Meta rebotó el mensaje, o algo
+ *                     tronó. Es de este lado y se arregla reintentando.
+ *
+ * Devolvía `boolean`, así que los dos salían por el mismo `return false` y el
+ * único texto aguas arriba acusaba a la flota: a las 10:12 del demo, un tope de
+ * consulta agotado (`acotada`) hacía que el producto le dijera al chofer, por
+ * escrito, que su empresa —el comprador, en la sala— no terminó de configurar
+ * su aviso de privacidad. La regla del repo es «fallar cerrado Y DECIRLO»; esto
+ * fallaba cerrado y decía otra cosa. `resolveOperador` y `getOpenViaje` ya
+ * habían corregido este mismo error con `ConsultaFallida`.
+ */
+export type ResultadoAviso = 'puesto' | 'sin_datos' | 'no_se_pudo';
+
+/**
+ * Devuelve distinto de `'puesto'` cuando el aviso NO se pudo poner a disposición.
  *
  * Devolvía `void`, y el llamador seguía adelante pasara lo que pasara: sin razón
  * social o domicilio de la flota, esta función registraba el error, retornaba de
@@ -168,22 +188,27 @@ export async function ponerAvisoADisposicion(
   tenantId: string,
   operadorId: string,
   telefono: string,
-): Promise<boolean> {
+): Promise<ResultadoAviso> {
   try {
     const datos = await getDatosResponsable(tenantId);
     if (!datos) {
       // El tenant no tiene razón social, domicilio o liga del aviso integral.
       // NO se manda un aviso a medias: uno con el responsable equivocado —o sin
       // él— no dice a quién reclamarle, que es justo para lo que sirve.
+      //
+      // Éste, y SOLO éste, es el caso en el que la frase «tu empresa aún no ha
+      // terminado de configurar su aviso» es cierta: `getDatosResponsable`
+      // devuelve `null` cuando la fila existe y le faltan campos, y LANZA
+      // cuando la base no contestó (repo.ts).
       logger.error('privacidad.tenant_sin_datos_responsable', { tenantId });
-      return false;
+      return 'sin_datos';
     }
     const texto = avisoSimplificado(datos);
-    if (!texto) return false;
+    if (!texto) return 'sin_datos';
     // El claim vive en SQL: el primer mensaje puede llegar por dos caminos a la
     // vez, y sin él el operador recibiría el aviso dos o tres veces seguidas.
     // Ya se le puso a disposición antes: se puede tratar, y no se repite.
-    if (!(await reclamarEnvioAviso(tenantId, operadorId, versionAviso(texto)))) return true;
+    if (!(await reclamarEnvioAviso(tenantId, operadorId, versionAviso(texto)))) return 'puesto';
     // La reserva va ANTES de enviar (si no, el aviso sale dos o tres veces), pero
     // la CONSTANCIA solo vale si el mensaje salió de verdad. `sendText` devolvía
     // `void` y no lanza al fallar, así que la fila se escribía igual: el 28-jul la
@@ -194,7 +219,8 @@ export async function ponerAvisoADisposicion(
     if (!id) {
       logger.error('privacidad.aviso_no_entregado', { tenantId, operadorId });
       await liberarEnvioAviso(tenantId, operadorId);   // que el siguiente mensaje reintente
-      return false;
+      // Meta rebotó: no es que la flota no esté configurada. Se reintenta.
+      return 'no_se_pudo';
     }
     // LA CONSTANCIA VA AQUÍ, y no antes. Hasta la 0033 la escribía la reserva, y
     // por eso deshacerla borraba la prueba de un aviso ANTERIOR que sí se había
@@ -202,11 +228,14 @@ export async function ponerAvisoADisposicion(
     // pasaba a decir que el operador nunca recibió ninguno.
     await confirmarEnvioAviso(tenantId, operadorId, versionAviso(texto));
     logger.info('privacidad.aviso_enviado', { tenantId, operadorId, id });
-    return true;
+    return 'puesto';
   } catch (e) {
-    // Si la 0018 no está aplicada, las columnas no existen y esto truena.
+    // TODA excepción es un fallo TÉCNICO, nunca «la flota no se configuró».
+    // Si la 0018 no está aplicada, las columnas no existen y esto truena; si
+    // `acotada` agota su tope, `getDatosResponsable` lanza; si Supabase se cae,
+    // igual. Ninguno de los tres dice nada sobre el alta del tenant.
     logger.error('privacidad.aviso_error', { tenantId, operadorId, err: e instanceof Error ? e.message : String(e) });
-    return false;
+    return 'no_se_pudo';
   }
 }
 
@@ -394,17 +423,35 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
     //
     // El obligado es el RESPONSABLE, o sea la flota. Likida solo pone el
     // mecanismo: sin él la flota no puede cumplir aunque quiera.
-    const avisoPuesto = await ponerAvisoADisposicion(op.tenantId, op.operadorId, msg.from);
-    if (!avisoPuesto) {
+    const aviso = await ponerAvisoADisposicion(op.tenantId, op.operadorId, msg.from);
+    if (aviso !== 'puesto') {
       // SIN AVISO NO HAY TRATAMIENTO. Antes se seguía de largo: la foto se
       // descargaba y se mandaba a un modelo externo sin el aviso que lo ampare.
-      // Solo ocurre si la flota no tiene razón social o domicilio capturados —o
-      // sea, si nunca terminó de darse de alta—, y entonces lo correcto es
-      // detenerse y decirlo, no tratar los datos igual.
-      logger.error('privacidad.tratamiento_bloqueado', { tenant: op.tenantId, operador: op.operadorId });
+      //
+      // AUDITORÍA 11, ALTO (G-58) — PERO SE DICE CUÁL DE LOS DOS HECHOS ES.
+      // Este brazo tenía UN solo texto, y acusaba a la flota de no haber
+      // terminado su alta. Con `acotada` traduciendo un cuelgue de Supabase a
+      // ese mismo error, a las 10:12 del demo el chofer leía que su empresa
+      // —el comprador, delante del comprador— no configuró su aviso. El
+      // producto tiene que fallar cerrado y DECIR LA VERDAD, no fallar cerrado
+      // y culpar a alguien.
+      logger.error('privacidad.tratamiento_bloqueado', { tenant: op.tenantId, operador: op.operadorId, motivo: aviso });
       try {
-        await sendText(msg.from, 'No puedo procesar tus comprobantes todavía: tu empresa aún no ha terminado de configurar su aviso de privacidad. Avísale a tu flota. 🙏');
+        await sendText(msg.from, aviso === 'sin_datos'
+          ? 'No puedo procesar tus comprobantes todavía: tu empresa aún no ha terminado de configurar su aviso de privacidad. Avísale a tu flota. 🙏'
+          : 'Se me trabó la conexión tantito y no pude arrancar 😕. Reenvíamelo en un momento, por favor.');
       } catch { /* best-effort */ }
+      // Y SE LIBERA EL CLAIM cuando el fallo es de este lado, igual que sus dos
+      // vecinos (el `+1` de intake fallido y el mutex ocupado). Este `return`
+      // va ANTES del brazo de imagen, así que la foto se descarta sin guardar:
+      // dejar además el `waMessageId` marcado en `wa_mensaje_procesado` haría
+      // que un reintento de Meta —o el mismo mensaje reenviado por la
+      // plataforma— se descartara como duplicado. Un mensaje que no se procesó
+      // no puede quedar contado como procesado.
+      //
+      // Con `sin_datos` NO se libera: reintentar no arregla un alta incompleta,
+      // y el operador ya sabe que tiene que hablar con su oficina.
+      if (aviso === 'no_se_pudo' && msg.waMessageId) await releaseMessageClaim(msg.waMessageId);
       return;
     }
 
@@ -1023,7 +1070,20 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
     // operador cerrar el viaje que sí tiene.
     const enEspera = await getHuerfanos(op.tenantId, op.operadorId);
     if (enEspera.length) {
-      const ofrecidos = enEspera.filter((h) => h.ofrecidoEn);
+      // LA AFIRMACIÓN CONTESTA UNA PREGUNTA, Y LA PREGUNTA ERA DE ESTE VIAJE.
+      //
+      // AUDITORÍA 11, CRÍTICO (G-19). Esto era `enEspera.filter(h => h.ofrecidoEn)`:
+      // "se le preguntó alguna vez, a alguna hora". Con eso, un «va» del 20-jul
+      // —con V3 abierto— adjuntaba a V3 los $6,412.00 que se ofrecieron en V2 el
+      // 15-jul, sin una sola marca de fecha sospechosa (la tolerancia son 30
+      // días). Es la frase literal con la que la mig. 0040 se justifica: «un
+      // ticket del viaje anterior metido en éste es dinero en la liquidación
+      // equivocada, y nadie lo nota hasta que el contralor paga».
+      //
+      // Lo ofrecido en OTRO viaje no desaparece: cae al brazo de abajo y se
+      // vuelve a ofrecer, ahora sí para el viaje que está abierto. El chofer
+      // contesta una pregunta que sí se le hizo aquí.
+      const ofrecidos = enEspera.filter((h) => h.ofrecidoEn && h.ofrecidoParaViaje === viajeId);
       const comoLista = (hs: typeof enEspera) => hs.map((h) => ({
         monto: h.gasto.monto,
         etiqueta: etiquetaConcepto(h.gasto.concepto, h.gasto.ocrExtra as Record<string, unknown> | undefined),
@@ -1153,7 +1213,15 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
       if (ofrecidos.length && esNegacion(msg.text)) {
         await resolverHuerfanos(op.tenantId, ofrecidos.map((h) => h.id), 'descartado', null);
         logger.info('huerfano.descartados', { viaje: viajeId, cuantos: ofrecidos.length });
-        await say('Va, no los agrego a este viaje 👍. Si alguno sí era de aquí, dime cuál y lo pongo.');
+        // LO QUE SE PROMETE TIENE QUE EXISTIR. Decía «si alguno sí era de aquí,
+        // dime cuál y lo pongo», y no hay ningún lector de esa frase: nada
+        // interpreta «el de la caseta sí», las filas ya quedaron `descartado` y
+        // no se vuelven a ofrecer. El chofer se queda esperando un rescate que
+        // nadie escribió (auditoría 11, G-19).
+        //
+        // Reenviar la foto SÍ funciona, y por el camino normal: OCR, `addGasto`
+        // al viaje abierto, con `uq_gasto_img_hash` cuidando el duplicado.
+        await say('Va, no los agrego a este viaje 👍. Si me equivoqué y alguno sí era de aquí, reenvíame su foto y lo agrego.');
         return;
       }
 
@@ -1202,7 +1270,7 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
           logger.warn('huerfano.oferta_no_entregada', { viaje: viajeId, cuantos: enEspera.length });
           return;  // sin marcar: el siguiente mensaje vuelve a ofrecer
         }
-        await marcarHuerfanosOfrecidos(op.tenantId, enEspera.map((h) => h.id));
+        await marcarHuerfanosOfrecidos(op.tenantId, enEspera.map((h) => h.id), viajeId);
         logger.info('huerfano.ofrecidos', { viaje: viajeId, cuantos: enEspera.length });
         return;
       }
@@ -1339,9 +1407,26 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
       // partialToolCalls. Sin recuperación: liquidacion persistida en DB pero el
       // operador recibe "se trabó" y NUNCA su PDF → huérfano. Se recupera tratando
       // el cierre como válido, vinculando costos y armando el resumen REAL del motor.
-      // FLAG (HARD RULE 3): default off = comportamiento actual EXACTO (mensaje de
-      // error, sin cierre). Se recomienda ON para el demo (ver REPORTE_NOCHE).
-      const recuperar = process.env.CUADRA_RECUPERAR_CIERRE_PARCIAL === '1';
+      //
+      // ── YA NO ES UNA BANDERA (auditoría 11, ALTO G-60) ──────────────────────
+      //
+      // Esto colgaba de `process.env.CUADRA_RECUPERAR_CIERRE_PARCIAL === '1'`,
+      // APAGADA por default y sin nadie que la verificara: `startup.ts` solo
+      // exige `DASHBOARD_SECRET`, `.env.example:75` la "recomienda" —o sea que
+      // nadie sabe si está puesta— y `openrouter.ts:402` afirma por escrito que
+      // está «activo por default», que no era cierto.
+      //
+      // Con la bandera ausente: la liquidación cerrada en la base, los dos PDF
+      // en storage, el contralor viéndola en el panel — y el chofer leyendo «se
+      // me trabó, ¿me reenvías?»; al reenviar, «No tienes un viaje abierto para
+      // liquidar ahorita». Ni `pdf.no_entregado` ni `cerroSinEntregar` se
+      // disparaban, porque los dos viven dentro de `if (closed)`.
+      //
+      // La condición que decide sigue siendo un HECHO —`guardar_liquidacion` en
+      // `partialToolCalls`, sin error—, no una suposición: si esa tool no
+      // corrió, no hay nada que recuperar y el `else` de abajo dice lo de
+      // siempre. Una recuperación que solo actúa sobre un cierre demostrado no
+      // necesita interruptor.
       const parcial = e instanceof PartialExecutionError ? e.partialToolCalls : null;
 
       // LO QUE SE GASTÓ ANTES DE CAERSE TAMBIÉN SE PAGÓ. Esta rama nunca llamaba
@@ -1367,7 +1452,7 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
         }
       }
       const cierreParcial =
-        recuperar && parcial?.find((t) => t.toolName === 'guardar_liquidacion' && !t.error);
+        parcial?.find((t) => t.toolName === 'guardar_liquidacion' && !t.error);
       if (cierreParcial) {
         agentTools = parcial!;
         closed = true;
@@ -1577,7 +1662,14 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
         // copia el mismo número aquí en vez del que se copió de más viejo.
         const { data, error } = await acotada(supabaseAdmin().storage.from('liquidaciones').createSignedUrl(path, 60), 'createSignedUrl');
         if (error || !data?.signedUrl) throw new Error(error?.message ?? 'storage no devolvió URL firmada');
-        await sendDocument(msg.from, data.signedUrl, 'liquidacion.pdf', 'Aquí está tu liquidación 📄');
+        // EL ENVÍO DEL PDF TIENE ACUSE (auditoría 11, ALTO G-22). `sendDocument`
+        // devolvía `void`, así que un 400 de Meta se registraba y se seguía de
+        // largo: el operador quedaba dado por servido, no salía el mensaje de
+        // abajo —que existe justo para este caso—, y encima se cobraba el costo
+        // de WhatsApp de un documento que nunca salió. Es el paso 3 del guion
+        // del demo, fallando en silencio.
+        const wamidPdf = await sendDocument(msg.from, data.signedUrl, 'liquidacion.pdf', 'Aquí está tu liquidación 📄');
+        if (!wamidPdf) throw new Error('Meta no acusó el envío del PDF');
         await registrarCostoWhatsApp(op.tenantId, viajeId);
       } catch (e) {
         // Ruidoso a propósito: la liquidación SÍ quedó cerrada en la base, así que

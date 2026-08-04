@@ -106,10 +106,15 @@ const fetchSpy = vi.fn(async (_u: string, init?: RequestInit) => {
 const foto = { from: '5219993700779', type: 'image' as const, mediaId: 'm1', waMessageId: 'wa1' };
 const texto = (t: string) => ({ from: '5219993700779', type: 'text' as const, text: t, waMessageId: `wa-${t}` });
 
+// `ofrecido` significa «ya se le preguntó POR ESTE VIAJE» (auditoría 11, G-19):
+// la constancia dejó de ser un timestamp suelto y ahora dice para cuál se
+// preguntó. La afirmación de otro viaje se prueba en
+// `huerfanos_atados_al_viaje.test.ts`.
 const HUERFANO = (id: string, monto: number, ofrecido = false, imgHash?: string) => ({
   id, gasto: { id: `g-${id}`, concepto: 'diesel', monto, ocrExtra: {}, ...(imgHash ? { imgHash } : {}) },
   motivo: 'sin_viaje' as const, creadoEn: '2026-07-31T10:00:00Z',
   ofrecidoEn: ofrecido ? '2026-08-01T10:00:00Z' : undefined,
+  ofrecidoParaViaje: ofrecido ? 'v1' : undefined,
 });
 
 describe('el chofer que manda fotos sin viaje abierto', () => {
@@ -229,7 +234,7 @@ describe('cuando por fin hay viaje, se pregunta antes de adjuntar', () => {
     expect(m).toContain('$3,870.00');
     expect(m).toContain('Silao→N. Laredo');
     expect(addGasto, 'preguntar no es adjuntar').not.toHaveBeenCalled();
-    expect(marcarHuerfanosOfrecidos).toHaveBeenCalledWith('t1', ['a', 'b']);
+    expect(marcarHuerfanosOfrecidos).toHaveBeenCalledWith('t1', ['a', 'b'], 'v1');
   });
 
   // ── ALTO de la auditoría 10 (agéntico) ───────────────────────────────────
@@ -260,7 +265,7 @@ describe('cuando por fin hay viaje, se pregunta antes de adjuntar', () => {
     await processInbound(texto('buenas'));
     expect(salientes.join(' '), 'la oferta que rebotó tiene que volver a salir')
       .toMatch(/¿Los agrego a este viaje\?/);
-    expect(marcarHuerfanosOfrecidos).toHaveBeenCalledWith('t1', ['a', 'b']);
+    expect(marcarHuerfanosOfrecidos).toHaveBeenCalledWith('t1', ['a', 'b'], 'v1');
   });
 
   it('con un «sí» los adjunta y los marca DESPUÉS de insertarlos', async () => {
@@ -393,7 +398,7 @@ describe('cuando por fin hay viaje, se pregunta antes de adjuntar', () => {
   it('«listo» con comprobantes sin ofrecer pregunta primero: cerrar en $0 cuesta más que un intento de más', async () => {
     getHuerfanos.mockResolvedValue([HUERFANO('a', 100)]);
     await processInbound(texto('listo'));
-    expect(marcarHuerfanosOfrecidos).toHaveBeenCalledWith('t1', ['a']);
+    expect(marcarHuerfanosOfrecidos).toHaveBeenCalledWith('t1', ['a'], 'v1');
     expect(salientes.join(' ')).toMatch(/¿Los agrego a este viaje\?/);
     expect(runAgent, 'y sobre todo: NO llegó a cerrar').not.toHaveBeenCalled();
   });

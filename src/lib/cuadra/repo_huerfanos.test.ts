@@ -126,11 +126,14 @@ describe('getHuerfanos — el escenario exacto del auditor: .is(), no .eq(), par
 
 describe('marcarHuerfanosOfrecidos — deja constancia sin repetir la oferta', () => {
   it('con ids, hace UPDATE acotado por id Y por tenant', async () => {
-    await marcarHuerfanosOfrecidos('t1', ['h1', 'h2']);
+    await marcarHuerfanosOfrecidos('t1', ['h1', 'h2'], 'v9');
 
     const update = llamadas.find((l) => l.metodo === 'update');
     expect(update).toBeTruthy();
-    expect(Object.keys(update!.args[0] as object)).toEqual(['ofrecido_en']);
+    // AUDITORÍA 11, G-19: la constancia también dice PARA QUÉ VIAJE se preguntó.
+    // Sin eso, un «va» del viaje siguiente adjuntaba los comprobantes del anterior.
+    expect(Object.keys(update!.args[0] as object)).toEqual(['ofrecido_en', 'viaje_id']);
+    expect((update!.args[0] as { viaje_id: string }).viaje_id).toBe('v9');
     const inLlamada = llamadas.find((l) => l.metodo === 'in');
     expect(inLlamada?.args).toEqual(['id', ['h1', 'h2']]);
     const eqTenant = llamadas.find((l) => l.metodo === 'eq');
@@ -138,13 +141,13 @@ describe('marcarHuerfanosOfrecidos — deja constancia sin repetir la oferta', (
   });
 
   it('con ids vacíos, NO llama a la base — nada que marcar', async () => {
-    await marcarHuerfanosOfrecidos('t1', []);
+    await marcarHuerfanosOfrecidos('t1', [], 'v9');
     expect(from).not.toHaveBeenCalled();
   });
 
   it('un fallo se registra con warn (best-effort: el peor caso es preguntar de más)', async () => {
     respuesta = { data: null, error: { message: 'timeout' } };
-    await marcarHuerfanosOfrecidos('t1', ['h1']);
+    await marcarHuerfanosOfrecidos('t1', ['h1'], 'v9');
     expect(logger.warn).toHaveBeenCalledWith('huerfano.marcar_ofrecido_error', expect.anything());
   });
 });

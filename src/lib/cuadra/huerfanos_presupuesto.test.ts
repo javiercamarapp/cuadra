@@ -124,6 +124,8 @@ const HUERFANO = (id: string, monto: number, ofrecido = false, imgHash?: string)
   id, gasto: { id: `g-${id}`, concepto: 'diesel', monto, ocrExtra: {}, ...(imgHash ? { imgHash } : {}) },
   motivo: 'sin_viaje' as const, creadoEn: '2026-07-31T10:00:00Z',
   ofrecidoEn: ofrecido ? '2026-08-01T10:00:00Z' : undefined,
+  // Auditoría 11, G-19: la constancia dice PARA QUÉ viaje se preguntó.
+  ofrecidoParaViaje: ofrecido ? 'v1' : undefined,
 });
 
 
@@ -146,7 +148,7 @@ describe('el bucle de huérfanos mira el reloj', () => {
     releaseViajeLock.mockResolvedValue(undefined);
     vi.stubGlobal('fetch', fetchSpy); fetchSpy.mockClear();
     process.env.WHATSAPP_ACCESS_TOKEN = 'tok'; process.env.WHATSAPP_PHONE_NUMBER_ID = '123';
-    getOpenViaje.mockResolvedValue({ id: 'v1', folio: 'V-1', destino: 'N. Laredo' });
+    getOpenViaje.mockResolvedValue('v1');   // `conv.ts:124` devuelve el id, no el viaje
     getHuerfanos.mockResolvedValue(CINCUENTA);
     getGastos.mockResolvedValue([]);
 
