@@ -53,3 +53,29 @@ Calibración: el árbol del PR #7 tiene 239 archivos / 2089 pruebas. Faltan aqu�
   uno, ninguno toca código.
 
 _(las líneas siguientes se agregan conforme avanza la ronda)_
+
+## Fase 2 — verificación y arreglo
+
+- **Interferencia de concurrencia detectada, y NO es un fallo del arreglo.** El
+  auditor de pruebas inyecta mutantes en el árbol mientras mide. Con uno vivo
+  (`src/lib/cuadra/pg.ts:49`, `if (pag.length < PAGINA) break;` → `break;`) la
+  suite marcaba `2 archivos / 6 pruebas` en rojo. Verificado con `git diff`: el
+  único cambio rastreado ajeno era ese. También se vio pasar por
+  `visibilidad.ts` y `tenant-efectivo.ts:55` (`if (false && !puedeVerRuta(...))`).
+  No se revirtió nada suyo: revertir a media medición le habría dado un
+  resultado falso. La compuerta final se corre con el árbol ya devuelto.
+- **A11-BE-1 / A11-SEC-1 · CRÍTICO · CERRADO** — `2fb1982`.
+  `/api/dashboard/asistente` autenticaba y no autorizaba. Prueba que reproduce:
+  `rol_no_mirado.test.ts`, 4 casos rojos sin el arreglo (encargado, chofer, rol
+  desconocido, y que ni siquiera se consulte) y 3 controles que ya pasaban
+  (dueño, contador, 401 sin sesión) — así no cuela un "devolver null siempre".
+  Con el arreglo: 7/7 verde, `tsc` exit 0.
+- **A11-DATOS-1 · CRÍTICO · PROPUESTO, no arreglado.** Verificado a mano:
+  `supabase/migrations/0001_esquema.sql:49` declara `viaje.operador_id uuid not
+  null` y ninguna migración posterior lo afloja (`grep "alter column
+  operador_id"` → vacío), mientras `operacion.ts:124` filtra
+  `.is('operador_id', null)`: "Viajes sin asignar", la primera pantalla del
+  encargado, **no puede devolver una fila jamás**. El arreglo es una migración y
+  aquí no hay Postgres contra el cual ejercerla — la regla es no arreglar lo que
+  no se puede reproducir. Toca la FK compuesta de la 0028 y la RLS del chofer de
+  la 0045; a 2 días del demo eso se decide despierto.

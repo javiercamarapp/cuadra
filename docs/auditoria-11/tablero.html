@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Likida · Auditoría 11 — 4-ago-2026</title>
+<style>
+  :root{
+    --bg:#faf9f7; --card:#fff; --ink:#1a1a19; --muted:#6b6862; --faint:#9a968e;
+    --line:#e6e2dc; --marca:#e8590c;
+    --crit:#b42318; --alto:#b54708; --medio:#8a6d00; --bajo:#667085;
+    --sube:#177245; --baja:#b42318;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 22px 48px;background:var(--bg);color:var(--ink);
+    font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 2px;letter-spacing:-.02em}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+  .alerta{background:#fff4ed;border:1px solid #ffd6bd;border-left:3px solid var(--marca);
+    border-radius:8px;padding:12px 14px;margin-bottom:20px;font-size:13px;line-height:1.55}
+  .alerta b{color:#9c3d00}
+  .fila{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:20px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:12px 14px;min-width:150px;flex:1}
+  .kpi .n{font-size:24px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .kpi .l{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .caja{background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:16px 18px;margin-bottom:20px}
+  .caja h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--muted);margin:0 0 12px;font-weight:600}
+  .scroll{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:13px;min-width:640px}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);font-weight:600}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .d-baja{color:var(--baja);font-weight:600}
+  .d-sube{color:var(--sube);font-weight:600}
+  .d-igual{color:var(--faint)}
+  .sev{display:inline-block;min-width:20px;text-align:center;padding:1px 5px;
+    border-radius:4px;font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums}
+  .s-c{background:#fee4e2;color:var(--crit)} .s-a{background:#fef0c7;color:var(--alto)}
+  .s-m{background:#fefbe8;color:var(--medio)} .s-b{background:#f2f4f7;color:var(--bajo)}
+  .barra{height:7px;background:#eceae5;border-radius:4px;overflow:hidden;min-width:70px;margin-top:4px}
+  .barra i{display:block;height:100%;background:var(--marca)}
+  .serie{display:flex;align-items:flex-end;gap:10px;height:120px;padding-top:8px}
+  .serie .c{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;min-width:34px}
+  .serie .b{width:100%;background:#e7e3dc;border-radius:3px 3px 0 0}
+  .serie .b.hoy{background:var(--marca)}
+  .serie .v{font-size:11px;font-variant-numeric:tabular-nums;color:var(--muted)}
+  .serie .e{font-size:10.5px;color:var(--faint)}
+  .comp{display:flex;gap:10px;flex-wrap:wrap}
+  .chip{border:1px solid var(--line);border-radius:7px;padding:8px 11px;font-size:12.5px;background:#fff}
+  .ok{border-color:#b7e4c7;background:#f2fbf5} .mal{border-color:#fbc9c4;background:#fff5f4}
+  .chip b{display:block;font-size:11px;color:var(--muted);font-weight:600;
+    text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+  ul.crit{margin:0;padding-left:18px;font-size:13px;line-height:1.6}
+  ul.crit li{margin-bottom:5px}
+  ul.crit .r{color:var(--faint);font-size:11.5px}
+  .est{font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px}
+  .e-cerrado{background:#d3f2df;color:var(--sube)}
+  .e-prop{background:#fef0c7;color:var(--alto)}
+  .e-falso{background:#f2f4f7;color:var(--bajo)}
+  footer{color:var(--faint);font-size:11.5px;margin-top:22px;line-height:1.6}
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#141312;--card:#1c1b19;--ink:#f0ede8;--muted:#a19c94;--faint:#78736b;
+      --line:#302e2b;--crit:#f97066;--alto:#fdb022;--medio:#e8c547;--bajo:#98a2b3;
+      --sube:#5ce09b;--baja:#f97066}
+    .alerta{background:#2a1a0e;border-color:#5c3517}
+    .alerta b{color:#ffb37a}
+    .s-c{background:#4a1512;color:#fda29b} .s-a{background:#4a2f0a;color:#fec84b}
+    .s-m{background:#3d3410;color:#f0dc82} .s-b{background:#2a2d33;color:#cfd4dc}
+    .barra{background:#302e2b} .serie .b{background:#35322e}
+    .ok{background:#122b1c;border-color:#1f5137} .mal{background:#2c1513;border-color:#5c2320}
+    .chip{background:#1c1b19}
+    .e-cerrado{background:#123425;color:#5ce09b}
+    .e-prop{background:#3d2c08;color:#fdb022}
+    .e-falso{background:#2a2d33;color:#98a2b3}
+  }
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>Likida · Auditoría 11</h1>
+<div class="sub">4-ago-2026 · desatendida, en la nube · rama <code>claude/auditoria-11</code>, sobre <code>master</code> · demo en 2 días</div>
+
+<div class="alerta">
+  <b>Esta ronda no audita el mismo árbol que la anterior.</b>
+  Los 96 arreglos de la auditoría 10 siguen en el PR&nbsp;#7, sin mergear.
+  <code>master</code> —lo que Vercel despliega y lo que se demuestra el 6-ago— no
+  los tiene. Por eso casi todo lo que la ronda 10 dio por cerrado aparece aquí
+  como <b>REINCIDENTE</b>, y por eso la global baja: no es que el código
+  empeorara, es que <b>los arreglos nunca llegaron a producción</b>.
+  El PR&nbsp;#7 tampoco se puede mergear solo: 14 archivos en conflicto y los
+  ordinales <code>0046</code>/<code>0047</code> significan migraciones distintas
+  en cada rama.
+</div>
+
+<div class="fila">
+  <div class="kpi"><div class="n" id="global">4.0</div><div class="l">Nota global (antes 4.9)</div></div>
+  <div class="kpi"><div class="n">12</div><div class="l">Rubros auditados</div></div>
+  <div class="kpi"><div class="n" id="tot">—</div><div class="l">Hallazgos verificados</div></div>
+  <div class="kpi"><div class="n" id="crit">—</div><div class="l">Críticos</div></div>
+  <div class="kpi"><div class="n">1</div><div class="l">Cerrado con prueba</div></div>
+  <div class="kpi"><div class="n">1</div><div class="l">Descartado por falso</div></div>
+</div>
+
+<div class="caja">
+  <h2>Los doce rubros</h2>
+  <div class="scroll">
+  <table id="tabla">
+    <thead><tr>
+      <th>Rubro</th><th class="n">Ant.</th><th class="n">Hoy</th><th class="n">Δ</th>
+      <th>Razón del movimiento</th>
+      <th class="n">C</th><th class="n">A</th><th class="n">M</th><th class="n">B</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+</div>
+
+<div class="caja">
+  <h2>Serie histórica de la nota global</h2>
+  <div class="serie" id="serie"></div>
+</div>
+
+<div class="caja">
+  <h2>Compuerta sobre el árbol final</h2>
+  <div class="comp" id="comp"></div>
+  <p style="font-size:12.5px;color:var(--muted);margin:12px 0 0">
+    <b>El CI de <code>master</code> lleva rojo desde el 3-ago:</b> los runs 264 a 271
+    de GitHub Actions fallan, incluido el #271 sobre <code>e4326f9</code>, el HEAD.
+    No es la suite —173 archivos pasan— es el umbral de cobertura, y el paso de
+    <i>Build</i> nunca llega a correr sobre el código del demo.
+  </p>
+</div>
+
+<div class="caja">
+  <h2>Los críticos, y en qué estado quedó cada uno</h2>
+  <ul class="crit" id="criticos"></ul>
+</div>
+
+<footer>
+  Verificado abriendo el archivo, uno por uno. Un hallazgo sin <code>archivo:línea</code>
+  y sin escenario con valores no entró.<br>
+  <b>A11-ARQ-1 se descartó por falso:</b> reportaba el gate de rol desactivado
+  (<code>if (false &amp;&amp; …)</code>) — era un mutante que el auditor de pruebas tenía
+  vivo en el árbol de trabajo mientras medía, no el código commiteado.
+  Que el mutante sobreviviera sí es real y se anota como hueco de pruebas.
+</footer>
+
+</div>
+<script>
+const RUBROS = [
+  ['Frontend',            6, 5, 'deuda que cobró factura', 1,4,8,1],
+  ['Backend y API',       5, 4, 'deuda que cobró factura', 3,4,3,2],
+  ['Sistema agéntico',    3, 3, 'mirada más profunda',     2,7,4,1],
+  ['Tool calling',        6, 5, 'mirada más profunda',     0,2,8,7],
+  ['Seguridad',           5, 5, 'se atacó y subió / deuda', 2,3,4,4],
+  ['Cumplimiento fiscal', 5, 3, 'deuda que cobró factura', 2,4,6,3],
+  ['Cumplimiento legal',  4, 3, 'deuda que cobró factura', 2,4,3,2],
+  ['Arquitectura',        6, 5, 'deuda que cobró factura', 2,4,6,4],
+  ['Pruebas',             5, PRUEBAS_NOTA, 'PRUEBAS_RAZON', PRUEBAS_C,PRUEBAS_A,PRUEBAS_M,PRUEBAS_B],
+  ['Operabilidad y DX',   5, 4, 'deuda que cobró factura', 4,5,4,1],
+  ['Rendimiento y costo', 4, 3, 'deuda que cobró factura', 2,6,5,1],
+  ['Modelo de datos',     5, 4, 'deuda que cobró factura', 3,6,4,2],
+];
+const tb = document.querySelector('#tabla tbody');
+let C=0,A=0,M=0,B=0,suma=0;
+for (const [n,ant,hoy,razon,c,a,m,b] of RUBROS) {
+  C+=c; A+=a; M+=m; B+=b; suma+=hoy;
+  const d = hoy-ant;
+  const cls = d<0?'d-baja':d>0?'d-sube':'d-igual';
+  const txt = d<0?'▼'+Math.abs(d):d>0?'▲'+d:'=';
+  tb.insertAdjacentHTML('beforeend',
+    `<tr><td><b>${n}</b><div class="barra"><i style="width:${hoy*10}%"></i></div></td>
+     <td class="n">${ant}</td><td class="n"><b>${hoy}</b></td>
+     <td class="n ${cls}">${txt}</td><td style="color:var(--muted);font-size:12.5px">${razon}</td>
+     <td class="n"><span class="sev s-c">${c}</span></td>
+     <td class="n"><span class="sev s-a">${a}</span></td>
+     <td class="n"><span class="sev s-m">${m}</span></td>
+     <td class="n"><span class="sev s-b">${b}</span></td></tr>`);
+}
+const global = (suma/RUBROS.length).toFixed(1);
+document.getElementById('global').textContent = global;
+document.getElementById('tot').textContent = C+A+M+B;
+document.getElementById('crit').textContent = C;
+
+const SERIE = [['2',6.2],['3',6.2],['4',5.9],['5',5.2],['6',5.3],['7',5.5],['8',6.5],['9',7.7],['10',4.9],['11',+global]];
+const maxv = 8;
+document.getElementById('serie').innerHTML = SERIE.map(([e,v],i)=>
+  `<div class="c"><div class="v">${v.toFixed(1)}</div>
+   <div class="b ${i===SERIE.length-1?'hoy':''}" style="height:${(v/maxv)*88}px"></div>
+   <div class="e">${e}</div></div>`).join('');
+
+const COMP = [
+  ['npx vitest run','173 archivos · 1678 pruebas · exit 0',1],
+  ['npx tsc --noEmit','exit 0',1],
+  ['npm run lint','exit 0 · 6 warnings',1],
+  ['npm run test:coverage','exit 1 · líneas 64.32% < 78%',0],
+  ['CI de master (GH Actions)','run #271 sobre e4326f9 · failure',0],
+  ['npm run build','no se corre en la nube: pide credenciales',-1],
+];
+document.getElementById('comp').innerHTML = COMP.map(([k,v,ok])=>
+  `<div class="chip ${ok===1?'ok':ok===0?'mal':''}"><b>${k}</b>${v}</div>`).join('');
+
+const CRITICOS = [
+  ['e-cerrado','CERRADO','El rail servía el dinero de la flota al encargado y al chofer por <code>/api/dashboard/asistente</code>','backend + seguridad · commit 2fb1982, prueba con 4 casos y 3 controles'],
+  ['e-prop','PROPUESTO','<code>viaje.operador_id</code> es NOT NULL y todo el módulo del encargado lo asume nullable: «Viajes sin asignar» no puede devolver una fila jamás','modelo de datos · el arreglo es una migración y aquí no hay Postgres para reproducirlo'],
+  ['e-prop','PROPUESTO','<code>KpiTile</code> siempre imprime el número: tres tarjetas fiscales afirman una medición que nunca ocurrió','frontend · el arreglo correcto ya existe en el PR #7 (<code>acred.tsx</code>, 5365ca0) — una tercera variante sería una tercera copia'],
+  ['e-prop','PROPUESTO','El CI de <code>master</code> lleva rojo desde el 3-ago y el paso de Build no ha corrido sobre el código del demo','operabilidad · reproducido: cobertura 64.32% contra umbral 78%'],
+  ['e-prop','PROPUESTO','Un CFDI de emisor en EFOS imprime «Deducible para ISR» en verde','fiscal · REINCIDENTE'],
+  ['e-prop','PROPUESTO','La foto de la cara de un usuario se publica en un bucket legible sin sesión, fuera de todo aviso y sin camino de borrado','legal · migración 0046, nueva en master'],
+  ['e-prop','PROPUESTO','«listo» con la sala de espera llena cierra la liquidación en $0.00','agéntico · REINCIDENTE'],
+  ['e-prop','PROPUESTO','El cierre corre sin reloj: 233,000 ms contra <code>maxDuration</code> de 120,000','rendimiento · REINCIDENTE, misma aritmética'],
+  ['e-falso','DESCARTADO','El gate de rol de las 20 páginas estaría desactivado en el árbol','arquitectura · FALSO: era un mutante vivo de otro agente, no el código commiteado'],
+];
+document.getElementById('criticos').innerHTML = CRITICOS.map(([c,e,t,r])=>
+  `<li><span class="est ${c}">${e}</span> ${t}<div class="r">${r}</div></li>`).join('');
+</script>
+</body>
+</html>
