@@ -222,3 +222,28 @@ inventar.
 - **El encargado NO ve finanzas** (`lib/auth/visibilidad.ts`). Si agregas una
   pantalla al sidebar, clasifícala ahí o una prueba falla — y si pones una
   cifra de dinero en algo que el encargado ve, es una fuga.
+
+---
+
+## FASE 1.5 — Encabezado fijo y scroll interno en TODAS las páginas
+
+Javier lo pidió el 3 de agosto y quedó a medias: sólo Inicio de las dos
+consolas (`dashboard/page.tsx` e `inicio-operacion.tsx`) tiene el patrón.
+
+**El patrón**, para replicarlo en las ~60 páginas restantes de `/admin` y
+`/dashboard`:
+
+```tsx
+<main className="h-full flex flex-col">
+  <div className="glass-panel overflow-hidden flex flex-col min-h-0">
+    <div className="... shrink-0">   {/* encabezado: no se mueve */}
+    <div className="flex-1 min-h-0 overflow-y-auto">   {/* todo lo demás */}
+```
+
+Por qué importa: con la columna scrolleando, un panel más alto que la pantalla
+se corta a media fila y su borde redondeado no aparece nunca — se lee como
+interfaz rota en vez de "hay más abajo". `MARCO_COLUMNA` ya trae `pb-3` para
+que el último panel siempre cierre, pero eso no da el encabezado fijo.
+
+No se puede resolver desde `marco.ts`: cada página decide qué parte suya es
+encabezado. Hay que ir una por una. Empieza por las que Javier usa en el demo.
