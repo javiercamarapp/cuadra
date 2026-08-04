@@ -4,15 +4,12 @@ import { DollarSign, Calculator } from 'lucide-react';
 import { AreaChartSimple, Dona } from '../charts';
 import { IconoProveedor } from '../proveedor-icono';
 import { ChartCard, EstadoVacio, KpiTile } from '../ui/kit';
+import { etiquetaFase } from '../fases';
 
 export const dynamic = 'force-dynamic';
 
 // Mismo diccionario de admin/page.tsx (no se exporta de ahí) — solo las
 // etiquetas legibles para la dona de "Costo por fase".
-const FASE_LABEL: Record<string, string> = {
-  ocr: 'Agente OCR', cuadre: 'Agente de Cuadre', escalacion: 'Agente de Escalación',
-  chat: 'Agente de Chat', router: 'Agente Router', whatsapp: 'Agente de WhatsApp',
-};
 
 /**
  * Costos & Facturación — todo lo real que existe hoy sobre el gasto de IA
@@ -96,7 +93,7 @@ export default async function CostosFacturacionPage() {
         <section className="p-5 border-t" style={{ borderColor: 'var(--line)' }}>
           {r.porFase.length > 0 ? (
             <ChartCard titulo="Costo por fase" tamano="S">
-              <Dona segmentos={r.porFase.map((f) => ({ etiqueta: FASE_LABEL[f.fase] ?? f.fase, valor: f.costoUsd }))} />
+              <Dona segmentos={r.porFase.map((f) => ({ etiqueta: etiquetaFase(f.fase), valor: f.costoUsd }))} />
             </ChartCard>
           ) : (
             <ChartCard titulo="Costo por fase" tamano="S">

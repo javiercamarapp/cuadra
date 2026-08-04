@@ -2,7 +2,7 @@
 // ciclo de tool-calling con el contexto del tenant/operador.
 
 import type OpenAI from 'openai';
-import { generateWithTools, type ToolCallRecord } from '@/lib/llm/openrouter';
+import { generateWithTools, type ToolCallRecord, type UsoPorModelo } from '@/lib/llm/openrouter';
 import { ROLE_PARAMS } from '@/lib/llm/models';
 import { toolSchemas, makeExecutor, type ToolContext } from '@/lib/llm/tool-executor';
 import { AGENT_REGISTRY } from './registry';
@@ -12,10 +12,15 @@ import type { AgentName, TenantContext } from './types';
 export interface RunAgentResult {
   finalText: string;
   toolCalls: ToolCallRecord[];
+  /** Etiqueta del modelo que respondió la última ronda. Para contabilizar el
+   *  consumo NO basta: un ciclo con fallback lo reparte entre dos proveedores y
+   *  el reparto real va en `porModelo`. */
   model: string;
   costUsd: number;
   tokensIn: number;
   tokensOut: number;
+  /** Desglose del consumo por modelo que de verdad lo gastó (Σ == totales). */
+  porModelo: UsoPorModelo[];
 }
 
 export async function runAgent(opts: {
@@ -54,6 +59,7 @@ export async function runAgent(opts: {
       costUsd: res.cost,
       tokensIn: res.tokensIn,
       tokensOut: res.tokensOut,
+      porModelo: res.porModelo,
     };
   } finally {
     if (timer) clearTimeout(timer);

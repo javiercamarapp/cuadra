@@ -25,6 +25,50 @@ import { round2 } from '@/lib/formato';
 export const TOPE_EFECTIVO = 0.15;
 
 /**
+ * LOS MEDIOS QUE **NO** CUENTAN CONTRA EL TOPE — la lista cerrada del 2º párrafo
+ * de LISR 27-III, que es a la que la RFA 2026 regla 2.9 le pone la válvula.
+ *
+ * La regla no dice «efectivo». Dice «cuando los pagos por consumo de combustible
+ * se realicen con medios DISTINTOS a cheque nominativo…; tarjeta de crédito, de
+ * débito o de servicios; o monederos electrónicos autorizados por el SAT». Es
+ * una lista de lo que SÍ cumple, y los otros treinta códigos de `c_FormaPago`
+ * caen dentro del tope, no fuera de él.
+ *
+ * ── POR QUÉ ESTÁ ESCRITA DOS VECES ─────────────────────────────────────────
+ * `cuadre/engine.ts` la declara con este mismo nombre para el veredicto POR
+ * VIAJE y no la exporta. Que las dos se separen es exactamente el modo de fallo
+ * que la auditoría 11 (G-04) encontró —el motor contaba una cosa y el contador
+ * del ejercicio otra—, así que `tope15_numerador_y_margen.test.ts` lee el
+ * fuente del motor y falla si dejan de coincidir. Mismo mecanismo con el que
+ * `presupuesto.test.ts` sincroniza `TECHO_ENVIO_META_MS` con `meta/client.ts`.
+ */
+export const MEDIOS_LISR_27_III: readonly string[] = [
+  '02', // cheque nominativo de la cuenta del contribuyente
+  '03', // transferencia electrónica de fondos
+  '04', // tarjeta de crédito
+  '05', // monedero electrónico autorizado por el SAT
+  '28', // tarjeta de débito
+  '29', // tarjeta de servicios
+];
+
+/**
+ * ¿Este pago de combustible cuenta contra el 15% del ejercicio?
+ *
+ * AUDITORÍA 11, ALTO (G-04). El numerador era `forma_pago === '01'`, o sea solo
+ * el efectivo. Una flota que carga diésel a crédito en la estación factura con
+ * `MetodoPago = PPD`, y ese CFDI lleva `FormaPago 99` (Por definir) por
+ * obligación: $200,000 así contra $800,000 de transferencia son el 20% del tope
+ * y el contador decía `holgado`, con el aviso en `null`. En silencio, sobre la
+ * cifra que decide si la flota pierde la deducción del resto del ejercicio.
+ *
+ * SIN forma de pago no se cuenta, igual que el motor: un dato ausente no es un
+ * incumplimiento, y suponerlo inflaría el numerador contra la flota.
+ */
+export function cuentaContraTope15(formaPago: string | null | undefined): boolean {
+  return !!formaPago && !MEDIOS_LISR_27_III.includes(formaPago);
+}
+
+/**
  * Cuándo avisar. DECISIÓN DE PRODUCTO, no regla legal — por eso vive aparte del
  * tope y se llama distinto.
  *
@@ -56,14 +100,31 @@ export interface ResultadoTope15 {
    */
   excedente: number;
   /**
-   * Cuánto efectivo más cabe sin pasarse. Es lo accionable: no "vas al 12%",
-   * sino "te quedan $3,000 este año".
+   * Cuánto MÁS se puede pagar así sin pasarse. Es lo accionable: no "vas al
+   * 12%", sino "te quedan $35,294.12 este año".
+   *
+   * AUDITORÍA 11, ALTO (G-04) — ESTABA MAL DESPEJADO. Era `permitido − efectivo`,
+   * que contesta «cuánto le falta al efectivo de HOY para llegar al 15% del
+   * total de HOY». Esa no es la pregunta: el peso que se pague de más entra en
+   * los DOS lados de la razón, porque también es combustible.
+   *
+   *     (e + x) / (t + x) ≤ 0.15   ⇒   x ≤ (0.15·t − e) / 0.85
+   *
+   * Con $1,000,000 de combustible y $120,000 fuera de la lista salían
+   * $30,000.00 donde caben $35,294.12: 17.6% menos, en pesos, sobre lo que el
+   * aviso presenta como lo accionable — y a la baja, que es la dirección que el
+   * contralor no revisa porque no le cuesta dinero hoy.
    */
   margen: number;
 }
 
 /**
- * @param efectivo         pagos de combustible en efectivo del ejercicio.
+ * @param efectivo         pagos de combustible del ejercicio hechos con un medio
+ *                         FUERA de `MEDIOS_LISR_27_III` — el efectivo entre
+ *                         ellos, y también el `99` de la carga a crédito. El
+ *                         campo se sigue llamando así porque es el caso típico
+ *                         y porque renombrarlo movería la interfaz del contador
+ *                         entero; lo que cuenta lo decide `cuentaContraTope15`.
  * @param totalCombustible TODOS los pagos de combustible del ejercicio.
  */
 export function evaluarTope15(acumulado: { efectivo: number; totalCombustible: number }): ResultadoTope15 {
@@ -86,6 +147,16 @@ export function evaluarTope15(acumulado: { efectivo: number; totalCombustible: n
     // "Rebasar el 15% no reduce proporcionalmente la deducción: tira el
     // excedente completo" — no el acumulado entero ni el gasto que lo cruzó.
     excedente: round2(Math.max(0, efectivo - permitido)),
-    margen: round2(Math.max(0, permitido - efectivo)),
+    // El excedente mira hacia atrás (sobre el total ya gastado) y el margen
+    // hacia adelante (sobre el total que habrá si se gasta). Por eso uno lleva
+    // el `/ (1 − 0.15)` y el otro no.
+    //
+    // Y se TRUNCA a centavos en vez de redondearse —el único sitio del módulo
+    // que no usa `round2`—: el margen es una cifra que autoriza a gastar, y
+    // redondear hacia arriba le concede a la flota un centavo que la deja
+    // ENCIMA del tope. Con $1,000,000 y $120,000 el corte real está en
+    // $35,294.1176: redondeado son $35,294.12, que ya excede. La dirección del
+    // error importa, y ésta es la barata.
+    margen: Math.max(0, Math.floor(((permitido - efectivo) / (1 - TOPE_EFECTIVO)) * 100) / 100),
   };
 }

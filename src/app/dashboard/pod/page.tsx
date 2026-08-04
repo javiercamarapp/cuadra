@@ -1,13 +1,13 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { PackageCheck } from 'lucide-react';
-import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
+import { resolverTenantEfectivo, resolverTenantDeAction } from '@/lib/auth/tenant-efectivo';
 import { requireSessionTenant } from '@/lib/auth/guard';
 import { puedeAsignar } from '@/lib/auth/permisos';
-import { supabaseAdmin } from '@/lib/supabase/admin';
-import { getPods, marcarPodPedido, rechazarPod, type PodRow } from '@/lib/cuadra/operacion';
+import { getPods, marcarPodPedido, rechazarPod, codigoDeCaptura, type PodRow } from '@/lib/cuadra/operacion';
 import { EstadoVacio, StatusPill } from '../../admin/ui/kit';
 import { sufijoTenant } from '../sufijo';
+import AvisoCaptura from '../aviso-captura';
 import { CifrasPod, TablaPod } from './vista';
 
 export const dynamic = 'force-dynamic';
@@ -36,23 +36,33 @@ async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
 export default async function PodPage({
   searchParams,
 }: {
-  searchParams: Promise<{ vista?: string; tenant?: string; ok?: string }>;
+  searchParams: Promise<{ vista?: string; tenant?: string; rol?: string; ok?: string; err?: string }>;
 }) {
   const sp = await searchParams;
   const { tenantId, rol } = await resolverTenantEfectivo('/dashboard/pod', sp);
   const sufijo = sufijoTenant(sp);
   const puede = puedeAsignar(rol);
 
+  /** A dónde volver después de una escritura, con su acuse o su motivo. */
+  const volver = (clave: string, valor: string) =>
+    `/dashboard/pod${sufijo ? `${sufijo}&` : '?'}${clave}=${valor}`;
+
   const pods = await safe<PodRow[]>(() => getPods(tenantId));
 
+  /**
+   * El tenant al que ESCRIBE el action. `resolverTenantDeAction` es la copia
+   * única (G-34): la que vivía aquí descartaba el `error` de la consulta, así
+   * que con un 503 transitorio `data` salía null, el `if` no entraba y la
+   * escritura aterrizaba en el tenant de la SESIÓN — que para un superadmin es
+   * el DEMO, con la píldora verde diciendo que se guardó.
+   *
+   * El gate de PERMISO se queda aquí porque el redirect de vuelta necesita el
+   * `sufijo`, que es local a esta página.
+   */
   async function tenantDelAction() {
     const s = await requireSessionTenant('/dashboard/pod');
     if (!puedeAsignar(s.rol)) redirect(`/dashboard/pod${sufijo}`);
-    if (s.rol === 'superadmin' && sp?.tenant) {
-      const { data } = await supabaseAdmin().from('tenant').select('id').eq('id', sp.tenant).maybeSingle();
-      if (data) return data.id as string;
-    }
-    return s.tenantId;
+    return resolverTenantDeAction('/dashboard/pod', sp);
   }
 
   async function accionPedir(formData: FormData) {
@@ -60,9 +70,16 @@ export default async function PodPage({
     const t = await tenantDelAction();
     const viajeId = String(formData.get('viajeId') ?? '');
     if (!viajeId) redirect(`/dashboard/pod${sufijo}`);
-    await marcarPodPedido(t, viajeId, String(formData.get('operadorId') ?? '') || null);
+    // El `try` no envuelve al `redirect`: `redirect()` funciona lanzando.
+    let err: string | null = null;
+    try {
+      await marcarPodPedido(t, viajeId, String(formData.get('operadorId') ?? '') || null);
+    } catch (e) {
+      err = codigoDeCaptura(e);
+      if (err === null) throw e;
+    }
     revalidatePath('/dashboard/pod');
-    redirect(`/dashboard/pod${sufijo ? `${sufijo}&` : '?'}ok=pedido`);
+    redirect(err ? volver('err', err) : volver('ok', 'pedido'));
   }
 
   async function accionRechazar(formData: FormData) {
@@ -70,9 +87,15 @@ export default async function PodPage({
     const t = await tenantDelAction();
     const podId = String(formData.get('podId') ?? '');
     if (!podId) redirect(`/dashboard/pod${sufijo}`);
-    await rechazarPod(t, podId, String(formData.get('nota') ?? '').trim() || null);
+    let err: string | null = null;
+    try {
+      await rechazarPod(t, podId, String(formData.get('nota') ?? '').trim() || null);
+    } catch (e) {
+      err = codigoDeCaptura(e);
+      if (err === null) throw e;
+    }
     revalidatePath('/dashboard/pod');
-    redirect(`/dashboard/pod${sufijo ? `${sufijo}&` : '?'}ok=rechazado`);
+    redirect(err ? volver('err', err) : volver('ok', 'rechazado'));
   }
 
   return (
@@ -88,6 +111,8 @@ export default async function PodPage({
         {sp.ok === 'pedido' && <StatusPill estado="ok">Marcado como pedido</StatusPill>}
         {sp.ok === 'rechazado' && <StatusPill estado="ok">Evidencia rechazada</StatusPill>}
       </header>
+
+      <AvisoCaptura codigo={sp.err} />
 
       {pods === null ? (
         <div className="glass-panel p-8 text-sm" style={{ color: 'var(--muted)' }}>

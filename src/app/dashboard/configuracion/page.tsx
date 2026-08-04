@@ -107,9 +107,9 @@ export default async function ConfiguracionPage({
                 <table className="w-full text-sm">
                   <thead>
                     <tr style={{ color: 'var(--muted)' }} className="text-left">
-                      <th className="py-2.5 font-medium">Placa</th>
-                      <th className="py-2.5 font-medium text-right">Rendimiento base</th>
-                      <th className="py-2.5 font-medium text-right">Capacidad de tanque</th>
+                      <th scope="col" className="py-2.5 font-medium">Placa</th>
+                      <th scope="col" className="py-2.5 font-medium text-right">Rendimiento base</th>
+                      <th scope="col" className="py-2.5 font-medium text-right">Capacidad de tanque</th>
                     </tr>
                   </thead>
                   <tbody>

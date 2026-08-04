@@ -14,7 +14,9 @@ describe('avisoTope15', () => {
 
   it('cerca del tope, lo PRIMERO es cuánto margen queda', () => {
     const a = avisoTope15(ev(13_000, 100_000), 2026)!;
-    expect(a).toMatch(/te quedan \$2,000\.00/);
+    // 2,000 / 0.85 = 2,352.94… — auditoría 11, G-04: el margen es lo que
+    // TODAVÍA se puede pagar así, y ese peso nuevo también es combustible.
+    expect(a).toMatch(/te quedan \$2,352\.94/);
     expect(a).toMatch(/tarjeta o transferencia/);   // qué hacer
   });
 

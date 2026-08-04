@@ -102,10 +102,10 @@ export default async function WhatsappInfraPage() {
           ) : (
             <div className="space-y-2.5 mt-3">
               {conversaciones.map((c) => (
-                <details key={c.telefono} className="card overflow-hidden group">
+                <details key={c.seudonimo} className="card overflow-hidden group">
                   <summary className="px-4 py-3 flex items-center justify-between gap-4 cursor-pointer list-none hover:bg-[color-mix(in_srgb,var(--muted)_6%,transparent)] transition-colors">
                     <div>
-                      <div className="text-sm font-medium">{c.telefono}</div>
+                      <div className="text-sm font-medium">{c.seudonimo}</div>
                       <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{c.tenantNombre}</div>
                     </div>
                     <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--muted)' }}>

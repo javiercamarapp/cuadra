@@ -78,13 +78,13 @@ export function TablaUnidades({
       <table className="w-full text-sm">
         <thead>
           <tr style={{ color: 'var(--muted)' }} className="text-left">
-            <th className="px-5 py-2.5 font-medium">Económico</th>
-            <th className="px-5 py-2.5 font-medium">Placas</th>
-            <th className="px-5 py-2.5 font-medium">Unidad</th>
-            <th className="px-5 py-2.5 font-medium text-right">Km</th>
-            <th className="px-5 py-2.5 font-medium">Papeles</th>
-            <th className="px-5 py-2.5 font-medium text-right">Taller</th>
-            <th className="px-5 py-2.5 font-medium">Estado</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Económico</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Placas</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Unidad</th>
+            <th scope="col" className="px-5 py-2.5 font-medium text-right">Km</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Papeles</th>
+            <th scope="col" className="px-5 py-2.5 font-medium text-right">Taller</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Estado</th>
           </tr>
         </thead>
         <tbody>

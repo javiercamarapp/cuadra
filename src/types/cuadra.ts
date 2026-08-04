@@ -77,7 +77,21 @@ export type TipoDiferencia =
   | 'complemento_hidrocarburos'  // CFDI de combustible SIN el complemento requerido → NO deducible (NIVEL 2, del XML)
   | 'complemento_no_verificable' // factura de combustible sin XML → no se puede verificar el complemento (NIVEL 1, a bandeja)
   | 'combustible_efectivo' // combustible pagado en efectivo → NO deducible (LISR 27-III, sin importar monto)
-  | 'efectivo_sobre_tope'  // gasto no-combustible en efectivo > $2,000 → NO deducible (LISR 27-III)
+  | 'efectivo_sobre_tope'  // gasto no-combustible en EFECTIVO > $2,000 → NO deducible (LISR 27-III, 1er párrafo)
+  // Gasto no-combustible > $2,000 pagado con un medio que NO está en la lista
+  // cerrada del 1er párrafo de LISR 27-III y que TAMPOCO es efectivo: 12 (dación
+  // en pago), 15 (condonación), 17 (compensación), 23 (novación), 30 (aplicación
+  // de anticipos) y sobre todo 99 (Por definir), obligatorio en todo CFDI con
+  // `MetodoPago = PPD`.
+  //
+  // NO comparte tipo con `efectivo_sobre_tope` a propósito, aunque los funde la
+  // misma frase de la ley: ése es un veredicto DURO sobre un hecho consumado, y
+  // `99` significa que EL PAGO TODAVÍA NO OCURRIÓ —el medio real llegará en el
+  // complemento de recepción de pagos—. Declarar no deducible un gasto cuyo pago
+  // está por hacerse le quita al cliente una deducción que va a tener; y ablandar
+  // el efectivo para que quepan los dos sería el error contrario. Por eso va a
+  // POR CONFIRMAR: ni afirmado ni perdido.
+  | 'medio_pago_sobre_tope'
   | 'ieps_no_desglosado'   // CFDI de diésel sin IEPS desglosado → no acreditable (se pierde el estímulo)
   | 'viatico_excede_fiscal' // viático de alimentación > tope fiscal $750/día (LISR 28-V) → porción no deducible
   | 'fecha_sospechosa'     // fecha futura o muy anterior al viaje → periodo/plazo/complemento en riesgo

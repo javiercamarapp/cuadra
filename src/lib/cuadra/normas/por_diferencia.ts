@@ -32,6 +32,12 @@ export const NORMA_POR_DIFERENCIA: Partial<Record<TipoDiferencia, string[]>> = {
   comprobante_no_fiscal: ['cff-29-A'],
   combustible_efectivo: ['lisr-27-fr-III', 'rfa-2026-2.9'],
   efectivo_sobre_tope: ['lisr-27-fr-III'],
+  // Mismo 1er párrafo que `efectivo_sobre_tope`, distinto veredicto: aquí el
+  // pago no es efectivo pero tampoco está en la lista cerrada (12, 15, 17, 23,
+  // 30 y sobre todo 99 — PPD, el pago aún no ocurre). NO lleva la RFA 2.9: esa
+  // facilidad es SOLO para el consumo de combustible, y ofrecerla aquí le daría
+  // al agente una válvula del 15% que este gasto no tiene.
+  medio_pago_sobre_tope: ['lisr-27-fr-III'],
   viatico_excede_fiscal: ['lisr-28-fr-V'],
   alimentacion_sin_soporte: ['lisr-28-fr-V'],
   alimentacion_transporte_sin_tarjeta_credito: ['lisr-28-fr-V'],

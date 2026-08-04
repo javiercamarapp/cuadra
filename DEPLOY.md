@@ -36,7 +36,17 @@ es lo que menos falta se hace a las 3 a.m.
      **nadie va a recibir el siguiente fallo**. Es lo primero que hay que
      arreglar si aparece.
    - `startup.migraciones` — el esquema del camino del dinero.
-   - `startup.entorno` — falta configuración crítica.
+   - `startup.entorno` — falta `DASHBOARD_SECRET`, y **nada más**: cubre una
+     sola variable. No es el semáforo de la configuración.
+   - `startup.config_silenciosa` — **este sí es el semáforo**, y es el que el
+     `GUION_DEMO.md` manda mirar antes de entrar a la sala. `ok:false` lista
+     las variables cuya ausencia (o cuyo VALOR equivocado, en el caso de
+     `NEXT_PUBLIC_APP_URL`) no rompe nada visible y hace contestar mal:
+     el panel pinta cero liquidaciones, o el magic link se va a otro dominio y
+     nadie entra.
+   - `startup.entorno_grupos` — las variables cuya ausencia sí rompe, agrupadas
+     por lo que apagan (LLM, WhatsApp, Supabase). `msg` propio a propósito:
+     Sentry agrupa por mensaje y meterlo en el cubo anterior lo perdería.
 
 4. **Si el panel falló para el contralor.** Pídele el `Digest: <número>` que
    Next enseña en pantalla y busca ese número en los logs: `onRequestError`
@@ -95,11 +105,110 @@ cuatro que hay que revisar a mano porque **si faltan el sistema arranca igual**:
 | Variable | Qué pasa si falta |
 |---|---|
 | `SENTRY_DSN` | No hay alerta de nada. Los errores mueren en el runtime log. |
-| `DASHBOARD_SECRET` | El HMAC de la cookie se deriva del passcode: crackeable offline. |
-| `DASHBOARD_PASSCODE` | `proxy.ts` **no bloquea** `/dashboard`: el panel queda abierto. |
 | `DEMO_TENANT_ID` | El panel consulta el tenant del seed y pinta **cero liquidaciones**, sin log. |
+| `NEXT_PUBLIC_APP_URL` | El login arma el magic link y el retorno de Google contra el fallback del código, `https://likida.ai`, que **no es** el dominio desplegado (`https://likidaai.vercel.app`). El correo llega, el link abre, y la sesión se completa en otro sitio: nadie entra y no hay un solo error. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `createServerClient` lanza `supabaseKey is required` dentro del middleware: **cada** petición a `/dashboard`, `/admin` y `/mis-viajes` se vuelve un 500. |
+| `DASHBOARD_SECRET` | Nada del panel. Su único lector que queda es `verificarEntornoCritico()` (`src/lib/cuadra/startup.ts`), que grita en producción si falta — un aviso que ya no describe ningún candado (ver abajo). |
 
 Para listarlas: `vercel env ls production`.
+
+**El passcode del panel ya no existe.** El gate es la sesión de Supabase, en
+dos capas: `src/proxy.ts` y `requireSessionTenant` en cada página. La página
+`/acceso` y el módulo del passcode se borraron en la auditoría 10 —la pantalla
+"aceptaba" el código, emitía una cookie que ningún gate lee y devolvía al
+usuario a `/login` sin decir nada—, así que **`DASHBOARD_PASSCODE` se quedó sin
+un solo lector en el código** (`src/lib/auth/acceso_retirado.test.ts` lo mide).
+Bórrala también del entorno de Vercel: un secreto vivo que no protege nada
+sigue siendo un secreto que rotar y que se puede filtrar.
+
+`DASHBOARD_SECRET` era la clave del HMAC de aquella cookie y quedó en la misma
+situación. Retirarla exige tocar `verificarEntornoCritico()`, que hoy la sigue
+exigiendo en producción; queda anotado y por eso sigue en la tabla.
+
+---
+
+## El primer acceso al panel en una máquina limpia
+
+Una base recién sembrada **no tiene ningún usuario del panel**: `supabase/seed.sql`
+no inserta en `app_user`, el login va con `shouldCreateUser:false` y nadie se da
+de alta solo. Si tecleas tu correo en `/login` sin haber hecho esto, la pantalla
+dice «Te mandamos un link» —a propósito, para no filtrar qué correos existen— y
+el link no llega nunca. En el log queda `login.otp_sin_cuenta`.
+
+Y el único alta que existe, `/admin/usuarios/nuevo`, empieza con
+`requireSuperadmin()`: exige la fila que hay que crear. Se rompe así, una sola
+vez por base:
+
+```
+DATABASE_URL="postgres://..." npm run seed          # migraciones + bucket + datos
+node --env-file=.env.local scripts/crear-superadmin.mjs javier@ejemplo.mx "Javier"
+npm run dev
+```
+
+Contra producción es el mismo script, con las envs del despliegue en vez del
+archivo:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://<proyecto>.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=<service role> \
+node scripts/crear-superadmin.mjs contralor@laflota.mx "Contralor"
+```
+
+Crea el usuario de `auth.users` (con la Admin API, `email_confirm: true`) y su
+fila de `app_user` con `rol='superadmin'` y `tenant_id` nulo — que en esa tabla
+no es "sin asignar" sino "no pertenece a ninguna flota". Es **idempotente**:
+correrlo dos veces con el mismo correo reutiliza el usuario y reescribe la fila,
+que es justo lo que hace falta cuando un intento anterior quedó a medias.
+
+Después: `/login` con ese correo, **desde el mismo navegador** en el que vayas a
+abrir el link (el `code_verifier` del PKCE vive en su cookie; pedirlo en la
+laptop y abrirlo en el teléfono falla con `auth.callback_intercambio`), y desde
+dentro se da de alta al resto en `/admin/usuarios/nuevo`.
+
+Si el correo no llega, el problema es el remitente, no el alta — sigue leyendo.
+
+---
+
+## Lo que el login necesita del lado de Supabase
+
+Nada de esto vive en el repo, y la mitad de los fallos del login vienen de
+aquí. Proyecto de Supabase → **Authentication**:
+
+1. **URL Configuration → Site URL**: `https://likidaai.vercel.app`. Es a donde
+   GoTrue manda al usuario cuando **rechaza** el `emailRedirectTo` que pide el
+   código. Por default es `http://localhost:3000`, así que dejarla mal no da
+   error: manda el correo, el contralor abre el link, y el navegador va a
+   localhost. **Likida nunca recibe esa petición**, así que no hay ningún log
+   que pueda existir.
+
+2. **URL Configuration → Redirect URLs**: tiene que estar
+   `https://likidaai.vercel.app/auth/callback` (y, para trabajar en local,
+   `http://localhost:3000/auth/callback`). El código arma
+   `${NEXT_PUBLIC_APP_URL}/auth/callback?next=...`
+   (`src/app/login/page.tsx:10,79`): si ese origen no está en la lista, GoTrue
+   lo ignora y cae en la Site URL del punto anterior.
+
+3. **Providers → Email**: encendido. **Providers → Google**: encendido, con el
+   Client ID/Secret de la consola de Google, y en la consola de Google el
+   *Authorized redirect URI* que Supabase indica
+   (`https://<proyecto>.supabase.co/auth/v1/callback`).
+
+4. **Emails → SMTP Settings**: el remitente. Hoy es el **sandbox de Resend**
+   (`onboarding@resend.dev`), que **solo entrega a
+   `javiercamaraportepetit@gmail.com` y responde 403 a cualquier otra
+   dirección** (`docs/superpowers/plans/2026-08-02-roles-flota.md:96-103`). Ese
+   403 llega a GoTrue, que contesta 500 `unexpected_failure` («Error sending
+   magic link email»). En el log eso sale como `login.otp_error` con `code` y
+   `status`; en la pantalla, como «Algo falló. Intenta otra vez.». **Antes del
+   demo hay que poner un remitente con dominio verificado** o el único correo
+   que puede entrar al panel es el de Javier.
+
+Cómo se verifica que quedó, sin adivinar: pide el magic link desde el mismo
+navegador donde vas a abrirlo (el `code_verifier` del PKCE vive en su cookie) y
+mira el log. `login.otp_error` = no salió el correo;
+`auth.callback_intercambio` = el correo salió y el intercambio falló (link
+caducado, otro dispositivo, callback fuera de la lista blanca); ninguna de las
+dos = entró.
 
 ---
 

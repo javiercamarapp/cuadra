@@ -52,32 +52,54 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # CON COBERTURA, y no `npm test` a secas: el umbral de `vitest.config.ts`
-      # es lo que convierte la cobertura en una puerta en vez de en un número
-      # que nadie mira.
+      # ═════════════════════════════════════════════════════════════════════
+      # DOS ROJOS DISTINTOS, DOS PASOS DISTINTOS. AUDITORÍA 11 · G-35.
       #
-      # Aquí decía que "`--coverage` corre las MISMAS pruebas". Dejó de ser
-      # cierto: `vitest.config.ts` exporta `CUADRA_COBERTURA=1` bajo `--coverage`
-      # y dos pruebas de TIEMPO se saltan con esa bandera —la instrumentación de
-      # v8 cobra por llamada y el umbral acabaría midiéndola—. Como CI corría
-      # SOLO este comando, esas dos no se ejecutaban aquí ni una vez: la guardia
-      # de ReDoS del buscador de fundamentos y la de crecimiento no lineal del
-      # deduplicador de CFDI existían y nadie las corría más que Javier en su
-      # máquina. El paso de abajo las recupera.
-      - name: Tests (con umbral de cobertura)
-        run: npm run test:coverage
+      # Antes había UN paso —`npm run test:coverage`— que mezclaba dos cosas
+      # que no se parecen en nada:
+      #
+      #   «una prueba se rompió»  → hay que arreglarlo AHORA, no se despliega.
+      #   «entró código sin prueba» → deuda, se ve, se prioriza.
+      #
+      # Como el trinquete vivía DENTRO del paso de las pruebas, GitHub daba
+      # el job por fallado ahí y SALTABA los dos siguientes. Resultado
+      # medido: el CI de `master` llevaba rojo desde el 3-ago porque la
+      # cobertura bajó (las 1,668 pruebas PASABAN), y en esos días el paso de
+      # **Build nunca corrió sobre el código del demo** — el paso cuyo propio
+      # comentario dice que ya cazó un fallo real que solo aparece ahí
+      # (Turbopack no resolvía el `.wasm` del lector de códigos de barras, que
+      # es el que lee los tickets que se van a enseñar en la sala). El commit
+      # `5fcfb38` dice "build limpio" y su CI terminó en `failure` 100
+      # segundos después.
+      #
+      # Ahora las pruebas van primero y sin instrumentar, el build va en
+      # medio, y el trinquete de cobertura va AL FINAL. Sigue poniendo el CI
+      # en rojo —es una puerta, no un adorno— pero ya no puede esconder al
+      # build detrás de él. Cuesta correr la suite dos veces (~1 min extra de
+      # runner); esconder el build cuesta un demo.
+      #
+      # NO se bajó el umbral. Bajar el medidor para que deje de avisar es
+      # apagar el medidor.
+      # ═════════════════════════════════════════════════════════════════════
+      - name: Tests
+        run: npm test
 
-      # LAS PRUEBAS DE TIEMPO, SIN INSTRUMENTAR — lo que el paso de arriba salta.
+      # LAS PRUEBAS DE TIEMPO, SIN INSTRUMENTAR.
       #
-      # Son segundos: cuatro archivos, no la suite. `pruebas_en_ci.test.ts` falla
-      # si alguien añade un `skipIf(CUADRA_COBERTURA)` en un archivo que este
-      # comando no alcanza, que es como se perdieron estas dos.
+      # `vitest.config.ts` exporta `CUADRA_COBERTURA=1` bajo `--coverage` y
+      # tres pruebas de TIEMPO se saltan con esa bandera (la instrumentación
+      # de v8 cobra por llamada y el umbral acabaría midiéndola). Con el paso
+      # de arriba ya corren, pero este se queda como red explícita:
+      # `pruebas_en_ci.test.ts` falla si alguien añade un
+      # `skipIf(CUADRA_COBERTURA)` en un archivo que este comando no alcanza,
+      # que es como se perdieron estas dos en su día.
       - name: Pruebas de tiempo (sin cobertura)
         run: npx vitest run fundamento duplicados
 
-      # El build va al final porque es el más lento, y porque los tres de arriba
-      # atrapan casi todo lo que lo haría fallar. Ya cazó un fallo real que solo
-      # aparecía aquí: Turbopack no resolvía el .wasm del lector de códigos.
+      # El build va antes del trinquete y después de las pruebas: es el más
+      # lento, y las pruebas atrapan casi todo lo que lo haría fallar. Ya cazó
+      # un fallo real que solo aparecía aquí: Turbopack no resolvía el .wasm
+      # del lector de códigos.
       - name: Build
         run: npm run build
         env:
@@ -88,3 +110,10 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
           SUPABASE_SERVICE_ROLE_KEY: ci-placeholder
+
+      # EL TRINQUETE, AL FINAL Y SOLO. El umbral de `vitest.config.ts` es lo
+      # que convierte la cobertura en una puerta en vez de en un número que
+      # nadie mira. Que esté aquí abajo significa que cuando este paso sea el
+      # único rojo, el diagnóstico es inmediato: entró código sin prueba.
+      - name: Trinquete de cobertura
+        run: npm run test:coverage

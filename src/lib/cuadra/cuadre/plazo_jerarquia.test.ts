@@ -66,10 +66,29 @@ describe('el plazo del comercio se dice como política, no como ley', () => {
     expect(nota).toContain('no de la ley');
   });
 
-  it('sin plazo verificado se conserva el matiz de siempre: la ventana puede ser menor', () => {
+  // AUDITORÍA 10, MEDIO (fiscal) — ESTA PRUEBA SE REESCRIBIÓ, NO SE BORRÓ.
+  //
+  // Fijaba, con `expect(nota).not.toContain('no de la ley')`, la premisa de que
+  // el matiz de jerarquía es propiedad del COMERCIO: solo se dice cuando alguien
+  // leyó su portal (`plazoVerificado: true`, 4 de 37 entradas). Dejó de
+  // sostenerse por dos razones que la ficha `politica-portales-plazos.yaml` ya
+  // traía escritas: (1) «El producto NUNCA debe presentar estos plazos como una
+  // obligación fiscal» no admite excepción por si el plazo está verificado o no
+  // —al contrario, la rama SIN verificar es la que leen 33 de 37 comercios—; y
+  // (2) la fecha de esa rama sale del default `mes_natural`, cuyas fichas son
+  // `sin_verificar` y `texto_vigente: null`, así que es justo la que menos puede
+  // sonar a cálculo legal.
+  //
+  // Lo que la prueba conserva es lo suyo: que el matiz específico de la rama sin
+  // verificar —la ventana puede ser MENOR— no se pierda al añadir el de
+  // jerarquía, y que la fecha se atribuya a quien la produjo.
+  it('sin plazo verificado: la ventana puede ser menor Y la ley sigue dando el ejercicio', () => {
     const nota = avisos(ticketOfficeDepot({ rfcEmisor: 'CCO8605231N4', monto: 41.5 }), '2026-07-28')[0].nota;
     expect(nota).toContain('la ventana del comercio puede ser menor');
-    expect(nota).not.toContain('no de la ley');
+    expect(nota).toContain('dentro del ejercicio');
+    // La fecha no se atribuye al portal de nadie: es el supuesto de este sistema.
+    expect(nota).toContain('fin del mes de la compra, no de la ley');
+    expect(nota).not.toContain('plazo del portal');
   });
 
   it('la rama VENCIDA sigue diciendo lo que ya decía', () => {

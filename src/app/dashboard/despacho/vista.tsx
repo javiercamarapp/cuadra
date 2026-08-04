@@ -23,8 +23,13 @@ export function TableroCifras({ t }: { t: TableroOperacion }) {
       </h2>
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mt-3">
         <KpiTile icono={<Truck {...ICONO} />} etiqueta="Viajes activos" valor={t.viajesActivos} formato="entero" />
+        {/* Este cero no es una medición y no se puede pintar como si lo fuera:
+            `viaje.operador_id` es NOT NULL (0001), así que un viaje sin chofer
+            no existe en la base y la consulta no puede devolver una fila. La
+            nota lo declara en vez de dejar que se lea como "todo repartido". */}
         <KpiTile icono={<CircleSlash {...ICONO} />} etiqueta="Por asignar" valor={t.porAsignar} formato="entero"
-          destacar={t.porAsignar > 0} nota="Sin chofer y todavía sin liquidar" />
+          destacar={t.porAsignar > 0}
+          nota="Hoy siempre 0: la base exige chofer para crear el viaje, así que no hay viajes sin dueño que contar" />
         <KpiTile icono={<UserCog {...ICONO} />} etiqueta="Unidades disponibles" valor={t.unidadesDisponibles} formato="entero" />
         <KpiTile icono={<Wrench {...ICONO} />} etiqueta="En taller" valor={t.unidadesEnTaller} formato="entero" />
         <KpiTile icono={<TriangleAlert {...ICONO} />} etiqueta="Incidencias abiertas" valor={t.incidenciasAbiertas} formato="entero" />
@@ -52,10 +57,10 @@ export function TablaSinAsignar({
       <table className="w-full text-sm">
         <thead>
           <tr style={{ color: 'var(--muted)' }} className="text-left">
-            <th className="px-5 py-2.5 font-medium">Folio</th>
-            <th className="px-5 py-2.5 font-medium">Ruta</th>
-            <th className="px-5 py-2.5 font-medium">Inicio</th>
-            <th className="px-5 py-2.5 font-medium">Asignar a</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Folio</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Ruta</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Inicio</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Asignar a</th>
           </tr>
         </thead>
         <tbody>
@@ -112,12 +117,12 @@ export function TablaCarga({ carga }: { carga: CargaOperador[] }) {
       <table className="w-full text-sm">
         <thead>
           <tr style={{ color: 'var(--muted)' }} className="text-left">
-            <th className="px-5 py-2.5 font-medium">Operador</th>
-            <th className="px-5 py-2.5 font-medium">Carga</th>
-            <th className="px-5 py-2.5 font-medium text-right">En curso</th>
-            <th className="px-5 py-2.5 font-medium text-right">Sin POD</th>
-            <th className="px-5 py-2.5 font-medium text-right">Incidencias</th>
-            <th className="px-5 py-2.5 font-medium">Estado</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Operador</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Carga</th>
+            <th scope="col" className="px-5 py-2.5 font-medium text-right">En curso</th>
+            <th scope="col" className="px-5 py-2.5 font-medium text-right">Sin POD</th>
+            <th scope="col" className="px-5 py-2.5 font-medium text-right">Incidencias</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Estado</th>
           </tr>
         </thead>
         <tbody>
@@ -159,9 +164,14 @@ export function FormaAlta({
       <Campo nombre="fechaInicio" etiqueta="Inicio" tipo="date" />
       <Campo nombre="anticipo" etiqueta="Anticipo (MXN)" tipo="number" placeholder="0" />
       <div className="flex flex-col gap-1">
-        <label className="text-xs" style={{ color: 'var(--muted)' }}>Chofer</label>
-        <select name="operadorId" defaultValue="" className="text-sm rounded-lg px-2.5 py-2" style={CONTROL}>
-          <option value="">Asignar después</option>
+        <label className="text-xs" style={{ color: 'var(--muted)' }}>Chofer (obligatorio)</label>
+        {/* "Asignar después" era la opción SELECCIONADA por default, y no se
+            puede guardar: `viaje.operador_id` es NOT NULL desde la 0001 y
+            ninguna migración lo aflojó. Ofrecerla era prometer un viaje sin
+            chofer que la base rechaza con un 23502 — y la pantalla lo pintaba
+            como "hubo un problema al leer los datos". */}
+        <select name="operadorId" required defaultValue="" className="text-sm rounded-lg px-2.5 py-2" style={CONTROL}>
+          <option value="" disabled>Chofer…</option>
           {operadores.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
         </select>
       </div>

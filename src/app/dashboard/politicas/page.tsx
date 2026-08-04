@@ -64,9 +64,9 @@ export default async function PoliticasPage({
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ color: 'var(--muted)' }} className="text-left">
-                    <th className="px-5 py-2.5 font-medium">Concepto</th>
-                    <th className="px-5 py-2.5 font-medium text-right">Tope por comprobante</th>
-                    <th className="px-5 py-2.5 font-medium">Exige factura (CFDI)</th>
+                    <th scope="col" className="px-5 py-2.5 font-medium">Concepto</th>
+                    <th scope="col" className="px-5 py-2.5 font-medium text-right">Tope por comprobante</th>
+                    <th scope="col" className="px-5 py-2.5 font-medium">Exige factura (CFDI)</th>
                   </tr>
                 </thead>
                 <tbody>

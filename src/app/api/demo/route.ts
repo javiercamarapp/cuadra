@@ -1,11 +1,28 @@
 import { NextResponse } from 'next/server';
 import { cuadrarViaje, type PoliticaGasto } from '@/lib/cuadra/cuadre/engine';
+import { DEMO_CONFIG } from '@/lib/cuadra/config';
 import { rateLimit, bodyExcede, clientIp } from '@/lib/ratelimit';
 import { envHealth } from '@/lib/env';
+import { getSessionTenant } from '@/lib/auth/session';
 import type { Gasto } from '@/types/cuadra';
 
-// Health del demo (config detectada, sin exponer valores).
+// Health del despliegue (qué integraciones están puestas, sin exponer valores).
+//
+// BAJO REINCIDENTE de las rondas 8, 9 y 10 (seguridad): esto era público.
+// `/api` está fuera del matcher del proxy (`proxy.ts:81`), así que esta función
+// ERA la única puerta y no comprobaba nada: `curl https://app.likida.ai/api/demo`
+// devolvía `{"config":{"llm":true,"whatsapp":true,"supabase":true}}` — el mapa
+// de qué mitad del despliegue quedó a medias, gratis y sin cuenta.
+//
+// No se retira, porque es el único health-check de configuración que hay: se le
+// pone dueño. `envHealth()` describe el despliegue de LIKIDA, no el tenant de
+// nadie, así que el rol que corresponde es `superadmin` y no `flota_admin`.
+//
+// Responde 404 y no 401 a propósito: un 401 confirma que la ruta existe, que es
+// exactamente el reconocimiento que se está cerrando.
 export async function GET() {
+  const s = await getSessionTenant();
+  if (s?.rol !== 'superadmin') return new NextResponse('Not found', { status: 404 });
   return NextResponse.json({ ok: true, config: envHealth() });
 }
 
@@ -13,6 +30,11 @@ export const runtime = 'nodejs';
 
 // Demo determinístico (sin LLM ni DB) — corre el MOTOR DE CUADRE real sobre
 // comprobantes de ejemplo. Robusto para una demo en vivo: nunca depende de red.
+
+// 🔴 INVENTADO: la flota del simulador. Es el mismo valor que `seed.sql`, con
+// dígito verificador válido — si divergen, el demo por WhatsApp y el simulador
+// dan veredictos distintos sobre el mismo comprobante.
+const RFC_FLOTA_DEMO = 'TIN010101AA5';
 
 // 🔴 INVENTADO: política de fantasía para el demo (misma que seed.sql).
 // Ajústala con la política real de Innovativos.
@@ -29,16 +51,72 @@ const POLITICA: PoliticaGasto[] = [
 export async function POST(req: Request) {
   if (bodyExcede(req, 64 * 1024)) return NextResponse.json({ error: 'payload muy grande' }, { status: 413 });
   if (!rateLimit(`demo:${clientIp(req)}`, 30, 60_000)) return NextResponse.json({ error: 'demasiadas peticiones' }, { status: 429 });
-  const body = (await req.json()) as { comprobantes: Partial<Gasto>[]; anticipo: number };
-  const gastos: Gasto[] = (body.comprobantes ?? []).map((c, i) => ({
+  // AUDITORÍA 11, G-61 (residual). Dos entradas que el simulador aceptaba:
+  //   · un cuerpo que no es JSON → `req.json()` lanzaba y Next servía un 500
+  //     genérico en la pantalla que se proyecta cuando Meta falla;
+  //   · `{"anticipo": "cinco mil"}` → entraba TAL CUAL al motor —que es real,
+  //     no una maqueta— y salía `"diferencia": null`. El simulador anuncia «El
+  //     cuadre es real»; un veredicto nulo sobre una cifra inventada es
+  //     exactamente lo que este producto no puede enseñar.
+  let body: { comprobantes?: Partial<Gasto>[]; anticipo?: number };
+  try {
+    body = (await req.json()) as { comprobantes?: Partial<Gasto>[]; anticipo?: number };
+  } catch {
+    return NextResponse.json({ error: 'el cuerpo no es JSON válido' }, { status: 400 });
+  }
+  const comprobantes = body.comprobantes ?? [];
+  if (!Array.isArray(comprobantes)) {
+    return NextResponse.json({ error: '`comprobantes` tiene que ser una lista' }, { status: 400 });
+  }
+  const anticipo = body.anticipo ?? 0;
+  if (typeof anticipo !== 'number' || !Number.isFinite(anticipo)) {
+    return NextResponse.json({ error: '`anticipo` tiene que ser un número' }, { status: 400 });
+  }
+  if (comprobantes.some((c) => c?.monto != null && (typeof c.monto !== 'number' || !Number.isFinite(c.monto)))) {
+    return NextResponse.json({ error: 'cada `monto` tiene que ser un número' }, { status: 400 });
+  }
+  const gastos: Gasto[] = comprobantes.map((c, i) => ({
     id: `g${i}`,
     concepto: c.concepto ?? 'otro',
     monto: c.monto ?? 0,
     folio: c.folio,
     cfdiUuid: c.cfdiUuid,
+    // FE-2 (auditoría 10, ALTO reincidente). El receptor viajaba perdido: la
+    // burbuja del simulador decía "CFDI validado por QR ✅" y dos burbujas
+    // después el motor —con razón— pedía "reenvía una foto más clara del QR",
+    // porque el gasto llegaba aquí sin `rfcReceptor`. El motor no se tocó; lo
+    // que faltaba era pasar el dato que la burbuja ya afirmaba tener.
+    rfcReceptor: c.rfcReceptor,
     ocrConfianza: c.ocrConfianza ?? 0.96,
   }));
-  const liq = cuadrarViaje({ viajeId: 'demo', anticipo: body.anticipo ?? 0, gastos, politica: POLITICA, ruta: 'Silao-Laredo' });
+  const liq = cuadrarViaje({
+    viajeId: 'demo', anticipo, gastos, politica: POLITICA, ruta: 'Silao-Laredo',
+    // Sin `empresaRfc` el motor no puede comparar contra nadie, así que la
+    // verificación del receptor quedaba a medias: detectaba "no lo pude leer"
+    // pero nunca "está a nombre de otro". Con la flota del demo declarada, las
+    // dos ramas quedan vivas — el CFDI del preset se confirma, y uno timbrado a
+    // un tercero se marca. Es el mismo RFC del seed, con dígito verificador
+    // válido (d08db8a).
+    empresaRfc: RFC_FLOTA_DEMO,
+    // AUDITORÍA 10, BAJO (fiscal): esta puerta corría el motor real SIN
+    // configuración fiscal, y `/demo` anuncia «El cuadre es real». `engine.ts`
+    // condiciona todo el bloque del tope de alimentación a
+    // `if (topeAlimentacion != null)` —el $750/día de LISR 28-V, que viaja
+    // dentro de `estimulos`—, así que la regla NO CORRÍA: una alimentación de
+    // $3,000 timbrada salía por aquí sin una sola observación y por
+    // `cuadre/desde_db.ts` (la puerta de WhatsApp) con `viatico_excede_fiscal`
+    // de $2,250. Tampoco corrían el complemento de hidrocarburos ni el aviso de
+    // facturación.
+    //
+    // Se pasa `DEMO_CONFIG` —la misma base que `getConfig` usa para todo
+    // tenant—, no una copia: dos juegos de topes fiscales se separan en
+    // silencio, y el simulador es lo que se proyecta cuando Meta falla.
+    estimulos: DEMO_CONFIG.estimulos,
+    hidrocarburos: DEMO_CONFIG.hidrocarburos,
+    // El motor es puro y no lee el reloj: la fecha se inyecta en el borde, igual
+    // que en `desde_db.ts`. Sin esto el aviso de "ticket por facturar" no corre.
+    hoy: new Date().toISOString().slice(0, 10),
+  });
   return NextResponse.json({
     totalComprobado: liq.totalComprobado,
     totalAnticipo: liq.totalAnticipo,

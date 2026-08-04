@@ -102,13 +102,13 @@ export default async function DocumentosPage({
                 <table className="w-full text-sm">
                   <thead>
                     <tr style={{ color: 'var(--muted)' }} className="text-left">
-                      <th className="px-5 py-2.5 font-medium">Concepto</th>
-                      <th className="px-5 py-2.5 font-medium">Fecha</th>
-                      <th className="px-5 py-2.5 font-medium">Folio</th>
-                      <th className="px-5 py-2.5 font-medium">RFC emisor</th>
-                      <th className="px-5 py-2.5 font-medium text-right">Importe</th>
-                      <th className="px-5 py-2.5 font-medium text-right">Confianza</th>
-                      <th className="px-5 py-2.5 font-medium">SAT</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium">Concepto</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium">Fecha</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium">Folio</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium">RFC emisor</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium text-right">Importe</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium text-right">Confianza</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium">SAT</th>
                     </tr>
                   </thead>
                   <tbody>

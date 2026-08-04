@@ -51,7 +51,8 @@ export const BASE_ESTIMULO_PEAJE =
 /**
  * Las cuatro condiciones de elegibilidad del estímulo de peaje, transcritas de
  * `estimulo_peaje.condiciones` en `normas/lif-2026-20-A.yaml`
- * (`verificado_fuente_primaria`).
+ * (`evidencia_corroborante`: su nota admite dos reproducciones del articulado,
+ * no el DOF — auditoría 10).
  *
  * El motor no conoce NINGUNA: no sabe los ingresos de la flota, ni si es parte
  * relacionada, ni si la caseta pertenece a la Red Nacional de Autopistas de
@@ -65,6 +66,30 @@ export const CONDICIONES_ESTIMULO_PEAJE =
   'Likida NO verifica la elegibilidad. El estímulo exige las cuatro: dedicarse EXCLUSIVAMENTE al transporte terrestre ' +
   'de carga, pasaje o turismo; que las casetas sean de la Red Nacional de Autopistas de Cuota; ingresos anuales ' +
   'menores a $300 millones; y no ser parte relacionada (LISR art. 179). Confírmelas con su contador.';
+
+/**
+ * LA RESERVA, EN TRES PALABRAS, PARA EL RENGLÓN QUE SOLO TIENE UNA LÍNEA.
+ *
+ * AUDITORÍA 11, ALTO (fiscal, G-05): el literal «sujeto a elegibilidad» estaba
+ * escrito a mano en tres archivos —este, `cuadre/resumen.ts` y
+ * `app/dashboard/acred.tsx`— y las otras cuatro superficies del panel no lo
+ * llevaban. Un dictamen fiscal con tres redacciones son tres dictámenes: la
+ * misma razón por la que `lib/formato.ts` es el único que formatea pesos.
+ * Vive aquí porque aquí vive la regla, no en la vista que la pinta.
+ */
+export const RESERVA_PEAJE = 'sujeto a elegibilidad';
+
+/** El label del renglón de peaje. ÚNICO: quien lo imprima, lo importa. */
+export const ETIQUETA_PEAJE = `Estímulo de peaje 50% (LIF 2026 art. 20, ap. A) — ${RESERVA_PEAJE}`;
+
+/**
+ * La misma reserva para una tarjeta de panel, donde el label es corto y la cita
+ * legal va en la nota de abajo. Se exporta para que `/dashboard` no vuelva a
+ * escribir una cuarta redacción: la regla es de este archivo, la pintura no.
+ */
+export const ETIQUETA_PEAJE_CORTA = `Peaje 50% — ${RESERVA_PEAJE}`;
+export const NOTA_PEAJE_PANEL =
+  `LIF 2026, Art. 20-A. ${CONDICIONES_ESTIMULO_PEAJE}`;
 
 /** El estímulo del art. 20 ap. A es ingreso acumulable: el neto es menor. */
 export const NOTA_INGRESO_ACUMULABLE =
@@ -80,13 +105,72 @@ export const NOTA_LITROS_DIESEL =
   'para que su contador aplique la cuota fechada.';
 
 /**
+ * Lo que condiciona la DEDUCIBILIDAD para ISR de un gasto condiciona también su
+ * IVA, porque LIVA 5-I no pone dos requisitos: pone uno solo.
+ *
+ * `normas/liva-5.yaml` (`verificado_fuente_primaria`), fracción I, literal:
+ *
+ *   «...se consideran estrictamente indispensables las erogaciones efectuadas
+ *   por el contribuyente QUE SEAN DEDUCIBLES PARA LOS FINES DEL IMPUESTO SOBRE
+ *   LA RENTA, aun cuando no se esté obligado al pago de este último impuesto.»
+ *
+ * Estos tres veredictos NO bajan la cubeta de deducibilidad (son "el sistema no
+ * verifica un requisito", no "el requisito falta"), y por eso mismo NO pueden
+ * estar en `SIN_ACREDITAMIENTO` de `engine.ts`: eso pondría el IVA en CERO en
+ * todo diésel bien facturado —`permiso_cre_no_verificable` se dispara SIEMPRE
+ * que hay XML— y le quitaría al cliente un acreditamiento que la ley le
+ * concede. La cifra se queda; lo que cambia es que el papel deja de afirmarla
+ * entera, igual que ya hace `deducibilidad.ts` con el renglón de al lado.
+ *
+ * El texto de cada motivo es el HECHO, no el nombre interno del veredicto: el
+ * contralor lee el pie, no el union de `types/cuadra.ts`.
+ */
+const CONDICIONAN_LA_DEDUCCION_ISR: Record<string, string> = {
+  permiso_cre_no_verificable: 'el permiso CRE vigente del proveedor de combustible, que el sistema no valida (LISR 27-III y RFA 2026 regla 2.9)',
+  complemento_no_verificable: 'el complemento de hidrocarburos del CFDI de combustible, que sin el XML no se puede verificar',
+  alimentacion_sin_soporte: 'el comprobante de hospedaje o transporte que ampare la alimentación (LISR 28-V)',
+};
+
+/**
+ * Los motivos, ya en texto, por los que el IVA de ESTA liquidación cuelga de la
+ * deducción para ISR. Vacío = no cuelga de nada y la cifra se afirma entera.
+ *
+ * AUDITORÍA 11, ALTO (fiscal, G-05): la regla vivía dentro de
+ * `filasAcreditables`, así que solo el PDF la aplicaba. `cuadre/resumen.ts`
+ * imprimía «• IVA: $689.66» a secas sobre las MISMAS diferencias con las que el
+ * papel decía «— sujeto a la deducibilidad para ISR». Se extrae para que las dos
+ * superficies decidan con la misma función y no con dos criterios.
+ */
+export function motivosQueCondicionanElIva(diferencias?: { tipo: string }[]): string[] {
+  return [...new Set((diferencias ?? []).map((d) => d.tipo))]
+    .map((t) => CONDICIONAN_LA_DEDUCCION_ISR[t])
+    .filter((m): m is string => !!m);
+}
+
+/** La reserva del IVA, en una línea, para el renglón que no cabe en dos. */
+export const RESERVA_IVA_ATADO_AL_ISR = 'sujeto a la deducibilidad para ISR';
+
+/** Cómo se dice, en el papel, que el IVA cuelga de la deducción para ISR. */
+export function pieIvaAtadoAlIsr(motivos: string[]): string {
+  return 'LIVA art. 5, fr. I define "estrictamente indispensable" como lo DEDUCIBLE para los fines del ISR: no son dos requisitos, es uno. '
+    + `Esta liquidación depende de ${motivos.join('; y de ')} — mientras eso no se confirme, este IVA tampoco está sostenido. Confírmelo con su contador.`;
+}
+
+/**
  * Devuelve los renglones de la sección, o `null` si no hay nada que acreditar.
  *
  * `piesGenerales` va debajo del bloque entero (aplica a todos los renglones);
  * lo específico de un renglón va en su propio `pies`.
  */
 export function filasAcreditables(
-  liq: Pick<Liquidacion, 'ivaAcreditable' | 'peajeAcreditable' | 'litrosDieselAcreditables'>,
+  liq: Pick<Liquidacion, 'ivaAcreditable' | 'peajeAcreditable' | 'litrosDieselAcreditables'> & {
+    // Estructural y no `Liquidacion['diferencias']` por la misma razón que en
+    // `filasDeducibilidad`: hay llamadores que traen `tipo` como `string` suelto
+    // (una fila ya leída de la base), y lo único que se hace aquí es comparar
+    // el texto. Opcional: quien solo prueba el reparto de cifras no tiene por
+    // qué construir un arreglo vacío a mano.
+    diferencias?: { tipo: string }[];
+  },
 ): { filas: FilaAcreditable[]; piesGenerales: string[] } | null {
   const litros = liq.litrosDieselAcreditables ?? 0;
   const filas: FilaAcreditable[] = [];
@@ -100,19 +184,31 @@ export function filasAcreditables(
     });
   }
   if (liq.ivaAcreditable > 0) {
-    filas.push({
-      label: 'IVA acreditable (LIVA art. 5)',
-      valor: mxn(liq.ivaAcreditable),
-      tono: 'bueno',
-      pies: [],
-    });
+    // AUDITORÍA 10, MEDIO (fiscal): este renglón salía en VERDE en la misma hoja
+    // donde 'Deducible para ISR' salía condicionado POR EL MISMO HECHO. Medido
+    // con el diésel de $5,800 del hallazgo: ISR `condicionado` con su pie, IVA
+    // $689.66 `bueno` y `pies: []`.
+    const motivos = motivosQueCondicionanElIva(liq.diferencias);
+    filas.push(motivos.length
+      ? {
+          label: `IVA acreditable (LIVA art. 5) — ${RESERVA_IVA_ATADO_AL_ISR}`,
+          valor: mxn(liq.ivaAcreditable),
+          tono: 'condicionado',
+          pies: [pieIvaAtadoAlIsr(motivos)],
+        }
+      : {
+          label: 'IVA acreditable (LIVA art. 5)',
+          valor: mxn(liq.ivaAcreditable),
+          tono: 'bueno',
+          pies: [],
+        });
   }
   if (liq.peajeAcreditable > 0) {
     filas.push({
       // La condición va en el LABEL y no solo en el pie: el renglón es lo que se
       // skimmea, y "Estímulo de peaje 50%" a secas se lee como un derecho ya
       // ganado.
-      label: 'Estímulo de peaje 50% (LIF 2026 art. 20, ap. A) — sujeto a elegibilidad',
+      label: ETIQUETA_PEAJE,
       valor: mxn(liq.peajeAcreditable),
       tono: 'condicionado',
       pies: [BASE_ESTIMULO_PEAJE, CONDICIONES_ESTIMULO_PEAJE],

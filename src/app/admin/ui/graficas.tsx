@@ -461,10 +461,15 @@ export function ParetoBars({
     acc.push(anterior + d.valor);
     return acc;
   }, []);
-  const conCumulativo = ordenado.map((d, i) => ({ ...d, cumPct: (acumulados[i] / total) * 100 }));
+  // Redondeado a 3 decimales: estos dos números van DENTRO de un
+  // `points=` de SVG, y `(i+0.5)/n` da `16.666666666666664`. Es el mismo
+  // mismatch de hidratación que `punto()` documenta arriba — se descubrió al
+  // ejecutar esta librería por primera vez (auditoría 11 · G-35).
+  const coord = (x: number) => Math.round(x * 1000) / 1000;
+  const conCumulativo = ordenado.map((d, i) => ({ ...d, cumPct: coord((acumulados[i] / total) * 100) }));
   const max = Math.max(...ordenado.map((d) => d.valor), 1);
   const n = conCumulativo.length;
-  const xPct = (i: number) => ((i + 0.5) / n) * 100;
+  const xPct = (i: number) => coord(((i + 0.5) / n) * 100);
   const largoAprox = 400;
 
   return (

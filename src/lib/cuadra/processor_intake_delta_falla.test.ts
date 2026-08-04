@@ -64,7 +64,7 @@ vi.mock('@/lib/cuadra/conv', async (original) => ({
   esperarIntake: vi.fn(async () => true),
 }));
 vi.mock('@/lib/cuadra/costos', () => ({
-  registrarCosto: vi.fn(), registrarCostoWhatsApp: vi.fn(),
+  registrarCosto: vi.fn(), registrarCostoDesglosado: vi.fn(), registrarCostoWhatsApp: vi.fn(),
   faseDeModelo: vi.fn(() => 'cuadre'), vincularCostosALiquidacion: vi.fn(),
 }));
 vi.mock('@/lib/agents/run', () => ({ runAgent: vi.fn() }));

@@ -66,9 +66,16 @@ describe('evaluarTope15', () => {
 
   it('cuánto efectivo más cabe antes de perder deducción', () => {
     // Es lo accionable para el contralor: no "vas al 12%", sino "te quedan
-    // $3,000 de margen este año".
+    // $3,529.41 de margen este año".
+    //
+    // AUDITORÍA 11, ALTO (G-04): esta prueba FIJABA EL VALOR EQUIVOCADO. El
+    // despeje era `permitido − efectivo`, que contesta «cuánto le falta al
+    // efectivo de hoy para llegar al 15% del total de hoy». El peso que se
+    // pague de más también es combustible, así que entra en los DOS lados:
+    // (e+x)/(t+x) ≤ 0.15 ⇒ x = (0.15·t − e)/0.85. Ver
+    // `tope15_numerador_y_margen.test.ts`.
     const r = evaluarTope15({ efectivo: 12_000, totalCombustible: 100_000 });
-    expect(r.margen).toBe(3_000);
+    expect(r.margen).toBe(3_529.41);   // 3,000 / 0.85, truncado a centavos
   });
 
   it('sin margen, el margen es 0 y no un número negativo', () => {
@@ -108,7 +115,7 @@ describe('evaluarTope15 — el límite exacto', () => {
   it('un centavo por debajo no excede, y deja margen', () => {
     const r = evaluarTope15({ efectivo: 14_999.99, totalCombustible: 100_000 });
     expect(r.estado).not.toBe('excedido');
-    expect(r.margen).toBeCloseTo(0.01, 2);
+    expect(r.margen).toBeCloseTo(0.01, 2);   // 0.01 / 0.85 = 0.0117…
   });
 
   it('exactamente en el umbral de aviso ya avisa', () => {

@@ -54,4 +54,15 @@ impacto_en_producto: >
   concentra en los viáticos timbrados al RFC del operador.
 verificado_por: "texto vigente descargado de diputados.gob.mx y transcrito literal"
 verificado_el: 2026-07-28
-usado_en_codigo: []
+usado_en_codigo:
+  # No es código: es el documento comercial con el que el equipo le habla a los
+  # clientes, y la sección 2.3 está construida ENTERA sobre esta ficha — la
+  # nombra por archivo ("Fuente de verdad de este párrafo"). Va aquí porque
+  # `usado_en_codigo` es con lo que se calcula el radio de impacto cuando la
+  # norma cambia (`normas/README.md`), y un párrafo que se le enseña a un
+  # cliente pesa más que una línea de TS. Esta ficha ya corrigió una vez ese
+  # párrafo (citaba la "remisión" del Reglamento de la ley abrogada); si vuelve
+  # a moverse, ese es el archivo que hay que abrir.
+  - "FISCAL_LEGAL.md §2.3 (documentación, no código): la definición de
+    transferencia (art. 2 fr. XX) que excluye a la persona encargada, la cadena
+    flota → Likida → OpenRouter, y la corrección sobre la figura de remisión"

@@ -1,9 +1,9 @@
-# Cuadra
+# Likida (repo `cuadra`)
 
 **Agente de IA por WhatsApp que automatiza el cierre diario de operaciones logísticas en México.**
 
 El operador manda por WhatsApp fotos de sus comprobantes de viaje (diésel, casetas, facturas) →
-Cuadra hace OCR → los cuadra contra el anticipo y la política de la empresa → detecta diferencias y
+Likida hace OCR → los cuadra contra el anticipo y la política de la empresa → detecta diferencias y
 faltantes **en el momento** → entrega una liquidación en PDF y un registro listo para ERP.
 
 > Validado con 2,474 vacantes reales: ~350 empresas con este dolor exacto, de transportistas
@@ -67,14 +67,40 @@ Siguen declaradas y **sin usar**: `class-variance-authority`, `date-fns` y
 > y **salta los archivos que parezcan binarios en silencio**, devolviendo "no
 > encontrado" sobre archivos que sí contienen el patrón.
 
-## Correr el demo
+## Una máquina limpia, de cero a corriendo
+
+Los tres comandos de antes (`npm install` + `npm run dev`) dejaban el server en
+pie contra una base **vacía** y sin una sola cuenta: `/dashboard` rebotaba a
+`/login`, el login va con `shouldCreateUser:false`, y la pantalla decía «Te
+mandamos un link a tu correo» —a propósito, para no filtrar qué correos
+existen— que nunca llegaba. Son cuatro pasos, no dos:
+
 ```bash
 npm install
-cp .env.example .env.local   # completa las llaves
+cp .env.example .env.local            # completa las llaves (Supabase, OpenRouter, WhatsApp)
+
+# 1. Esquema + datos de Innovativos. Aplica TODAS las migraciones y el seed.
+DATABASE_URL="postgres://…" npm run seed        # o `npm run setup` = install + seed
+
+# 2. El primer usuario del panel. Sin esto no entra NADIE: el único alta del
+#    producto (/admin/usuarios/nuevo) empieza con requireSuperadmin(), o sea
+#    que exige una fila que solo se puede crear con esa misma página.
+node scripts/crear-superadmin.mjs tu@correo.com "Tu Nombre"
+
 npm run dev
 ```
+
+El `DATABASE_URL` sale de Supabase → Project Settings → Database → Connection
+string. `scripts/crear-superadmin.mjs` necesita además
+`SUPABASE_SERVICE_ROLE_KEY` (Settings → API).
+
+Verificación: `npm test` (suite completa) y `npx tsc --noEmit`. El detalle de
+producción —variables, mensajes de arranque, qué mirar cuando algo falla— está
+en [`DEPLOY.md`](DEPLOY.md).
+
+## Correr el demo
 El flujo del demo: manda 3–4 fotos de comprobantes al número de WhatsApp de prueba →
-Cuadra responde con la liquidación cuadrada, señala diferencias, y devuelve el PDF.
+Likida responde con la liquidación cuadrada, señala diferencias, y devuelve el PDF.
 
 ## Estado
 Sprint 0 — MVP para el demo del 6 de agosto. Ruta crítica (WhatsApp→OCR→cuadre→PDF) primero;

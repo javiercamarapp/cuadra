@@ -8,10 +8,16 @@ export const dynamic = 'force-dynamic';
 /**
  * Conversaciones de WhatsApp — versión dedicada y de ancho completo de la
  * sección de Inicio, mismos datos reales de `getConversacionesActivas()`
- * (telefono, tenantNombre, turns, actualizadaEn). Diferencia con Inicio:
+ * (seudonimo, tenantNombre, turns, actualizadaEn). Diferencia con Inicio:
  * aquí se enseñan TODOS los turns de cada conversación (Inicio recorta a
  * los últimos 6 por espacio) y hay dos cifras de cabecera — ambas sumas
  * reales sobre esos mismos datos, no una fuente nueva.
+ *
+ * AUDITORÍA 11 · G-53: la identidad que sale de `negocio.ts` es un SEUDÓNIMO
+ * estable, no el teléfono, y el texto de cada turno viene redactado. El aviso
+ * de privacidad que el operador acepta acota esta finalidad a «estadísticas
+ * de uso, sin identificarte en los reportes» (`privacidad.ts:511-512`), y
+ * esta pantalla es exactamente ese reporte.
  */
 export default async function ConversacionesPage() {
   const conversaciones = await getConversacionesActivas();
@@ -44,7 +50,7 @@ export default async function ConversacionesPage() {
         {conversaciones.length > 1 && (
           <div className="mt-4">
             <ChartCard titulo="Mensajes por conversación" tamano="S">
-              <HBars datos={conversaciones.map((c) => ({ etiqueta: c.telefono, valor: c.turns.length }))} formato="entero" />
+              <HBars datos={conversaciones.map((c) => ({ etiqueta: c.seudonimo, valor: c.turns.length }))} formato="entero" />
             </ChartCard>
           </div>
         )}
@@ -61,10 +67,10 @@ export default async function ConversacionesPage() {
         ) : (
           <div className="space-y-2.5">
             {conversaciones.map((c) => (
-              <details key={c.telefono} className="card overflow-hidden group">
+              <details key={c.seudonimo} className="card overflow-hidden group">
                 <summary className="px-4 py-3 flex items-center justify-between gap-4 cursor-pointer list-none hover:bg-[color-mix(in_srgb,var(--muted)_6%,transparent)] transition-colors">
                   <div>
-                    <div className="text-sm font-medium">{c.telefono}</div>
+                    <div className="text-sm font-medium">{c.seudonimo}</div>
                     <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{c.tenantNombre}</div>
                   </div>
                   <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--muted)' }}>

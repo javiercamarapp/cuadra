@@ -64,12 +64,12 @@ export function TablaPod({
       <table className="w-full text-sm">
         <thead>
           <tr style={{ color: 'var(--muted)' }} className="text-left">
-            <th className="px-5 py-2.5 font-medium">Viaje</th>
-            <th className="px-5 py-2.5 font-medium">Operador</th>
-            <th className="px-5 py-2.5 font-medium">Evidencia</th>
-            <th className="px-5 py-2.5 font-medium">Capturada</th>
-            <th className="px-5 py-2.5 font-medium">Nota</th>
-            <th className="px-5 py-2.5 font-medium">Acción</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Viaje</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Operador</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Evidencia</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Capturada</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Nota</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Acción</th>
           </tr>
         </thead>
         <tbody>

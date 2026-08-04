@@ -1,9 +1,11 @@
 import { Map } from 'lucide-react';
 import SeccionPendiente from '../pendiente';
+import { exigirVerRuta } from '@/lib/auth/guard';
 
 export const dynamic = 'force-dynamic';
 
-export default function MapaPage() {
+export default async function MapaPage() {
+  await exigirVerRuta('/dashboard/mapa');
   return (
     <SeccionPendiente
       Icono={Map}

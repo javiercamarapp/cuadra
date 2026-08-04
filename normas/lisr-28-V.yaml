@@ -28,12 +28,27 @@ texto_vigente: >
   que se refiere este párrafo sólo procederá cuando el pago se efectúe mediante
   tarjeta de crédito de la persona que realiza el viaje.
 fuente_url: "https://www.diputados.gob.mx/LeyesBiblio/pdf/LISR.pdf"
-fuente_tipo: diputados_oficial
-estado_verificacion: verificado_fuente_primaria
+fuente_tipo: fuente_secundaria
+estado_verificacion: evidencia_corroborante
 nota_verificacion: >
   Texto idéntico en cuatro reproducciones independientes (apta.com.mx, leyesmx,
   mley.mx, tax.com.mx). Confirma el importe de $750 diarios POR BENEFICIARIO en
   territorio nacional y que el tope es SOLO de alimentación.
+
+  CORREGIDO el 3-ago-2026 (auditoría 10): esta ficha decía
+  `estado_verificacion: verificado_fuente_primaria` con `fuente_tipo:
+  diputados_oficial` sobre esas mismas cuatro reproducciones. La tabla de
+  `normas/README.md` reserva ese estado para «se leyó el texto en el DOF, el SAT
+  o diputados.gob.mx», y cuatro copias que coinciden son exactamente la
+  definición de `evidencia_corroborante` («varias fuentes secundarias coinciden,
+  sin leer el original»). El `fuente_url` se conserva porque es la fuente que hay
+  que abrir para cerrarla, no la que se leyó.
+
+  Pesa más que en otras fichas: el $750/día es el número más impreso del producto
+  y el que decide `viatico_excede_fiscal`.
+
+  PARA CERRAR: leer el PDF vigente de la LISR en diputados.gob.mx, confirmar el
+  importe y los dos párrafos, y subir el estado.
 norma_relacionada: rlisr-57
 verificado_por: "cierre de ficha, 27-jul-2026"
 verificado_el: 2026-07-27

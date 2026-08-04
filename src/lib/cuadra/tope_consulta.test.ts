@@ -42,6 +42,29 @@ describe('ninguna consulta del cierre se queda sin techo', () => {
     ).toBe(0);
   });
 
+  // AUDITORÍA 10, ALTO REINCIDENTE — EL CONTEO PASABA POR ENCIMA DEL AGUJERO.
+  //
+  // La regla de arriba busca `await supabaseAdmin()`. `acquireViajeLock` hoistea
+  // el cliente fuera del `for (;;)` (`const admin = supabaseAdmin()`) y llamaba
+  // `await admin.rpc('try_lock_viaje', …)`: un solo `supabaseAdmin()` contado
+  // alimentando un número ILIMITADO de RPC sin techo. La ronda 9 declaró cerrado
+  // el ALTO de la 8 con ese conteo (10 vs 10) mientras el mutex del "listo" podía
+  // colgar 300 000 ms contra un `maxDuration` de 120 000.
+  it.each(CAMINO_DEL_CIERRE)('%s tampoco espera a un cliente HOISTEADO sin acotar', (archivo) => {
+    const src = sinComentarios(readFileSync(archivo, 'utf8'));
+    // Cada `const X = supabaseAdmin()` y, para cada uno, cualquier `await X.` que
+    // no pase por `acotada`.
+    const alias = [...src.matchAll(/const\s+(\w+)\s*=\s*supabaseAdmin\(\)/g)].map((m) => m[1]);
+    const crudas = alias.flatMap((a) =>
+      [...src.matchAll(new RegExp(`await\\s+${a}\\s*\\.`, 'g'))].map((m) => m[0]));
+    expect(
+      crudas,
+      `${archivo} espera directamente sobre un cliente hoisteado (${alias.join(', ')}). ` +
+      'Envuélvelo: await acotada(X.rpc(…), \'etiqueta\'). El techo va por LLAMADA, no por cliente: ' +
+      'dentro de un bucle, un solo cliente sin acotar son N consultas de 300 s.',
+    ).toEqual([]);
+  });
+
   it('y hay consultas de verdad que contar (si no, esto no vigila nada)', () => {
     const total = CAMINO_DEL_CIERRE.reduce(
       (n, f) => n + [...sinComentarios(readFileSync(f, 'utf8')).matchAll(/acotada\(supabaseAdmin\(\)/g)].length, 0)

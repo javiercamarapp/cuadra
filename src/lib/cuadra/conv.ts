@@ -4,7 +4,7 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
 import type { TenantContext } from '@/lib/agents/types';
-import { acotada } from './presupuesto';
+import { acotada, TOPE_BARRERA_INTAKE_MS } from './presupuesto';
 
 export interface ResolvedOperador {
   tenantId: string;
@@ -289,7 +289,19 @@ export async function acquireViajeLock(viajeId: string, opts?: { ttlMs?: number;
   let delay = 150;
   let ultimoError: { code?: string; message?: string } | null = null;
   for (;;) {
-    const { data, error } = await admin.rpc('try_lock_viaje', { p_viaje: viajeId, p_ttl_ms: ttlMs });
+    // CADA VUELTA LLEVA TECHO, no solo la construcción del cliente (auditoría 10,
+    // ALTO reincidente). `admin` se hoistea fuera del bucle, así que este `rpc`
+    // no aparecía en el conteo de `await supabaseAdmin()` que la ronda 9 usó para
+    // declarar cerrado el ALTO de la 8: un solo sitio contado alimentaba un
+    // número ilimitado de llamadas sin acotar, y sin acotar el techo es el
+    // default de undici, 300 000 ms contra un `maxDuration` de 120 000.
+    //
+    // Con `acotada` el peor caso del mutex pasa a ser `maxWaitMs` + un intento:
+    // 12 000 + (TOPE_CONSULTA_MS 8 000 + GRACIA 1 500) = 21 500 ms. El
+    // vencimiento se sigue comprobando DESPUÉS del `await` —un intento en vuelo
+    // no se puede cancelar a media ventana— pero ese "después" ya no es
+    // ilimitado.
+    const { data, error } = await acotada(admin.rpc('try_lock_viaje', { p_viaje: viajeId, p_ttl_ms: ttlMs }), 'acquireViajeLock');
     if (!error && data === true) return true;
     if (error) {
       ultimoError = error;
@@ -377,12 +389,20 @@ export async function esperarIntake(
   // comportamiento en runtime; permite probar la gracia anti-carrera sin DB.
   probe: (id: string) => Promise<number | null> = (id) => intakeDelta(id, 0),
 ): Promise<boolean> {
-  // Default 20s, NO 60s. El presupuesto de la función es maxDuration=60 y por
-  // debajo de esta barrera todavía corren el lock (12s) y el agente (40s): con
-  // 60s aquí el peor caso son 112s, y cuando revienta Meta YA recibió su 200 OK
-  // y el mensaje quedó marcado como procesado. Ese "listo" se pierde sin
-  // reintento y sin que nadie se entere. El env puede subirlo si el plan aguanta.
-  const tope = timeoutMs ?? (Number(process.env.CUADRA_INTAKE_ESPERA_MS) || 20_000);
+  // El tope sale de `presupuesto.ts`, DERIVADO del techo del OCR que esta
+  // barrera espera (`TECHO_OCR_MS` + el margen de escritura) = 30 000 ms.
+  //
+  // AUDITORÍA 10, ALTO: aquí había un 20 000 escrito a mano, dimensionado cuando
+  // `maxDuration` era 60 y nunca re-dimensionado por encima del techo del OCR.
+  // Un OCR de 22 s —dentro de su propio tope de 25 000— tiraba la barrera, el
+  // agente cuadraba sin ese comprobante, y el gasto entraba dos segundos
+  // después: el PDF del operador y el panel del contralor quedaban distintos por
+  // el monto de ese ticket, sin aviso a nadie. Los dos números vivían escritos a
+  // mano en archivos distintos, que es cómo se separaron sin que nada fallara.
+  //
+  // El env puede subirlo si el plan aguanta; `reloj.acotar` en el llamador solo
+  // puede bajarlo.
+  const tope = timeoutMs ?? (Number(process.env.CUADRA_INTAKE_ESPERA_MS) || TOPE_BARRERA_INTAKE_MS);
   // AUDIT_V3 orquestación CRÍTICO (carrera de barrera): cuando fotos y "listo"
   // llegan en el MISMO lote, corren en Promise.all; el "listo" puede leer el
   // contador ANTES de que una foto registre su +1 → ve 0 → cuadra sobre parciales.

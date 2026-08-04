@@ -88,9 +88,9 @@ export default async function UsuariosPage({
                 <table className="w-full text-sm">
                   <thead>
                     <tr style={{ color: 'var(--muted)' }} className="text-left">
-                      <th className="px-5 py-2.5 font-medium">Nombre</th>
-                      <th className="px-5 py-2.5 font-medium">Rol</th>
-                      <th className="px-5 py-2.5 font-medium">Qué puede hacer</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium">Nombre</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium">Rol</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium">Qué puede hacer</th>
                     </tr>
                   </thead>
                   <tbody>

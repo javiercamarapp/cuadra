@@ -111,8 +111,21 @@ async function idDeRespuesta(res: Response): Promise<string | undefined> {
   } catch { return undefined; }
 }
 
-/** Envía un documento (PDF de liquidación) por link público o media id. */
-export async function sendDocument(to: string, link: string, filename: string, caption?: string): Promise<void> {
+/**
+ * Envía un documento (PDF de liquidación) por link público o media id.
+ * Devuelve el `wamid` que Meta acusó, o `null` si NO se entregó.
+ *
+ * AUDITORÍA 11, ALTO (G-22). Devolvía `void`: un 400 de Meta —`131047` (ventana
+ * de 24 h cerrada), `131030` (destinatario fuera de la lista), un `link` que
+ * Meta no pudo descargar— se registraba y la función retornaba igual que en el
+ * camino feliz. Aguas arriba, `processor.ts` daba el PDF por entregado: NO
+ * salía el mensaje «…pero no pude generarte el PDF» que existe justo para eso,
+ * y se registraba el costo de WhatsApp de un documento que nunca llegó.
+ *
+ * Es el paso 3 del guion del demo, y era el único de los tres envíos sin acuse:
+ * `sendText` devuelve su id desde `fc760c3`.
+ */
+export async function sendDocument(to: string, link: string, filename: string, caption?: string): Promise<string | null> {
   const res = await fetch(`${GRAPH}/${phoneNumberId()}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
@@ -124,11 +137,15 @@ export async function sendDocument(to: string, link: string, filename: string, c
     }),
     signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
   });
-  if (!res.ok) { logger.error('wa.sendDocument', { status: res.status, body: await res.text().catch(() => '') }); return; }
+  if (!res.ok) { logger.error('wa.sendDocument', { status: res.status, body: await res.text().catch(() => '') }); return null; }
   // Igual que en `sendText`: el envío del PDF es EL entregable, y su éxito no
   // dejaba ninguna huella. Meta acepta el mensaje y descarga el `link` después,
   // por su cuenta; sin el wamid no hay forma de preguntarle qué pasó con él.
-  logger.info('wa.sendDocument.ok', { id: await idDeRespuesta(res), filename });
+  const id = await idDeRespuesta(res);
+  logger.info('wa.sendDocument.ok', { id, filename });
+  // Un 200 sin `messages[0].id` no es un acuse: Meta no se hizo cargo de nada.
+  // Mismo criterio que `sendText`.
+  return id ?? null;
 }
 
 /**
@@ -154,6 +171,85 @@ async function avisarFalloMedia(paso: string, mediaId: string, res: Response): P
   });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// TOPE DE TAMAÑO DE LA DESCARGA (auditoría 10, BAJO REINCIDENTE de la ronda 9)
+//
+// El webhook sí mide su cuerpo (256 KB, `webhook/whatsapp/route.ts:42,45`) —
+// pero lo que ese cuerpo trae es un `media_id`, no el archivo. La descarga
+// posterior no miraba ni `content-length` ni los bytes que iba leyendo:
+// `bin.text()` y `Buffer.from(await bin.arrayBuffer())` materializan lo que
+// Meta entregue.
+//
+// Escenario: un operador dado de alta manda como DOCUMENTO un `.xml` de 100 MB
+// (el máximo de WhatsApp Cloud API). El webhook contesta 200 con 400 bytes;
+// después, en `after()`, `downloadMediaAsText` lo trae entero a memoria y
+// `saveCfdiXmlRaw` lo escribe en una columna `text` sin `check` de longitud. La
+// invocación se lleva por delante los demás mensajes del mismo lote
+// (`route.ts`, `Promise.all`) y el egress de Supabase se estrangula.
+//
+// Dos topes distintos porque son dos cosas distintas:
+//   · TEXTO  — un CFDI 4.0, addenda incluida, no pasa de decenas de KB. 2 MB es
+//     dos órdenes de magnitud de margen y sigue siendo 50× menos que el máximo
+//     que WhatsApp acepta para un documento.
+//   · IMAGEN — WhatsApp corta las imágenes en 5 MB; 8 deja margen para el
+//     `document` con foto que también llega a `downloadMediaAsDataUrl`.
+//
+// Se mira `content-length` PRIMERO (cortar sin descargar es lo barato) y
+// además se cuenta lo leído, porque la cabecera es del servidor y puede faltar
+// o mentir: sin la segunda mitad, el tope sería una sugerencia.
+// ═══════════════════════════════════════════════════════════════════════════
+const MAX_MEDIA_TEXTO_BYTES = 2 * 1024 * 1024;
+const MAX_MEDIA_IMAGEN_BYTES = 8 * 1024 * 1024;
+
+function avisarMediaEnorme(mediaId: string, bytes: number, tope: number, fuente: string): void {
+  logger.error('wa.media_demasiado_grande', {
+    mediaId, bytes, tope, fuente,
+    msg: 'Media por encima del tope: no se descarga. Con el archivo entero en memoria, esta invocación se lleva por delante los demás mensajes del mismo lote y el egress de Supabase se estrangula.',
+  });
+}
+
+/**
+ * Lee el cuerpo de la descarga con el tope puesto, o devuelve `null`.
+ *
+ * El `getReader()` es lo que hace que el tope valga: corta EN MEDIO de la
+ * descarga, sin llegar a tener los 100 MB en el proceso. Cuando no hay stream
+ * —una `Response` sin `body`— se cae a `arrayBuffer()` y se mide después: el
+ * tope sigue vigente, solo que ya se pagó la memoria.
+ */
+async function leerConTope(bin: Response, tope: number, mediaId: string): Promise<Buffer | null> {
+  const declarado = Number(bin.headers?.get?.('content-length') ?? NaN);
+  if (Number.isFinite(declarado) && declarado > tope) {
+    avisarMediaEnorme(mediaId, declarado, tope, 'content-length');
+    return null;
+  }
+
+  const reader = bin.body?.getReader?.();
+  if (!reader) {
+    const buf = Buffer.from(await bin.arrayBuffer());
+    if (buf.byteLength > tope) {
+      avisarMediaEnorme(mediaId, buf.byteLength, tope, 'arrayBuffer');
+      return null;
+    }
+    return buf;
+  }
+
+  const partes: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > tope) {
+      await reader.cancel().catch(() => {});
+      avisarMediaEnorme(mediaId, total, tope, 'stream');
+      return null;
+    }
+    partes.push(value);
+  }
+  return Buffer.concat(partes);
+}
+
 /** Descarga un media entrante de Meta como TEXTO (para el XML del CFDI). */
 export async function downloadMediaAsText(mediaId: string): Promise<string | null> {
   try {
@@ -168,7 +264,8 @@ export async function downloadMediaAsText(mediaId: string): Promise<string | nul
       signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
     });
     if (!bin.ok) { await avisarFalloMedia('contenido', mediaId, bin); return null; }
-    return await bin.text();
+    const buf = await leerConTope(bin, MAX_MEDIA_TEXTO_BYTES, mediaId);
+    return buf === null ? null : buf.toString('utf8');
   } catch (e) {
     logger.warn('wa.downloadMediaText', { err: e instanceof Error ? e.message : String(e) });
     return null;
@@ -189,7 +286,8 @@ export async function downloadMediaAsDataUrl(mediaId: string): Promise<string | 
       signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
     });
     if (!bin.ok) { await avisarFalloMedia('contenido', mediaId, bin); return null; }
-    const buf = Buffer.from(await bin.arrayBuffer());
+    const buf = await leerConTope(bin, MAX_MEDIA_IMAGEN_BYTES, mediaId);
+    if (buf === null) return null;
     return `data:${mime_type || 'image/jpeg'};base64,${buf.toString('base64')}`;
   } catch (e) {
     logger.warn('wa.downloadMedia', { err: e instanceof Error ? e.message : String(e) });

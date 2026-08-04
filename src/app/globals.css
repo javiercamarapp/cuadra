@@ -106,11 +106,20 @@
   --bg: #0b0b0f; --surface: #16161c; --ink: #f5ece7; --muted: #9aa0aa; --line: #242430; --accent: #fb923c; --accent-fg: #2a1206;
   --color-bad: #ff453a;   /* ver la nota de contraste arriba */
   --color-ok: #34c759;    /* 8.12:1 sobre #16161c */
+  --color-warn: #ff9f0a;  /* 8.76:1 sobre #16161c — el ámbar brillante SÍ pasa aquí */
 }
 :root[data-theme="light"] {
   --bg: #fbfbfd; --surface: #ffffff; --ink: #17100d; --muted: #6b7280; --line: #ececef; --accent: #c2410c; --accent-fg: #ffffff;
   --color-bad: #d70015;   /* 5.38:1 sobre blanco */
   --color-ok: #14602c;    /* 7.67:1 sobre blanco */
+  /* El tercer token con significado. Faltaba en los dos bloques `[data-theme]`
+     —solo existía en el `@theme`—, así que la prueba de contraste no lo
+     encontraba y el día que exista el switch de tema se habría servido un
+     ámbar sin medir. Mismo valor que el default, que es la regla del bloque.
+     #a16207 da 4.92:1 sobre blanco y 4.79:1 sobre --bg: pasa AA como TINTA,
+     que es como se usa (el renglón de derechos ARCO y la fila «Por
+     confirmar»). Auditoría 11, frontend. */
+  --color-warn: #a16207;
 }
 
 * { border-color: var(--line); }

@@ -102,8 +102,17 @@ describe('PRESUPUESTO_WEBHOOK_MS', () => {
 // escrito al lado del código dejó de coincidir con el código. Aquí se cierra
 // igual que allá, con una prueba.
 // ═══════════════════════════════════════════════════════════════════════════
+// AUDITORÍA 10, ALTO — Y LA TABLA TAMBIÉN MENTÍA, POR OTRO LADO.
+//
+// Estos casos comparaban `COSTO_CIERRE_MS` (8 900 ms) contra `MARGEN_CIERRE_MS`
+// (12 000) y daban el cierre por cubierto. Era la suma de los costos NOMINALES:
+// la del promedio, no la del peor caso. Con el techo que el propio repo le impone
+// a cada paso los mismos trece suman 125 000 ms — 10.4× la reserva. Lo que sigue
+// escrito aquí es cierto y sigue sirviendo (la reserva se dimensiona contra el
+// promedio, y eso está bien), pero ya no se lee como "el cierre cabe": eso lo
+// mide `cierre_reloj.test.ts`, contra `TECHO_CIERRE_MS`.
 describe('la contabilidad del cierre', () => {
-  it('el margen reservado alcanza para los pasos que de verdad hay', () => {
+  it('el margen reservado alcanza para el costo NOMINAL de los pasos que hay', () => {
     expect(COSTO_CIERRE_MS).toBe(PASOS_CIERRE.reduce((s, p) => s + p.ms, 0));
     expect(MARGEN_CIERRE_MS).toBeGreaterThanOrEqual(COSTO_CIERRE_MS);
   });

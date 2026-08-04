@@ -9,12 +9,36 @@
 // para que nadie copie un patrón de aquí a una consulta de cliente y filtre
 // de menos.
 //
-// Sin paginación: hoy son 131 filas de llm_costo y 1 tenant. El día que
-// crezca de verdad, esto necesita el mismo `traerTodo` que ya usa
-// analytics.ts — no antes.
+// ── AUDITORÍA 11 · G-40, ALTO: «NO ANTES» YA LLEGÓ ─────────────────────────
+//
+// Aquí decía: «sin paginación: hoy son 131 filas de llm_costo y 1 tenant. El
+// día que crezca de verdad, esto necesita el mismo `traerTodo` que ya usa
+// analytics.ts — no antes.» El día llegó antes que el crecimiento: cada
+// liquidación escribe ~19 filas de `llm_costo`, así que la tabla cruza el
+// `max_rows` de PostgREST (1,000, recortado EN SILENCIO) alrededor de la
+// liquidación #46 — y esta función corre en el LAYOUT, o sea en las ~30
+// páginas de /admin.
+//
+// Sin `.order()` el recorte además es arbitrario: PostgREST entrega el primer
+// bloque del plan, que para una tabla append-only son las filas MÁS VIEJAS.
+// `porDia` se queda sin días recientes, `tendencia()` devuelve `null` y la
+// flecha DESAPARECE en vez de gritar — el modo de fallo que `costos.ts:5-13`
+// llama el peligroso: «bajó sola y nadie lo notó».
+//
+// Y el redondeo: `round2` es la regla de los PESOS de un CFDI (la unidad más
+// chica que existe ahí es el centavo). Un dólar de costo de modelo no tiene
+// unidad más chica, tiene un precio por token: una llamada de OCR cuesta
+// $0.0027 y `round2` la pintaba «$0.00 · 1 llamadas» en Model Ops, que es la
+// pantalla que existe para responder «¿me sale más barato Gemini o Haiku?».
+// La regla correcta ya estaba escrita y bautizada: `redondearUsd` (costos.ts).
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { createHash } from 'node:crypto';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { traerTodo } from '@/lib/cuadra/pg';
+import { agregarPorFase, redondearUsd } from '@/lib/cuadra/costos';
+// `round2` sigue aquí para UNA cosa: el PORCENTAJE de la tendencia. Un
+// porcentaje sí tiene dos decimales; los dólares de costo de modelo, no.
 import { round2 } from '@/lib/formato';
 
 export interface ResumenNegocio {
@@ -58,25 +82,32 @@ export async function getResumenNegocio(
   ventanaDias: number = 7,
 ): Promise<ResumenNegocio> {
   const admin = supabaseAdmin();
-  const [tenantsRes, viajesRes, costoRes, gastoRes] = await Promise.all([
-    admin.from('tenant').select('id, nombre, plan'),
-    admin.from('viaje').select('id, tenant_id'),
-    admin.from('llm_costo').select('tenant_id, fase, modelo, tokens_in, tokens_out, costo_usd, created_at'),
-    admin.from('gasto').select('created_at'),
+  // `traerTodo` (pg.ts) hace las dos cosas a la vez y por eso se usa en vez de
+  // repetir el `if (res.error)` de antes: pagina con `.range()` hasta agotar
+  // la tabla, y traduce el error POR VALOR de supabase-js a una excepción
+  // (`exigir`). Sin lo segundo, una base caída se lee "0 tenants, $0
+  // gastados" — indistinguible de que Likida de verdad no tiene nada, el
+  // mismo error que ya se cerró para el panel de una flota (analytics.ts).
+  //
+  // El `.order()` NO es cosmético: es lo que hace que "la página 2" signifique
+  // algo. Sin él, dos peticiones al mismo rango pueden devolver filas
+  // distintas y la suma sale mal en silencio.
+  const [tenantsData, viajesData, filas, gastosData] = await Promise.all([
+    traerTodo<{ id: string; nombre: string; plan: string }>(
+      (d, h) => admin.from('tenant').select('id, nombre, plan').order('id', { ascending: true }).range(d, h),
+      'getResumenNegocio/tenant'),
+    traerTodo<{ tenant_id: string }>(
+      (d, h) => admin.from('viaje').select('id, tenant_id').order('id', { ascending: true }).range(d, h),
+      'getResumenNegocio/viaje'),
+    traerTodo<{ tenant_id: string; fase: string; modelo: string; tokens_in: number; tokens_out: number; costo_usd: number; created_at: string }>(
+      (d, h) => admin.from('llm_costo')
+        .select('tenant_id, fase, modelo, tokens_in, tokens_out, costo_usd, created_at')
+        .order('created_at', { ascending: true }).order('id', { ascending: true }).range(d, h),
+      'getResumenNegocio/llm_costo'),
+    traerTodo<{ created_at: string }>(
+      (d, h) => admin.from('gasto').select('created_at').order('created_at', { ascending: true }).range(d, h),
+      'getResumenNegocio/gasto'),
   ]);
-  // Los cuatro fallan POR VALOR (supabase-js), no lanzando: sin este chequeo
-  // explícito, una base caída se lee "0 tenants, $0 gastados" — que es
-  // indistinguible de que Likida de verdad no tiene nada, el mismo error que
-  // ya se cerró para el panel de una flota (analytics.ts).
-  if (tenantsRes.error) throw new Error(`getResumenNegocio/tenant: ${tenantsRes.error.message}`);
-  if (viajesRes.error) throw new Error(`getResumenNegocio/viaje: ${viajesRes.error.message}`);
-  if (costoRes.error) throw new Error(`getResumenNegocio/llm_costo: ${costoRes.error.message}`);
-  if (gastoRes.error) throw new Error(`getResumenNegocio/gasto: ${gastoRes.error.message}`);
-
-  const filas = (costoRes.data ?? []) as Array<
-    { tenant_id: string; fase: string; modelo: string; tokens_in: number; tokens_out: number; costo_usd: number; created_at: string }
-  >;
-  const porFaseMap = new Map<string, { n: number; costoUsd: number }>();
   const porModeloMap = new Map<string, { n: number; costoUsd: number }>();
   const porDiaMap = new Map<string, { costoUsd: number; tokens: number }>();
   const costoPorTenant = new Map<string, number>();
@@ -88,10 +119,6 @@ export async function getResumenNegocio(
     costoIaUsd += costo;
     tokensIn += Number(f.tokens_in);
     tokensOut += Number(f.tokens_out);
-
-    const fase = porFaseMap.get(f.fase) ?? { n: 0, costoUsd: 0 };
-    fase.n += 1; fase.costoUsd += costo;
-    porFaseMap.set(f.fase, fase);
 
     const modelo = porModeloMap.get(f.modelo) ?? { n: 0, costoUsd: 0 };
     modelo.n += 1; modelo.costoUsd += costo;
@@ -106,14 +133,16 @@ export async function getResumenNegocio(
     d.costoUsd += costo; d.tokens += tokens;
     porDiaMap.set(dia, d);
   }
-  const porFase = [...porFaseMap.entries()]
-    .map(([fase, v]) => ({ fase, n: v.n, costoUsd: round2(v.costoUsd) }))
-    .sort((a, b) => b.costoUsd - a.costoUsd);
+  // `agregarPorFase` vive en costos.ts a propósito (BAJO de la auditoría 10):
+  // había DOS agregadores de `llm_costo` por fase, con distinto redondeo y
+  // distinto contrato de error, y este archivo era el que alimentaba la única
+  // pantalla que enseña costo. Ahora los dos pasan por el mismo.
+  const porFase = agregarPorFase(filas);
   const porModelo = [...porModeloMap.entries()]
-    .map(([modelo, v]) => ({ modelo, n: v.n, costoUsd: round2(v.costoUsd) }))
+    .map(([modelo, v]) => ({ modelo, n: v.n, costoUsd: redondearUsd(v.costoUsd) }))
     .sort((a, b) => b.costoUsd - a.costoUsd);
   const porDia = [...porDiaMap.entries()]
-    .map(([dia, v]) => ({ dia, costoUsd: round2(v.costoUsd), tokens: v.tokens }))
+    .map(([dia, v]) => ({ dia, costoUsd: redondearUsd(v.costoUsd), tokens: v.tokens }))
     .sort((a, b) => a.dia.localeCompare(b.dia));
 
   // Tendencia real, no de adorno: si la ventana ANTERIOR está vacía (Likida
@@ -135,14 +164,14 @@ export async function getResumenNegocio(
   };
 
   const viajesPorTenant = new Map<string, number>();
-  for (const v of (viajesRes.data ?? []) as Array<{ tenant_id: string }>) {
+  for (const v of viajesData) {
     viajesPorTenant.set(v.tenant_id, (viajesPorTenant.get(v.tenant_id) ?? 0) + 1);
   }
   // Últimos 7 días, siempre las 7 fechas (0 donde no hubo facturas) — el
   // mismo criterio de `cortes()` de arriba, para que "hoy" sea inyectable
   // en las pruebas en vez de depender del reloj real.
   const facturasPorDiaMap = new Map<string, number>();
-  for (const g of (gastoRes.data ?? []) as Array<{ created_at: string }>) {
+  for (const g of gastosData) {
     const dia = g.created_at.slice(0, 10);
     facturasPorDiaMap.set(dia, (facturasPorDiaMap.get(dia) ?? 0) + 1);
   }
@@ -151,24 +180,23 @@ export async function getResumenNegocio(
     return { dia, n: facturasPorDiaMap.get(dia) ?? 0 };
   });
 
-  const flotasBase = (tenantsRes.data ?? []) as Array<{ id: string; nombre: string; plan: string }>;
-  const flotas = flotasBase.map((t) => ({
+  const flotas = tenantsData.map((t) => ({
     ...t,
     viajes: viajesPorTenant.get(t.id) ?? 0,
-    costoIaUsd: round2(costoPorTenant.get(t.id) ?? 0),
+    costoIaUsd: redondearUsd(costoPorTenant.get(t.id) ?? 0),
   }));
   return {
     tenants: flotas.length,
     flotas,
-    viajesProcesados: (viajesRes.data ?? []).length,
-    costoIaUsd: round2(costoIaUsd),
+    viajesProcesados: viajesData.length,
+    costoIaUsd: redondearUsd(costoIaUsd),
     tokensIn,
     tokensOut,
     porFase,
     porModelo,
     porDia,
     facturasPorDia,
-    facturasTotal: (gastoRes.data ?? []).length,
+    facturasTotal: gastosData.length,
     tendenciaCosto: tendencia('costoUsd'),
     tendenciaTokens: tendencia('tokens'),
   };
@@ -186,10 +214,11 @@ export interface CostoPorFaseModelo { fase: string; modelo: string; n: number; c
  */
 export async function getCostoPorFaseModelo(): Promise<CostoPorFaseModelo[]> {
   const admin = supabaseAdmin();
-  const { data, error } = await admin.from('llm_costo').select('fase, modelo, costo_usd');
-  if (error) throw new Error(`getCostoPorFaseModelo: ${error.message}`);
+  const data = await traerTodo<{ fase: string; modelo: string; costo_usd: number }>(
+    (d, h) => admin.from('llm_costo').select('fase, modelo, costo_usd').order('id', { ascending: true }).range(d, h),
+    'getCostoPorFaseModelo');
   const map = new Map<string, { fase: string; modelo: string; n: number; costoUsd: number }>();
-  for (const f of (data ?? []) as Array<{ fase: string; modelo: string; costo_usd: number }>) {
+  for (const f of data) {
     const key = `${f.fase}::${f.modelo}`;
     const cur = map.get(key) ?? { fase: f.fase, modelo: f.modelo, n: 0, costoUsd: 0 };
     cur.n += 1;
@@ -197,17 +226,84 @@ export async function getCostoPorFaseModelo(): Promise<CostoPorFaseModelo[]> {
     map.set(key, cur);
   }
   return [...map.values()]
-    .map((v) => ({ ...v, costoUsd: round2(v.costoUsd) }))
+    .map((v) => ({ ...v, costoUsd: redondearUsd(v.costoUsd) }))
     .sort((a, b) => b.costoUsd - a.costoUsd);
 }
 
 export interface TurnoConversacion { role: 'user' | 'assistant'; content: string }
 
 export interface ConversacionActiva {
-  telefono: string;
+  /** NUNCA el teléfono. Ver `seudonimoOperador`. */
+  seudonimo: string;
   tenantNombre: string;
   turns: TurnoConversacion[];
   actualizadaEn: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDITORÍA 11 · G-53, CRÍTICO — LA CONSOLA NO IDENTIFICA A NADIE.
+//
+// `getConversacionesActivas` devolvía `telefono` y los `turns` íntegros, sin
+// un solo `.eq('tenant_id', …)`, y `admin/layout.tsx:42` la llama en CADA
+// carga de CUALQUIER página de /admin. Cinco pantallas pintaban el número; en
+// `conversaciones/page.tsx` la etiqueta de cada barra de un `HBars` ERA el
+// teléfono del operador, encima de dos KPI de uso.
+//
+// Contra el texto que el operador abre y acepta (`privacidad.ts:511-512`):
+// «Medir cómo funciona el servicio para mejorarlo (estadísticas de uso, SIN
+// IDENTIFICARTE EN LOS REPORTES)». Abrir /admin y /aviso/[tenant] en la misma
+// sesión del demo desmentía una con la otra a un clic.
+//
+// QUÉ NO HACE ESTO. El dato real no se borra: sigue en `wa_conversacion`, que
+// es donde tiene que estar y donde el procedimiento ARCO lo alcanza. Lo que
+// cambia es lo que sale HACIA LA PANTALLA DE ESTADÍSTICAS, que es la
+// finalidad que el aviso acota.
+//
+// Y LO QUE ESTO NO ES: no es anonimización irreversible. La sal es una
+// constante del código, y el espacio de teléfonos mexicanos es chico: quien
+// tenga el repo y una lista de números puede reconstruir la tabla. Sirve para
+// que la consola no EXHIBA el número —que es el hallazgo— y para que dos
+// barras del mismo operador se agrupen. Decirlo aquí es parte del arreglo:
+// una medida que se cree más fuerte de lo que es acaba justificando enseñar
+// más de lo debido.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Solo los dígitos: `+52 999 370 07 79` y `529993700779` son la misma persona. */
+function normalizarTelefono(telefono: string): string {
+  return String(telefono ?? '').replace(/\D/g, '');
+}
+
+const SAL_SEUDONIMO = 'likida/admin/conversaciones/v1';
+
+/** Etiqueta estable y legible («Operador 4F2A») — va en el eje de una gráfica. */
+export function seudonimoOperador(telefono: string): string {
+  const h = createHash('sha256').update(`${SAL_SEUDONIMO}:${normalizarTelefono(telefono)}`).digest('hex');
+  // 20 bits en base 36 y en mayúsculas: 4 caracteres, ~1M de combinaciones.
+  // Con decenas de operadores la colisión es anecdótica, y una etiqueta de 4
+  // caracteres se lee en una barra; un hash de 64 no.
+  const corto = parseInt(h.slice(0, 8), 16).toString(36).toUpperCase().padStart(4, '0').slice(-4);
+  return `Operador ${corto}`;
+}
+
+// Lo que un mensaje de WhatsApp puede traer dentro y no tiene por qué salir a
+// una pantalla de estadísticas. El orden importa: el correo primero, porque
+// su parte local puede contener dígitos que la regla del teléfono partiría.
+const REDACCIONES: Array<[RegExp, string]> = [
+  [/[\w.+-]+@[\w-]+\.[\w.-]+/g, '«correo»'],
+  // RFC de persona física (4 letras) o moral (3), con homoclave.
+  [/\b[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}\b/g, '«RFC»'],
+  // CURP: 18 posiciones con estructura fija.
+  [/\b[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d\b/g, '«CURP»'],
+  // 10 dígitos o más seguidos (con separadores) es un teléfono, no un monto:
+  // los importes de este producto no pasan de 7 cifras y llevan decimales.
+  [/(?:\+?\d[\s-]?){10,}/g, '«teléfono»'],
+];
+
+/** Tapa identificadores dentro del texto de un turno. */
+export function redactarTexto(texto: string): string {
+  let t = String(texto ?? '');
+  for (const [re, marca] of REDACCIONES) t = t.replace(re, marca);
+  return t;
 }
 
 /**
@@ -228,13 +324,64 @@ export async function getConversacionesActivas(): Promise<ConversacionActiva[]> 
   if (error) throw new Error(`getConversacionesActivas: ${error.message}`);
   return (data ?? []).map((c) => {
     const estado = (c.estado as { turns?: TurnoConversacion[] }) ?? {};
+    const turns = Array.isArray(estado.turns) ? estado.turns : [];
     return {
-      telefono: c.telefono as string,
+      // El teléfono se convierte AQUÍ, en el borde: si saliera del módulo
+      // aunque fuera una vez, la siguiente pantalla lo pintaría.
+      seudonimo: seudonimoOperador(c.telefono as string),
       tenantNombre: ((c.tenant as { nombre?: string } | null)?.nombre) ?? '—',
-      turns: Array.isArray(estado.turns) ? estado.turns : [],
+      turns: turns.map((t) => ({ role: t.role, content: redactarTexto(t.content) })),
       actualizadaEn: c.updated_at as string,
     };
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EL PERFIL DEL PROPIO SUPERADMIN — las tres escrituras de /admin/mi-perfil.
+//
+// AUDITORÍA 11 · G-33. Vivían dentro de `admin/mi-perfil/page.tsx` con su
+// propio `supabaseAdmin()` (tres veces) y sin comprobar un solo `error`.
+// Están aquí por lo mismo que todo lo demás de este archivo: `/admin` no
+// habla con Supabase, habla con este módulo. Un solo sitio donde el error
+// por valor se convierte en excepción es lo que hace que el llamador no
+// pueda ignorarlo por descuido.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function guardarNombrePerfil(userId: string, nombre: string): Promise<void> {
+  const { error } = await supabaseAdmin().from('app_user').update({ nombre }).eq('id', userId);
+  if (error) throw new Error(`guardarNombrePerfil: ${error.message}`);
+}
+
+export async function guardarAvatarUrlPerfil(userId: string, avatarUrl: string): Promise<void> {
+  const { error } = await supabaseAdmin().from('app_user').update({ avatar_url: avatarUrl }).eq('id', userId);
+  if (error) throw new Error(`guardarAvatarUrlPerfil: ${error.message}`);
+}
+
+/**
+ * Sube el objeto al bucket `avatares` y devuelve su URL pública.
+ *
+ * `contentType` lo elige el LLAMADOR de su propia lista blanca
+ * (`avatar-validacion.ts`), nunca el `archivo.type` que mandó el cliente: el
+ * bucket es público y esa cabecera es con la que se sirve.
+ */
+export async function subirAvatarPerfil(
+  userId: string, ruta: string, contentType: string, archivo: Blob,
+): Promise<string> {
+  const admin = supabaseAdmin();
+  const { error } = await admin.storage.from('avatares')
+    .upload(ruta, archivo, { upsert: true, contentType });
+  if (error) throw new Error(`subirAvatarPerfil(${userId}): ${error.message}`);
+  const { data } = admin.storage.from('avatares').getPublicUrl(ruta);
+  if (!data?.publicUrl) throw new Error(`subirAvatarPerfil(${userId}): el bucket no devolvió URL pública`);
+  return data.publicUrl;
+}
+
+/** El correo de la cuenta, para pintarlo (no editable desde aquí). */
+export async function getCorreoPerfil(userId: string): Promise<string | null> {
+  const { data, error } = await supabaseAdmin()
+    .from('app_user').select('email').eq('id', userId).maybeSingle();
+  if (error) throw new Error(`getCorreoPerfil: ${error.message}`);
+  return (data?.email as string | null) ?? null;
 }
 
 export interface MiembroEquipo {

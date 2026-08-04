@@ -46,8 +46,12 @@ export function CifrasIncidencias({ incidencias }: { incidencias: IncidenciaRow[
         <KpiTile icono={<Clock {...ICONO} />} etiqueta="Con SLA vencido"
           valor={vivas.filter((i) => i.slaVencido).length} formato="entero"
           nota="Solo cuenta las que tienen SLA pactado" />
+        {/* `mediana ?? 0` escribía justo el cero que el comentario de arriba
+            dice que no se puede escribir: «un 0 se leería como "se resuelven
+            al instante"». `KpiTile` ya sabe decir "no lo medí" (G-09), así que
+            el null se pasa tal cual. */}
         <KpiTile icono={<CircleCheck {...ICONO} />} etiqueta="Mediana de resolución"
-          valor={mediana ?? 0} formato="entero"
+          valor={mediana} formato="entero"
           vacio={mediana === null ? 'sin incidencias resueltas todavía' : undefined}
           nota={mediana === null ? undefined : 'horas, mediana — no promedio'} />
       </div>
@@ -78,13 +82,13 @@ export function TablaIncidencias({
       <table className="w-full text-sm">
         <thead>
           <tr style={{ color: 'var(--muted)' }} className="text-left">
-            <th className="px-5 py-2.5 font-medium">Tipo</th>
-            <th className="px-5 py-2.5 font-medium">Viaje</th>
-            <th className="px-5 py-2.5 font-medium">Unidad</th>
-            <th className="px-5 py-2.5 font-medium">Descripción</th>
-            <th className="px-5 py-2.5 font-medium">Prioridad</th>
-            <th className="px-5 py-2.5 font-medium">Reloj</th>
-            <th className="px-5 py-2.5 font-medium">Estado</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Tipo</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Viaje</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Unidad</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Descripción</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Prioridad</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Reloj</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Estado</th>
           </tr>
         </thead>
         <tbody>

@@ -17,6 +17,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
+import { acotada } from '../presupuesto';
 
 /** `image/jpeg` → `jpg`. Lo que Meta manda es jpeg o png. */
 function extension(dataUrl: string): string {
@@ -44,7 +45,13 @@ export async function subirComprobante(
 ): Promise<string | undefined> {
   try {
     const ruta = `${tenantId}/${viajeId}/${nombre}.${extension(dataUrl)}`;
-    const { error } = await supabaseAdmin().storage
+    // CON TECHO, igual que el resto del camino (auditoría 11, G-22).
+    // `supabaseAdmin()` no lleva `fetch` propio: sin `acotada` esto hereda los
+    // 300 000 ms de undici dentro de una invocación que Vercel mata a los
+    // 120 000, y una foto en vuelo se lleva por delante el turno entero.
+    // `acotada` devuelve `{ data: null, error }`, que es la forma que este `if`
+    // ya trata: la foto se pierde con su warn y el operador recibe respuesta.
+    const { error } = await acotada(supabaseAdmin().storage
       .from('comprobantes')
       .upload(ruta, bytes(dataUrl), {
         contentType: dataUrl.slice(5, dataUrl.indexOf(';')) || 'image/jpeg',
@@ -52,7 +59,7 @@ export async function subirComprobante(
         // su propio objeto. Sin esto, el segundo intento falla con 409 y el
         // gasto se queda sin imagen por un motivo que no es un error.
         upsert: true,
-      });
+      }), 'subirComprobante');
     if (error) {
       logger.warn('comprobante.subida_falló', { viaje: viajeId, err: error.message });
       return undefined;
@@ -75,8 +82,8 @@ export async function subirComprobante(
  */
 export async function ligaComprobante(ruta: string, segundos = 3600): Promise<string | undefined> {
   try {
-    const { data, error } = await supabaseAdmin().storage
-      .from('comprobantes').createSignedUrl(ruta, segundos);
+    const { data, error } = await acotada(supabaseAdmin().storage
+      .from('comprobantes').createSignedUrl(ruta, segundos), 'ligaComprobante');
     if (error) {
       logger.warn('comprobante.liga_falló', { err: error.message });
       return undefined;

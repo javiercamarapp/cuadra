@@ -17,7 +17,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const rpc = vi.fn();
 const from = vi.fn();
-vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: () => ({ rpc, from }) }));
+const getBucket = vi.fn();
+vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: () => ({ rpc, from, storage: { getBucket } }) }));
 
 const error = vi.fn();
 const warn = vi.fn();
@@ -42,6 +43,10 @@ const okTabla = tabla();
 beforeEach(() => {
   rpc.mockReset(); from.mockReset(); error.mockReset(); warn.mockReset(); info.mockReset();
   from.mockReturnValue(okTabla);
+  // Bucket presente por default: lo contrario haría que TODA prueba de este
+  // archivo midiera además el sondeo de la 0039.
+  getBucket.mockReset();
+  getBucket.mockResolvedValue({ data: { id: 'comprobantes' }, error: null });
 });
 
 describe('diagnóstico de migraciones', () => {
@@ -75,6 +80,38 @@ describe('diagnóstico de migraciones', () => {
     expect(error).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
     expect(info).toHaveBeenCalledWith('startup.migraciones', { ok: true });
+  });
+
+  // ── CRÍTICO de la auditoría 10 (modelo de datos) ──────────────────────────
+  //
+  // Nada sondaba la 0045, y su ausencia es de las peores que hay: el `select`
+  // de `getSessionTenant` pide `operador_id`, una columna que NACE en esa
+  // migración. Si no está, PostgREST falla el select ENTERO, `data` queda en
+  // null y TODO usuario —el contralor, y también el superadmin— sale con
+  // `tenantId: null` y aterriza en /sin-acceso. El panel no se ve roto: se ve
+  // como si nadie tuviera alta. Y el arranque decía `ok: true`.
+  it('si falta la 0045, el arranque lo dice — es la que deja a TODOS fuera del panel', async () => {
+    rpc.mockResolvedValue({ error: null });
+    from.mockImplementation((t: string) => (t === 'app_user'
+      ? tabla({ error: { code: '42703', message: 'column app_user.operador_id does not exist' } })
+      : okTabla));
+    await verificarMigracionesCriticas();
+
+    expect(info).not.toHaveBeenCalledWith('startup.migraciones', { ok: true });
+    const dicho = error.mock.calls.map(([, m]) => (m as { msg: string }).msg).join(' ');
+    expect(dicho).toContain('0045');
+    expect(dicho, 'y que diga la consecuencia, no solo el número').toMatch(/panel|sin-acceso|fuera/i);
+  });
+
+  it('un fallo de RED sobre esa misma sonda no se reporta como migración faltante', async () => {
+    rpc.mockResolvedValue({ error: null });
+    from.mockImplementation((t: string) => (t === 'app_user'
+      ? tabla({ error: { code: '', message: 'TypeError: fetch failed' } })
+      : okTabla));
+    await verificarMigracionesCriticas();
+
+    expect(error).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
   });
 
   // La red se puede caer en cualquiera de los cuatro probes, no solo en el primero.
@@ -195,8 +232,21 @@ describe('el arranque dice TODO lo que falta, no lo primero', () => {
 // AUDITORÍA 9, CRÍTICO (operabilidad) — "0036/0037, el trigger que blinda el
 // peor bug histórico del camino del dinero, y ninguna línea de este archivo
 // lo sondeaba." PostgREST no expone `pg_trigger`, así que el sondeo pasa por
-// `triggers_faltantes` (migración 0043), mismo patrón que `indices_faltantes`.
-describe('los triggers de "nada entra ni se reescribe tras liquidar" (0036/0037)', () => {
+// una función del esquema, mismo patrón que `indices_faltantes`.
+//
+// ── QUÉ CAMBIÓ EN LA AUDITORÍA 10 (MEDIO de modelo de datos) ────────────────
+//
+// Este bloque afirmaba que la función era `triggers_faltantes` (0043), que
+// sondea por NOMBRE. Esa premisa se retira, no porque estuviera mal escrita,
+// sino porque el mecanismo no alcanzaba: la 0042 hace `drop trigger` +
+// `create trigger` con EL MISMO NOMBRE que la 0037, cambiando solo el `when`.
+// Con la 0037 aplicada y la 0042 no, los dos nombres existen, `triggers_faltantes`
+// devuelve `{}`, el arranque escribe `{ok: true}`, y un
+// `UPDATE gasto SET fecha = ...` posterior a la liquidación vuelve a pasar sin
+// CU001. El sondeo ahora es `triggers_desactualizados` (0052), que mira el
+// CUERPO con `pg_get_triggerdef`. Los casos de abajo son los mismos; lo que
+// cambia es la migración que se nombra cuando la función no está.
+describe('los triggers de "nada entra ni se reescribe tras liquidar" (0036/0037/0042)', () => {
   it('si el trigger de INSERT falta, lo dice con la migración y la consecuencia', async () => {
     rpc.mockResolvedValue({ data: ['trg_gasto_no_tras_liquidar'], error: null });
     await verificarMigracionesCriticas();
@@ -227,16 +277,51 @@ describe('los triggers de "nada entra ni se reescribe tras liquidar" (0036/0037)
     // Misma distinción que ya existe para índices: "no pude preguntar" no es
     // "no está" — un diagnóstico falso manda a correr `db push` contra un
     // problema que no existe.
-    rpc.mockResolvedValue({ error: { code: 'PGRST202', message: 'Could not find the function public.triggers_faltantes' } });
+    rpc.mockResolvedValue({ error: { code: 'PGRST202', message: 'Could not find the function public.triggers_desactualizados' } });
     await verificarMigracionesCriticas();
     const mensajes = error.mock.calls.map((c) => (c[1] as { msg: string }).msg).join(' | ');
-    expect(mensajes).toContain('0043');
+    expect(mensajes).toContain('0052');
   });
 
   it('con los dos triggers puestos no inventa un faltante', async () => {
     rpc.mockResolvedValue({ data: [], error: null });
     await verificarMigracionesCriticas();
     expect(info).toHaveBeenCalledWith('startup.migraciones', { ok: true });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MEDIO de la auditoría 10 (modelo de datos) — la sonda no distinguía el
+  // trigger de la 0037 del de la 0042.
+  //
+  // Los dos se llaman `trg_gasto_no_tras_liquidar_update`. Lo único que los
+  // separa es que el `when` de la 0042 incluye `new.fecha`, y `fecha` decide
+  // ejercicio, plazo de facturación y el tope diario de LISR 28-V. Una sonda de
+  // EXISTENCIA es ciega a eso por construcción.
+  // ═══════════════════════════════════════════════════════════════════════════
+  it('pregunta por el CUERPO del trigger, no por su nombre', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    await verificarMigracionesCriticas();
+
+    const llamada = rpc.mock.calls.find(([f]) => f === 'triggers_desactualizados');
+    expect(llamada, 'el arranque sigue sondeando por nombre: la 0042 es indetectable así').toBeTruthy();
+    const esperados = (llamada![1] as { p_esperados: Record<string, string> }).p_esperados;
+    // `new.fecha` SOLO aparece en el `when` que escribió la 0042.
+    expect(esperados.trg_gasto_no_tras_liquidar_update).toContain('new.fecha');
+    expect(esperados.trg_gasto_no_tras_liquidar).toContain('before insert');
+  });
+
+  it('si el UPDATE existe pero es el de la 0037, lo dice — y dice qué se pierde', async () => {
+    // El caso que el arranque daba por bueno: el nombre está, el `when` no
+    // tiene `fecha`, y `corregirFechaGasto` reescribe la fecha de un gasto
+    // después de emitida la liquidación sin CU001.
+    rpc.mockResolvedValue({ data: ['trg_gasto_no_tras_liquidar_update'], error: null });
+    await verificarMigracionesCriticas();
+
+    const mensajes = error.mock.calls.map((c) => (c[1] as { msg: string }).msg).join(' | ');
+    expect(mensajes).toContain('DESACTUALIZADO');
+    expect(mensajes).toContain('0042');
+    expect(mensajes).toMatch(/LISR 28-V|plazo de facturación/);
+    expect(info).not.toHaveBeenCalledWith('startup.migraciones', { ok: true });
   });
 });
 
@@ -290,5 +375,96 @@ describe('el TTL del contador de la barrera (0031)', () => {
     porTabla({});
     await verificarMigracionesCriticas();
     expect(info).toHaveBeenCalledWith('startup.migraciones', { ok: true });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDITORÍA 10, MEDIO · LO QUE EL PROBE TODAVÍA NO MIRABA.
+//
+// `grep -n "0038\|0039\|0040\|0044"` sobre startup.ts daba cero. De esas
+// cuatro, dos merecen sonda y dos NO — y decirlo importa tanto como añadirlas:
+//
+//   · 0038 (`foto_pendiente`) la REVIERTE la 0041 con un `drop table`. Sondear
+//     su presencia sería gritar por una tabla que tiene que NO existir.
+//   · 0044 solo extiende el dominio de `app_user_rol_dominio` con `encargado`.
+//     Su ausencia falla RUIDOSAMENTE y en el sitio exacto: el insert de
+//     `/admin/usuarios/nuevo` rebota con un check violation que el superadmin
+//     ve en pantalla. Además PostgREST no expone `pg_constraint`, así que
+//     sondearla pediría una migración nueva (`restricciones_faltantes`) para
+//     cubrir un fallo que ya se ve solo.
+//
+// Las otras dos son de las que se pierden en silencio, que es el criterio de
+// este archivo.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('el bucket de comprobantes (0039) y la sala de espera (0040)', () => {
+  const porTabla = (mapa: Record<string, { error: unknown }>) =>
+    from.mockImplementation((t: string) => tabla(mapa[t] ?? { error: null }));
+
+  it('sin el bucket `comprobantes`, el arranque lo dice — y dice que se pierden los tickets', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    porTabla({});
+    getBucket.mockResolvedValue({ data: null, error: { message: 'Bucket not found', status: 404 } });
+    await verificarMigracionesCriticas();
+
+    const mensajes = error.mock.calls.map((c) => (c[1] as { msg: string }).msg).join(' | ');
+    expect(mensajes).toContain('0039');
+    // La consecuencia, no solo el número. `subirComprobante` no tumba el
+    // intake a propósito: el gasto entra igual y la foto se pierde, con un
+    // `warn` por foto en el turno del operador. Cinco años de conservación del
+    // CFF art. 30 dependen de que ese bucket exista.
+    expect(mensajes).toMatch(/foto|comprobante|ticket/i);
+    expect(info).not.toHaveBeenCalledWith('startup.migraciones', { ok: true });
+  });
+
+  it('un fallo de RED sobre el bucket no se reporta como migración faltante', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    porTabla({});
+    getBucket.mockResolvedValue({ data: null, error: { message: 'TypeError: fetch failed' } });
+    await verificarMigracionesCriticas();
+
+    expect(error).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith('startup.migraciones_sin_verificar', expect.anything());
+  });
+
+  it('sin `comprobante_huerfano`, el arranque lo dice — el chofer sin viaje abierto pierde sus fotos', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    porTabla({ comprobante_huerfano: { error: { code: '42P01', message: 'relation "comprobante_huerfano" does not exist' } } });
+    await verificarMigracionesCriticas();
+
+    const mensajes = error.mock.calls.map((c) => (c[1] as { msg: string }).msg).join(' | ');
+    expect(mensajes).toContain('0040');
+    expect(mensajes).toMatch(/sin viaje|sala de espera|se pierde/i);
+    expect(info).not.toHaveBeenCalledWith('startup.migraciones', { ok: true });
+  });
+
+  it('un fallo de RED sobre esa tabla tampoco', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    porTabla({ comprobante_huerfano: { error: { code: '', message: 'TypeError: fetch failed' } } });
+    await verificarMigracionesCriticas();
+
+    expect(error).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith('startup.migraciones_sin_verificar', expect.anything());
+  });
+
+  // CONTROL: con las dos aplicadas el arranque no inventa nada y sigue diciendo
+  // `ok: true` — un probe que grita de más entrena a ignorar el que grita bien.
+  it('CONTROL: con las dos aplicadas no inventa un faltante', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    porTabla({});
+    await verificarMigracionesCriticas();
+    expect(error).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith('startup.migraciones', { ok: true });
+  });
+
+  // Y la 0038 al revés: la 0041 la revierte, así que `foto_pendiente` NO tiene
+  // que existir. Si alguien añade la sonda "por completar la lista", esta
+  // prueba lo detiene.
+  it('CONTROL: la 0038 está revertida (0041) y NO se sondea su tabla', async () => {
+    const tablas: string[] = [];
+    rpc.mockResolvedValue({ data: [], error: null });
+    from.mockImplementation((t: string) => { tablas.push(t); return okTabla; });
+    await verificarMigracionesCriticas();
+    expect(tablas, '`drop table foto_pendiente` (0041): sondearla gritaría por una tabla que debe faltar')
+      .not.toContain('foto_pendiente');
   });
 });

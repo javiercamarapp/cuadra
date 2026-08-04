@@ -27,7 +27,20 @@ export function KpiTile({
    *  `asistente-expandible.tsx` ya usa para `main`/`asideTop`). */
   icono: React.ReactNode;
   etiqueta: string;
-  valor: number;
+  /**
+   * `null` = NO HAY MEDICIÓN. Se pinta "—", no un cero.
+   *
+   * AUDITORÍA 11 · G-09 (CRÍTICO, frontend). Esta tarjeta solo sabía imprimir
+   * `fmt(valor)`, así que la única forma de decir "no tengo el dato" era pasar
+   * un 0 — y `vacio`/`nota` solo añaden texto DEBAJO, sin tocar la cifra. Con
+   * eso el panel imprimía `0 L` bajo "LIF 2026, Art. 20-A" y `$0.00` bajo
+   * "LIVA, Art. 5": un cero fiscal con su cita de ley al pie, que el contralor
+   * lee como el resultado de aplicar esa ley a sus comprobantes.
+   *
+   * "Medí y dio cero" y "no pude medir" son afirmaciones distintas, y esta es
+   * la tarjeta donde el producto las tenía colapsadas.
+   */
+  valor: number | null;
   formato?: FormatoPreset;
   tendencia?: number | null;
   sparkline?: number[];
@@ -46,8 +59,12 @@ export function KpiTile({
   nota?: string;
 }) {
   const reducido = usePrefersReducedMotion();
-  const mostrado = useCountUp(valor, !reducido);
+  // El hook se llama SIEMPRE (regla de hooks): sin dato se le da 0 y esa cifra
+  // simplemente no se pinta. Animar un cero que nadie va a ver no cuesta nada;
+  // saltarse el hook rompe el orden de hooks del componente.
+  const mostrado = useCountUp(valor ?? 0, !reducido);
   const fmt = resolverFormato(formato);
+  const sinMedicion = valor === null;
 
   return (
     <div className="card p-3.5" style={destacar ? { borderColor: 'var(--accent)' } : undefined}>
@@ -56,7 +73,13 @@ export function KpiTile({
           {icono}
         </div>
         <div className="min-w-0">
-          <div className="text-xl font-semibold tracking-tight tabular leading-tight">{fmt(mostrado)}</div>
+          {/* Sin medición la cifra baja a tinta apagada además de volverse una
+              raya: un "—" en el mismo peso y el mismo negro que las cifras de
+              al lado se sigue escaneando como un resultado. */}
+          <div className="text-xl font-semibold tracking-tight tabular leading-tight"
+            style={sinMedicion ? { color: 'var(--muted)' } : undefined}>
+            {sinMedicion ? '—' : fmt(mostrado)}
+          </div>
           <div className="text-xs mt-0.5 truncate" style={{ color: 'var(--muted)' }}>{etiqueta}</div>
         </div>
       </div>

@@ -22,6 +22,41 @@ export interface RegisteredTool {
   schema: OpenAI.Chat.ChatCompletionTool;
   handler: (args: Record<string, unknown>, ctx: ToolContext) => Promise<unknown>;
   isMutation?: boolean;
+  /**
+   * Qué parte del resultado ve el MODELO (el resto sigue yendo al llamador).
+   *
+   * Existe porque un solo `result` servía a dos consumidores con necesidades
+   * opuestas: la guardia de cifras reusa el snapshot completo del cierre y el
+   * modelo usa cinco campos. Sin separación, los 15.6 KB del snapshot —RFC,
+   * UUID y rutas de foto de cada comprobante— se serializaban en el mensaje
+   * `role:'tool'` y se pagaban en cada ronda posterior.
+   *
+   * Si no se declara, el modelo ve el resultado tal cual.
+   */
+  paraModelo?: (result: unknown) => unknown;
+}
+
+/**
+ * Fallo cuyo mensaje SÍ puede leer el modelo, porque lo escribimos nosotros.
+ *
+ * `executeTool` ponía `err.message` tal cual en `ToolExecResult.error`, y
+ * `openrouter.ts` lo serializa en el `content` del mensaje `role:'tool'`. El
+ * ejemplo directo es `guardar_liquidacion`, que llama `saveLiquidacion` sin
+ * try/catch propio: un error del RPC llega como
+ * `saveLiquidacion: duplicate key value violates unique constraint
+ * "liquidacion_viaje_id_key"` —nombre de función plpgsql, constraint, columna—
+ * y entra al contexto del modelo en la tool que cierra el dinero. Y como en ese
+ * turno `cerro`/`cuadro` son false, la guardia no sustituye el texto: el chofer
+ * puede recibir "se trabó por un problema con liquidacion_viaje_id_key".
+ *
+ * Con esto la regla es explícita: lo que el handler quiere DECIRLE al modelo se
+ * lanza así; lo demás es infraestructura y sale opaco (al log va completo).
+ */
+export class ToolErrorVisible extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ToolErrorVisible';
+  }
 }
 
 const REGISTRY = new Map<string, RegisteredTool>();
@@ -31,11 +66,26 @@ export function registerTool(name: string, tool: RegisteredTool): void {
   REGISTRY.set(name, tool);
 }
 
-/** Devuelve los schemas (ChatCompletionTool) para los nombres dados. */
+/**
+ * Devuelve los schemas (ChatCompletionTool) para los nombres dados.
+ *
+ * FALLA RUIDOSO. Antes resolvía por la llave y descartaba en silencio lo que no
+ * encontraba, y ése era el único punto donde la superficie de tools completa
+ * podía desaparecer sin poner una prueba en rojo: renombrar `registerTool` y
+ * olvidar `registry.ts` devolvía 2 esquemas en vez de 3 —el modelo nunca ve
+ * `cuadrar_viaje`, `guardiaCifras` calcula `cuadro = false` y el viaje NO
+ * CIERRA—, y perder el import que puebla el registro devolvía `[]`, con el
+ * agente narrando sin números en cada turno. Las dos cosas son errores de
+ * cableado: se ven al arrancar, no a mitad de un cierre.
+ */
 export function toolSchemas(names: string[]): OpenAI.Chat.ChatCompletionTool[] {
-  return names
-    .map((n) => REGISTRY.get(n)?.schema)
-    .filter((s): s is OpenAI.Chat.ChatCompletionTool => Boolean(s));
+  const faltan = names.filter((n) => !REGISTRY.has(n));
+  if (faltan.length) {
+    throw new Error(
+      `tools no registradas: ${faltan.join(', ')} (registradas: ${[...REGISTRY.keys()].join(', ') || 'ninguna'})`,
+    );
+  }
+  return names.map((n) => REGISTRY.get(n)!.schema);
 }
 
 /** Ejecuta una tool por nombre con timing + captura de errores. */
@@ -51,13 +101,20 @@ export async function executeTool(
   }
   try {
     const result = await tool.handler(args, ctx);
-    return { success: true, result, durationMs: Date.now() - started };
+    return {
+      success: true,
+      result,
+      ...(tool.paraModelo ? { paraModelo: tool.paraModelo(result) } : {}),
+      durationMs: Date.now() - started,
+    };
   } catch (err) {
     logger.error('tool.error', { name, err: err instanceof Error ? err.message : String(err) });
     return {
       success: false,
       result: null,
-      error: err instanceof Error ? err.message : String(err),
+      // El diagnóstico completo ya quedó en el log de arriba. Lo que cruza al
+      // contexto del modelo es sólo lo que se escribió PARA él.
+      error: err instanceof ToolErrorVisible ? err.message : `la tool ${name} falló`,
       durationMs: Date.now() - started,
     };
   }

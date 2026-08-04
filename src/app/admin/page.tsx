@@ -4,9 +4,9 @@ import { usd, numero } from '@/lib/utils';
 import { saludo, fechaLarga } from '@/lib/saludo';
 import Link from 'next/link';
 import {
-  Truck, DollarSign, Cpu, CheckCircle2, BarChart3, UserPlus2, MessageCircle,
-  Sparkles, ChevronDown, ScanText, Calculator, Flag, MessageSquareText, Shuffle, Smartphone, ExternalLink,
+  Truck, DollarSign, Cpu, CheckCircle2, ChevronDown, ExternalLink,
 } from 'lucide-react';
+import { etiquetaFase } from './fases';
 import { Dona, BarChartSimple } from './charts';
 import GraficaCostoConRango from './rango-costo';
 import ContadorRetro from './contador-retro';
@@ -16,14 +16,9 @@ import { KpiTile } from './ui/kit';
 
 export const dynamic = 'force-dynamic';
 
-const FASE_LABEL: Record<string, string> = {
-  ocr: 'Agente OCR', cuadre: 'Agente de Cuadre', escalacion: 'Agente de Escalación',
-  chat: 'Agente de Chat', router: 'Agente Router', whatsapp: 'Agente de WhatsApp',
-};
-
-const FASE_ICONO: Record<string, typeof ScanText> = {
-  ocr: ScanText, cuadre: Calculator, escalacion: Flag, chat: MessageSquareText, router: Shuffle, whatsapp: Smartphone,
-};
+// El mapa de fases vive en `./fases`, UNA vez. Aquí estaba la cuarta copia
+// —y la que le daba nombre a la dona de esta pantalla—; `FASE_ICONO` ni
+// siquiera se usaba. Auditoría 11 (arquitectura, G-46).
 
 /** Insignia monocromo — badge cuadrado con un ícono lucide adentro, sustituye
  *  todos los emoji que había antes (🚛💵🧮✅ etc.): mismas tonalidades de
@@ -182,7 +177,7 @@ export default async function Admin({
                     <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--muted)' }}>
                       Agentes — costo por fase
                     </h3>
-                    <Dona segmentos={r.porFase.map((f) => ({ etiqueta: FASE_LABEL[f.fase] ?? f.fase, valor: f.costoUsd }))} />
+                    <Dona segmentos={r.porFase.map((f) => ({ etiqueta: etiquetaFase(f.fase), valor: f.costoUsd }))} />
                   </div>
                 ) : (
                   <div className="card p-4 flex items-center text-sm" style={{ color: 'var(--muted)' }}>Todavía no hay actividad de IA registrada.</div>
@@ -264,10 +259,10 @@ export default async function Admin({
             ) : (
               <div className="space-y-2.5 mt-3">
                 {conversaciones.map((c) => (
-                  <details key={c.telefono} className="card overflow-hidden group">
+                  <details key={c.seudonimo} className="card overflow-hidden group">
                     <summary className="px-4 py-3 flex items-center justify-between gap-4 cursor-pointer list-none hover:bg-[color-mix(in_srgb,var(--muted)_6%,transparent)] transition-colors">
                       <div>
-                        <div className="text-sm font-medium">{c.telefono}</div>
+                        <div className="text-sm font-medium">{c.seudonimo}</div>
                         <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{c.tenantNombre}</div>
                       </div>
                       <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--muted)' }}>
