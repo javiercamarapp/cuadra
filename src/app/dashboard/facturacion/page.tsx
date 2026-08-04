@@ -2,12 +2,15 @@ import { FileText, ShieldCheck, ShieldAlert, Receipt } from 'lucide-react';
 import { getDocumentos, getAcreditables, type DocumentoRow, type Acreditables } from '@/lib/cuadra/analytics';
 import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
 import { KpiTile, EstadoVacio } from '../../admin/ui/kit';
+import { acreditableMedido, notaAcreditable } from '../medicion';
+import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
 
-async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
+/** Una sección caída no tira la pantalla: devuelve `null` y la tarjeta
+ *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
+ *  por eso pasa por `safeLog` y no por un `catch` vacío local (G-32). */
+const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/facturacion');
 
 /**
  * Facturación (PASO 19) — y aquí hay que ser claro sobre QUÉ facturación.
@@ -32,7 +35,8 @@ export default async function FacturacionPage({
 
   const [docs, acred] = await Promise.all([
     safe<DocumentoRow[]>(() => getDocumentos(tenantId, 1000)),
-    safe<Acreditables>(() => getAcreditables(tenantId)),
+    // Sin filtro de rango en esta pantalla: el histórico, declarado.
+    safe<Acreditables>(() => getAcreditables(tenantId, null)),
   ]);
 
   const conCfdi = docs?.filter((d) => d.cfdiUuid) ?? [];
@@ -86,19 +90,21 @@ export default async function FacturacionPage({
 
         <section className="p-5 border-t" style={{ borderColor: 'var(--line)' }}>
           <h2 className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>
-            Lo acreditable que sale de esos CFDI
+            Lo acreditable que sale de esos CFDI — todo el histórico
           </h2>
           {acred === null ? (
             <div className="card p-4 mt-3 text-sm" style={{ color: 'var(--muted)' }}>No se pudo cargar esta sección.</div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
               <KpiTile icono={<Receipt width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
-                etiqueta="IVA acreditable" valor={acred.iva} formato="mxn" nota="LIVA, Art. 5 — CFDI con IVA desglosado" />
+                etiqueta="IVA acreditable" valor={acreditableMedido(acred, 'iva')} formato="mxn"
+                nota={notaAcreditable(acred, 'iva', 'LIVA, Art. 5 — CFDI con IVA desglosado')} />
               <KpiTile icono={<Receipt width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
-                etiqueta="Peaje acreditable (50%)" valor={acred.peaje} formato="mxn" nota="LIF 2026, Art. 20-A" />
+                etiqueta="Peaje acreditable (50%)" valor={acreditableMedido(acred, 'peaje')} formato="mxn"
+                nota={notaAcreditable(acred, 'peaje', 'LIF 2026, Art. 20-A')} />
               <KpiTile icono={<Receipt width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
-                etiqueta="Litros de diésel elegibles" valor={acred.litrosDiesel} formato="litros"
-                nota="El estímulo en pesos lo calcula tu contador con la cuota semanal del DOF" />
+                etiqueta="Litros de diésel elegibles" valor={acreditableMedido(acred, 'litrosDiesel')} formato="litros"
+                nota={notaAcreditable(acred, 'litrosDiesel', 'El estímulo en pesos lo calcula tu contador con la cuota semanal del DOF')} />
             </div>
           )}
         </section>

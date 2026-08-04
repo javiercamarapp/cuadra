@@ -12,6 +12,7 @@ import { TablaCarga } from './despacho/vista';
 import AvanceCierre from './avance-cierre';
 import { sufijoTenant } from './sufijo';
 import { fechaMx } from './formato';
+import { safeLog } from '@/lib/cuadra/pg';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LA CASA DEL ENCARGADO.
@@ -27,9 +28,10 @@ import { fechaMx } from './formato';
 // cuánto, y qué se salió de lo normal. Cero pesos en toda la pantalla.
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
+/** Una sección caída no tira la pantalla: devuelve `null` y la tarjeta
+ *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
+ *  por eso pasa por `safeLog` y no por un `catch` vacío local (G-32). */
+const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/inicio-operacion');
 
 export async function InicioOperacion({
   tenantId, tenantNombre, nombre, sp,

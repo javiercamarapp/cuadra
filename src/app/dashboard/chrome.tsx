@@ -6,6 +6,7 @@ import SidebarNav from './sidebar-nav';
 import AvisoRol from './aviso-rol';
 import RailAsistente from './rail';
 import { Logo } from '../logo';
+import { puedeVerArea } from '@/lib/auth/visibilidad';
 
 /**
  * El marco visual de /dashboard — fondo shader, sidebar glass con el logo,
@@ -86,8 +87,14 @@ export default function DashboardChrome({
           </div>
         </div>
 
-        {/* El rail, fijo a la derecha en las 20 páginas. */}
-        <RailAsistente />
+        {/* El rail, fijo a la derecha en las 20 páginas — para quien puede ver
+            el dinero. La ruta que lo alimenta ya niega por rol (`2fb1982`);
+            esta es la SEGUNDA capa, y la que evita que el jefe de tráfico vea
+            una caja que le ofrece contestar cuánto lleva comprobado la flota
+            (auditoría 11, G-25). El criterio es "¿ve dinero?" y no "¿es
+            encargado?": un rol nuevo que tampoco lo vea queda cubierto sin
+            tocar esta línea. */}
+        {puedeVerArea(rol, 'dinero') && <RailAsistente />}
       </div>
     </div>
   );

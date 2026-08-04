@@ -5,6 +5,7 @@ import { mxn } from '@/lib/utils';
 import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
 import { fechaMx } from '../formato';
 import { KpiTile, EstadoVacio, StatusPill, type Estado } from '../../admin/ui/kit';
+import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,9 +14,10 @@ export const dynamic = 'force-dynamic';
  *  WhatsApp para preguntar en vez de asumir. */
 const CONFIANZA_BAJA = 0.7;
 
-async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
+/** Una sección caída no tira la pantalla: devuelve `null` y la tarjeta
+ *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
+ *  por eso pasa por `safeLog` y no por un `catch` vacío local (G-32). */
+const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/documentos');
 
 /** Qué dice el SAT del CFDI de ese comprobante. `null` = no hay CFDI que
  *  validar (un ticket de papel sin factura), que NO es lo mismo que "no

@@ -6,17 +6,20 @@ import {
 import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
 import { KpiTile, EstadoVacio, ChartCard } from '../../admin/ui/kit';
 import { HBars, MultiLine } from '../../admin/ui/graficas';
+// La QUINTA copia del mapa de fases vivía aquí, y era la única que había
+// cruzado al panel del CLIENTE: `Record<string, string>` con seis claves
+// contra las cinco de `FaseCosto`, así que `tsc` no veía nada y una fase nueva
+// pintaba su clave cruda en la dona que existe para justificarle el precio al
+// contralor (auditoría 11, G-46). El mapa tipado vive en `admin/fases.ts`.
+import { FASE_LABEL } from '../../admin/fases';
+import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
 
-const FASE_LABEL: Record<string, string> = {
-  ocr: 'Agente OCR', cuadre: 'Agente de Cuadre', escalacion: 'Agente de Escalación',
-  chat: 'Agente de Chat', router: 'Agente Router', whatsapp: 'Agente de WhatsApp',
-};
-
-async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
+/** Una sección caída no tira la pantalla: devuelve `null` y la tarjeta
+ *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
+ *  por eso pasa por `safeLog` y no por un `catch` vacío local (G-32). */
+const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/valor-ahorro');
 
 /**
  * Valor & Ahorro (ROI) — PASO 6 del documento, la página que existe para que
@@ -42,7 +45,8 @@ export default async function ValorAhorroPage({
 
   const [valor, kpis, anomalias] = await Promise.all([
     safe<ValorAhorro>(() => getValorAhorro(tenantId)),
-    safe<DashboardKpis>(() => getKpis(tenantId)),
+    // Acumulado desde el día uno: es una página de ROI, no de corte mensual.
+    safe<DashboardKpis>(() => getKpis(tenantId, null)),
     safe<Anomalia[]>(() => detectarAnomalias(tenantId)),
   ]);
 
@@ -82,7 +86,7 @@ export default async function ValorAhorroPage({
                 nota={`ESTIMACIÓN: ${valor.documentosProcesados} comprobantes × ${MINUTOS_CAPTURA_MANUAL} min de captura manual ÷ 60. Los ${MINUTOS_CAPTURA_MANUAL} min son un supuesto, no una medición.`} />
               <KpiTile icono={<Bot width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
                 etiqueta="Acciones resueltas por los agentes" valor={totalAcciones} formato="entero"
-                nota="Conteo real — cada llamada de IA registrada (OCR, cuadre, WhatsApp)" />
+                nota="Conteo real — cada llamada de IA registrada (OCR, cuadre, chat). Los envíos de WhatsApp NO cuentan: son mensajes, no trabajo de un agente." />
             </div>
           </section>
 
@@ -118,7 +122,7 @@ export default async function ValorAhorroPage({
           <section className="p-5 border-t" style={{ borderColor: 'var(--line)' }}>
             {valor.accionesPorAgente.length > 0 ? (
               <ChartCard titulo="Acciones por agente" subtitulo="Conteo real de llamadas de IA registradas" tamano="M">
-                <HBars datos={valor.accionesPorAgente.map((a) => ({ etiqueta: FASE_LABEL[a.fase] ?? a.fase, valor: a.n }))} formato="entero" />
+                <HBars datos={valor.accionesPorAgente.map((a) => ({ etiqueta: FASE_LABEL[a.fase as keyof typeof FASE_LABEL] ?? a.fase, valor: a.n }))} formato="entero" />
               </ChartCard>
             ) : (
               <ChartCard titulo="Acciones por agente" tamano="S">
@@ -164,16 +168,23 @@ export default async function ValorAhorroPage({
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 gap-3 mt-3">
+                <div className="grid grid-cols-3 gap-3 mt-3">
                   <KpiTile icono={<Link2 width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
                     etiqueta="Llegaron sin viaje" valor={valor.huerfanosTotales} formato="entero" />
                   <KpiTile icono={<Link2 width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
                     etiqueta="Amarrados a su viaje" valor={valor.huerfanosResueltos} formato="entero"
                     nota="Comprobantes que se habrían perdido y acabaron en su liquidación" />
+                  {/* El operador contestó «no era de este viaje». No están en
+                      ninguna liquidación, y contarlos como amarrados era la
+                      cifra que se caía en la primera pregunta (G-41). */}
+                  <KpiTile icono={<Link2 width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
+                    etiqueta="Descartados por el operador" valor={valor.huerfanosDescartados} formato="entero"
+                    nota="Contestó que no eran de ese viaje — no entraron en ninguna liquidación" />
                 </div>
                 <p className="text-xs mt-3" style={{ color: 'var(--muted)' }}>
                   Un comprobante que llega suelto por WhatsApp —sin viaje al que pertenecer— es un deducible que
-                  normalmente se pierde. Estos se recuperaron.
+                  normalmente se pierde. Los amarrados se recuperaron; los descartados fueron rechazados por el
+                  propio operador, y siguen sin viaje.
                 </p>
               </>
             )}

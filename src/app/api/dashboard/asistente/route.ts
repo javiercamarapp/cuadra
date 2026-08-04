@@ -18,6 +18,8 @@ import { getSessionTenant } from '@/lib/auth/session';
 import { puedeVerArea } from '@/lib/auth/visibilidad';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getKpis, getAcreditables, detectarAnomalias } from '@/lib/cuadra/analytics';
+import { resolverVentana } from '@/app/dashboard/ventana';
+import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,22 +55,50 @@ export async function GET(req: NextRequest) {
   // tres consultas por un dato que no se va a entregar.
   const verDinero = puedeVerArea(sesion.rol, 'dinero');
 
-  const safe = async <T,>(fn: () => Promise<T>): Promise<T | null> => {
-    try { return await fn(); } catch { return null; }
-  };
+  // FALLAR CERRADO Y DECIRLO. Este `catch` producía el mismo `null` que una
+  // flota sin liquidaciones, y el rail contestaba «Todavía no hay
+  // liquidaciones» sobre una flota con 40 cerradas (auditoría 11, G-25). Ahora
+  // el fallo se registra y se declara en la respuesta.
+  let fallo = false;
+  const safe = <T,>(fn: () => Promise<T>) =>
+    safeLog(fn, 'api/dashboard/asistente', () => { fallo = true; });
+  // LA MISMA VENTANA QUE LA PANTALLA DE ATRÁS. El rail se pinta al lado de la
+  // tarjeta, y consultaba sin ventana: contestaba $4,120.00 "este periodo"
+  // (histórico) junto a una tarjeta que decía $774.48 (7 días), con el mismo
+  // rótulo y la misma cita de LIVA (auditoría 11, G-10). El `?rango=` lo manda
+  // `rail.tsx` leyéndolo de la URL, y se resuelve con el MISMO módulo que la
+  // página, no con una segunda copia del ternario.
+  const ventana = resolverVentana(req.nextUrl.searchParams.get('rango'));
+
   const [kpis, acred, anomalias] = verDinero
     ? await Promise.all([
-        safe(() => getKpis(tenantId!)),
-        safe(() => getAcreditables(tenantId!)),
+        safe(() => getKpis(tenantId!, ventana.ventana)),
+        safe(() => getAcreditables(tenantId!, ventana.ventana)),
         safe(() => detectarAnomalias(tenantId!)),
       ])
     : [null, null, null];
 
-  return NextResponse.json({
-    nombre: sesion.nombre,
-    tenantNombre,
-    kpis,
-    acred,
-    anomalias: anomalias?.map((a) => ({ detalle: a.detalle, monto: a.monto })) ?? null,
-  });
+  // TRES SITUACIONES, TRES RESPUESTAS. `null` significaba a la vez "no hay
+  // datos", "no se pudo leer" y "tu rol no ve el dinero", y el rail las
+  // renderizaba idénticas. El motivo viaja discriminado, y una lectura caída
+  // NO se responde con 200: un 200 afirma que la consulta ocurrió.
+  const motivo: 'ok' | 'error' | 'sin-permiso' = !verDinero ? 'sin-permiso' : fallo ? 'error' : 'ok';
+
+  return NextResponse.json(
+    {
+      nombre: sesion.nombre,
+      tenantNombre,
+      // El periodo del que habla el rail, para que `chat.tsx` lo diga en vez de
+      // decir "este periodo" sin saber cuál.
+      periodo: ventana.etiqueta,
+      motivo,
+      kpis,
+      acred,
+      anomalias: anomalias?.map((a) => ({ detalle: a.detalle, monto: a.monto })) ?? null,
+    },
+    // 503 y no 500: es una dependencia que no respondió, y el rail vuelve a
+    // preguntar en la siguiente navegación. El cuerpo va igual —trae el saludo
+    // y el motivo— para que la pieza sepa qué pintar.
+    { status: motivo === 'error' ? 503 : 200 },
+  );
 }

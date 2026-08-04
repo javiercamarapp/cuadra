@@ -9,6 +9,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { cuadrarDesdeDB } from './cuadre/desde_db';
 import { filasImprimibles } from './liquidacion/omitidos';
 import { round2 } from '@/lib/formato';
+import { logger } from '@/lib/logger';
 
 // Los dos bordes de PostgREST (error por valor, y el recorte silencioso a
 // 1,000 filas) viven en `pg.ts` desde que `operacion.ts` los necesitó también.
@@ -33,14 +34,21 @@ export interface DashboardKpis {
  * movía la gráfica de barras — un control de fecha que no cambia los números
  * de abajo enseña a desconfiar del control.
  */
-function corteVentana(ventanaDias?: number, hoy: string = new Date().toISOString().slice(0, 10)): string | null {
+function corteVentana(ventanaDias: number | null, hoy: string = new Date().toISOString().slice(0, 10)): string | null {
   if (!ventanaDias) return null;
   const d = new Date(`${hoy}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - (ventanaDias - 1));
   return d.toISOString();
 }
 
-export async function getKpis(tenantId: string, ventanaDias?: number): Promise<DashboardKpis> {
+/**
+ * `ventanaDias` es OBLIGATORIO y `null` significa "todo el histórico, a
+ * propósito". Era opcional, y cinco de los ocho llamadores lo omitían: la
+ * pantalla rotulaba "del periodo" sobre una consulta sin `.gte('created_at')`
+ * y el rail contestaba otra cifra que la tarjeta de al lado (auditoría 11,
+ * G-10). Con el parámetro obligatorio, omitirlo ya no compila.
+ */
+export async function getKpis(tenantId: string, ventanaDias: number | null): Promise<DashboardKpis> {
   const corte = corteVentana(ventanaDias);
   const rows = await traerTodo<{ total_comprobado: unknown; diferencia: unknown; estatus: unknown; diferencias: unknown }>(
     (desde, hasta) => {
@@ -186,10 +194,19 @@ export async function getLiquidacionesPorDia(
 
 export interface Acreditables {
   /** Litros de diésel elegibles. El estímulo en pesos lo calcula el contador. */
-  litrosDiesel: number; ieps: number; iva: number; peaje: number; }
+  litrosDiesel: number; ieps: number; iva: number; peaje: number;
+  /**
+   * CUÁNTAS liquidaciones entraron en la suma. Sin este dato, "no hay nada que
+   * acreditar todavía" y "hubo 12 liquidaciones y ninguna trajo un XML" se ven
+   * exactamente igual en pantalla —un cero—, y el segundo es un problema que
+   * el contralor puede resolver pidiendo la factura (auditoría 11, G-09).
+   */
+  liquidaciones: number;
+}
 
 /** Suma de estímulos acreditables del periodo (IEPS diésel + IVA + peaje 50%). */
-export async function getAcreditables(tenantId: string, ventanaDias?: number): Promise<Acreditables> {
+/** Mismo contrato que `getKpis`: la ventana se declara, no se omite. */
+export async function getAcreditables(tenantId: string, ventanaDias: number | null): Promise<Acreditables> {
   const corte = corteVentana(ventanaDias);
   const rows = await traerTodo<{ ieps_acreditable: unknown; iva_acreditable: unknown; peaje_acreditable: unknown; litros_diesel_acreditables: unknown }>(
     (desde, hasta) => {
@@ -208,6 +225,7 @@ export async function getAcreditables(tenantId: string, ventanaDias?: number): P
     // El IEPS ya no se presenta en pesos —el estímulo es cuota semanal × litros
     // y esa cuota no la tenemos—, así que lo que se entrega es el dato duro.
     litrosDiesel: round2(rows.reduce((s, r) => s + Number(r.litros_diesel_acreditables ?? 0), 0)),
+    liquidaciones: rows.length,
   };
 }
 
@@ -251,8 +269,13 @@ export interface ValorAhorro {
   documentosProcesados: number;
   /** Liquidaciones que cerró el motor de cuadre. Conteo real. */
   liquidacionesCerradas: number;
-  /** Comprobantes que llegaron sin viaje y el sistema logró amarrar. Real. */
+  /** Comprobantes que llegaron sin viaje y ACABARON en una liquidación
+   *  (`resolucion = 'adjuntado'`). Real. */
   huerfanosResueltos: number;
+  /** Los que el operador rechazó («no era de este viaje»). Se cuentan aparte:
+   *  no están en ninguna liquidación, y sumarlos a los amarrados era la
+   *  mentira del G-41. */
+  huerfanosDescartados: number;
   huerfanosTotales: number;
   /** Acciones de IA por agente (filas de `llm_costo`). Conteo real. */
   accionesPorAgente: Array<{ fase: string; n: number }>;
@@ -275,8 +298,10 @@ export async function getValorAhorro(tenantId: string): Promise<ValorAhorro> {
         .eq('tenant_id', tenantId).order('id').range(desde, hasta),
       'getValorAhorro.liquidacion',
     ),
-    traerTodo<{ resuelto_en: unknown }>(
-      (desde, hasta) => admin.from('comprobante_huerfano').select('resuelto_en')
+    // `resolucion` ('adjuntado' | 'descartado') es la columna que distingue los
+    // dos desenlaces; `resuelto_en` se llena en los dos casos (repo.ts:341).
+    traerTodo<{ resuelto_en: unknown; resolucion: unknown }>(
+      (desde, hasta) => admin.from('comprobante_huerfano').select('resuelto_en, resolucion')
         .eq('tenant_id', tenantId).order('id').range(desde, hasta),
       'getValorAhorro.huerfano',
     ),
@@ -289,8 +314,21 @@ export async function getValorAhorro(tenantId: string): Promise<ValorAhorro> {
 
   const procesados = docs.filter((d) => d.ocr_confianza !== null && d.ocr_confianza !== undefined);
 
+  // MANDAR UN WHATSAPP NO ES UNA ACCIÓN DE IA. `registrarCostoWhatsApp`
+  // (`costos.ts:86-88`) escribe una fila de `llm_costo` por cada mensaje
+  // SALIENTE, con `tokensIn: 0` y `modelo: 'whatsapp-utility'` — es la
+  // contabilidad del costo de la plantilla de Meta, no una llamada a un
+  // modelo. Contándolas, la barra más larga de "Acciones por agente" era
+  // «Agente de WhatsApp», por delante del OCR y del cuadre, y 10 de las 19
+  // "acciones" del tenant del demo no consumieron un token (auditoría 11,
+  // G-41). El costo de esos envíos sigue contándose donde corresponde, en
+  // /admin: lo que no puede es presentarse como trabajo de un agente.
   const porFase = new Map<string, number>();
-  for (const c of costos) porFase.set(c.fase as string, (porFase.get(c.fase as string) ?? 0) + 1);
+  for (const c of costos) {
+    const fase = c.fase as string;
+    if (fase === 'whatsapp') continue;
+    porFase.set(fase, (porFase.get(fase) ?? 0) + 1);
+  }
 
   const porMes = new Map<string, number>();
   for (const d of procesados) {
@@ -305,7 +343,8 @@ export async function getValorAhorro(tenantId: string): Promise<ValorAhorro> {
   return {
     documentosProcesados: procesados.length,
     liquidacionesCerradas: liqs.length,
-    huerfanosResueltos: huerfanos.filter((h) => h.resuelto_en !== null && h.resuelto_en !== undefined).length,
+    huerfanosResueltos: huerfanos.filter((h) => h.resolucion === 'adjuntado').length,
+    huerfanosDescartados: huerfanos.filter((h) => h.resolucion === 'descartado').length,
     huerfanosTotales: huerfanos.length,
     accionesPorAgente: [...porFase.entries()].map(([fase, n]) => ({ fase, n })).sort((a, b) => b.n - a.n),
     acumuladoPorMes,
@@ -690,7 +729,15 @@ async function reconstruir(
         })),
       excluidos: duplicados,
     };
-  } catch {
+  } catch (e) {
+    // La reconstrucción es un EXTRA: si falla, el detalle se sirve sin desglose
+    // y marcado como "puede no sumar". Lo que no puede es desaparecer sin
+    // dejar una línea — el desglose apagado en producción se veía idéntico a
+    // "esta liquidación no tiene deducibilidad" (auditoría 11, G-32).
+    logger.error('lectura.fallida', {
+      contexto: 'analytics.reconstruir',
+      err: e instanceof Error ? e.message : String(e),
+    });
     return null;
   }
 }

@@ -19,34 +19,71 @@ const PREGUNTAS = [
   '¿Cuál es mi tasa de cuadre?',
 ];
 
-function responder(pregunta: string, kpis: DashboardKpis | null, acred: Acreditables | null): string {
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDITORÍA 11 · G-10 y G-25. Dos cosas que este chat no podía decir:
+//
+//  · DE QUÉ PERIODO habla. Decía "este periodo" sobre cifras que el rail traía
+//    sin ventana (el histórico completo), mientras la tarjeta de al lado
+//    mostraba 7 días bajo la MISMA cita de LIVA. Ahora el periodo llega con
+//    los datos y se nombra tal cual ("los últimos 7 días").
+//
+//  · QUE NO PUDO LEER. `null` significaba tres cosas —no hay datos, no se pudo
+//    leer, tu rol no ve el dinero— y las tres contestaban «Todavía no hay
+//    liquidaciones» a un contralor con 40 cerradas. Es la peor de las tres
+//    lecturas: una afirmación falsa sobre su negocio, dicha con aplomo.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Por qué no hay cifras, cuando no las hay. */
+export type MotivoSinDatos = 'error' | 'sin-permiso' | 'vacio';
+
+const SIN_DATOS: Record<MotivoSinDatos, string> = {
+  error: 'No pude leer tus liquidaciones ahora mismo. Eso NO quiere decir que no haya: vuelve a preguntarme en un momento.',
+  'sin-permiso': 'Tu usuario no tiene acceso a las cifras de dinero de la flota.',
+  vacio: 'Todavía no hay liquidaciones para calcular esto.',
+};
+
+/** Exportada para poder probarla: es donde vive la única regla de este
+ *  componente —qué se puede afirmar y qué no— y desde el componente entero no
+ *  se alcanza sin simular un clic. */
+export function responder(
+  pregunta: string,
+  kpis: DashboardKpis | null,
+  acred: Acreditables | null,
+  periodo: string,
+  motivo: MotivoSinDatos,
+): string {
   const q = pregunta.toLowerCase();
+  const nada = SIN_DATOS[motivo];
   if (q.includes('comprobad') || q.includes('monto')) {
-    return kpis ? `Llevas ${mxn(kpis.montoComprobado)} comprobados en ${kpis.viajesLiquidados} viaje${kpis.viajesLiquidados === 1 ? '' : 's'}.` : 'Todavía no hay liquidaciones para calcular esto.';
+    return kpis ? `Llevas ${mxn(kpis.montoComprobado)} comprobados en ${kpis.viajesLiquidados} viaje${kpis.viajesLiquidados === 1 ? '' : 's'} (${periodo}).` : nada;
   }
   if (q.includes('diferencia') || q.includes('revisar')) {
-    return kpis ? `${kpis.conDiferencias + kpis.porRevisar} liquidaciones tienen diferencia o están por revisar, de ${kpis.viajesLiquidados} en total.` : 'Todavía no hay liquidaciones para calcular esto.';
+    return kpis ? `${kpis.conDiferencias + kpis.porRevisar} liquidaciones tienen diferencia o están por revisar, de ${kpis.viajesLiquidados} en total (${periodo}).` : nada;
   }
   if (q.includes('diesel') || q.includes('diésel') || q.includes('litro')) {
-    return acred ? `${litros(acred.litrosDiesel)} elegibles para el estímulo este periodo (LIF 2026, Art. 20-A).` : 'Todavía no hay datos de diésel este periodo.';
+    return acred ? `${litros(acred.litrosDiesel)} elegibles para el estímulo en ${periodo} (LIF 2026, Art. 20-A).` : nada;
   }
   if (q.includes('tasa') || q.includes('cuadre') || q.includes('cuadra')) {
-    return kpis ? `Tu tasa de cuadre es ${kpis.tasaCuadre}% — liquidaciones sin diferencias sobre el total.` : 'Todavía no hay liquidaciones para calcular esto.';
+    return kpis ? `Tu tasa de cuadre es ${kpis.tasaCuadre}% — liquidaciones sin diferencias sobre el total de ${periodo}.` : nada;
   }
   if (q.includes('iva')) {
-    return acred ? `${mxn(acred.iva)} de IVA acreditable este periodo (LIVA, Art. 5).` : 'Todavía no hay datos de IVA este periodo.';
+    return acred ? `${mxn(acred.iva)} de IVA acreditable en ${periodo} (LIVA, Art. 5).` : nada;
   }
   if (q.includes('peaje') || q.includes('caseta')) {
-    return acred ? `${mxn(acred.peaje)} de peaje acreditable (50%) este periodo.` : 'Todavía no hay datos de peaje este periodo.';
+    return acred ? `${mxn(acred.peaje)} de peaje acreditable (50%) en ${periodo}.` : nada;
   }
   return 'Todavía no sé responder eso — pregúntame sobre lo comprobado, diferencias, diésel, IVA, peaje o tu tasa de cuadre.';
 }
 
 export default function ChatFlota({
-  kpis, acred, compacto = false,
+  kpis, acred, periodo = 'todo el histórico', motivo = 'vacio', compacto = false,
 }: {
   kpis: DashboardKpis | null;
   acred: Acreditables | null;
+  /** El periodo del que hablan las cifras, tal como se nombra en pantalla. */
+  periodo?: string;
+  /** Por qué vienen en `null`, cuando vienen en `null`. */
+  motivo?: MotivoSinDatos;
   compacto?: boolean;
 }) {
   const [historial, setHistorial] = useState<Array<{ q: string; a: string }>>([]);
@@ -54,7 +91,7 @@ export default function ChatFlota({
 
   function preguntar(q: string) {
     if (!q.trim()) return;
-    setHistorial((h) => [...h, { q, a: responder(q, kpis, acred) }]);
+    setHistorial((h) => [...h, { q, a: responder(q, kpis, acred, periodo, motivo) }]);
     setTexto('');
   }
 

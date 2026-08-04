@@ -17,14 +17,16 @@ import AvanceCierre from './avance-cierre';
 import { InicioOperacion } from './inicio-operacion';
 import { puedeVerArea } from '@/lib/auth/visibilidad';
 import { sufijoTenant } from './sufijo';
+import { acreditableMedido, notaAcreditable } from './medicion';
+import { resolverVentana } from './ventana';
+import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
 
-/** Resiliencia por sección: si una consulta falla, devuelve null y la
- *  tarjeta muestra un fallback en vez de tirar toda la pantalla. */
-async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
+/** Una sección caída no tira la pantalla: devuelve `null` y la tarjeta
+ *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
+ *  por eso pasa por `safeLog` y no por un `catch` vacío local (G-32). */
+const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/inicio');
 
 function TituloSeccion({ children }: { children: React.ReactNode }) {
   return (
@@ -70,14 +72,13 @@ export async function InicioContenido({
   //
   // Si en el demo el panel abre en ceros con datos existiendo, es esto: se
   // cambia el default de vuelta a '30' en esta línea.
-  const rango = sp?.rango === '30' ? '30' : sp?.rango === 'todo' ? 'todo' : '7';
-  const ventanaDias = rango === '30' ? 30 : 7;
+  //
+  // La resolución vive en `ventana.ts` y no aquí: el rail del Asistente
+  // (`/api/dashboard/asistente`) tiene que contestar sobre EL MISMO periodo que
+  // esta pantalla enseña, o el contralor lee $774.48 en la tarjeta y $4,120.00
+  // en el rail, con el mismo rótulo y la misma cita de LIVA (G-10).
+  const { rango, ventanaDias, ventana } = resolverVentana(sp?.rango);
   const sufijo = sufijoTenant(sp);
-
-  // El filtro de arriba mueve TODO, no solo la gráfica: con 'todo' se pasa
-  // `undefined` (sin corte) y con 7/30 la misma ventana a las tres consultas,
-  // para que los rótulos "del periodo" digan la verdad.
-  const ventana = rango === 'todo' ? undefined : ventanaDias;
   const [acred, kpis, anomalias, porDia, viajes] = await Promise.all([
     safe<Acreditables>(() => getAcreditables(tenantId, ventana)),
     safe<DashboardKpis>(() => getKpis(tenantId, ventana)),
@@ -135,7 +136,7 @@ export async function InicioContenido({
             {/* La barra vive DENTRO de la columna del saludo, no debajo del
                 bloque: así queda al nivel de la cifra grande y se corta antes
                 de ella en vez de pasarle por abajo y estirar el encabezado. */}
-            <AvanceCierre viajes={viajes ?? []} ahoraMs={ahoraMs()} />
+            <AvanceCierre viajes={viajes} ahoraMs={ahoraMs()} />
           </div>
           {/* `CifraGrande`, no el `ContadorRetro` de tiles negros: ese reloj
               Solari es el guiño de la consola INTERNA y ahí se queda. Y no
@@ -143,7 +144,7 @@ export async function InicioContenido({
               cifra dos veces en pantalla— sino lo que el motor SEÑALÓ, que es
               lo único aquí que solo Likida pone sobre la mesa. */}
           <CifraGrande
-            valor={kpis?.diferenciaDetectada ?? 0}
+            valor={kpis ? kpis.diferenciaDetectada : null}
             formato="mxn"
             etiqueta="Señalado por el motor"
             nota={`Sobre política y duplicados · ${etiquetaVentana}`}
@@ -208,7 +209,14 @@ export async function InicioContenido({
                 <TituloSeccion>
                   Liquidaciones cerradas — {rango === 'todo' ? 'histórico' : `últimos ${ventanaDias} días`}
                 </TituloSeccion>
-                <GlobalFilter base="/dashboard" pordefecto="30" activo={rango} extra={sp?.tenant ? { tenant: sp.tenant } : sp?.vista ? { vista: sp.vista } : undefined} />
+                {/* `pordefecto` TIENE que ser el rango que esta misma página
+                    resuelve cuando no hay `?rango=` (la línea del ternario de
+                    arriba): es la única opción que se enlaza sin parámetro.
+                    Decía "30" contra un default de "7", así que el clic en 30d
+                    llevaba a `/dashboard`, la página volvía a leer 7, y el pill
+                    saltaba solo — los 30 días no se alcanzaban desde la
+                    interfaz. Lo vigila `filtro_rango.test.tsx`. */}
+                <GlobalFilter base="/dashboard" pordefecto="7" activo={rango} extra={sp?.tenant ? { tenant: sp.tenant } : sp?.vista ? { vista: sp.vista } : undefined} />
               </div>
               {rango === 'todo' ? (
                 <div className="flex flex-col items-center justify-center" style={{ height: 160 }}>
@@ -234,16 +242,19 @@ export async function InicioContenido({
               {acred === null ? (
                 <div className="card p-4 mt-3 text-sm" style={{ color: 'var(--muted)' }}>No se pudo cargar esta sección.</div>
               ) : (
+                // Las tres pasan por `acreditableMedido`: un cero bajo una cita
+                // de ley se lee como el resultado de aplicar esa ley, y casi
+                // siempre es la ausencia de un XML (ver `medicion.ts`).
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 mt-2.5">
                   <KpiTile icono={<Fuel width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
-                    etiqueta="Diésel elegible para el estímulo" valor={acred.litrosDiesel} formato="litros" destacar
-                    nota="LIF 2026, Art. 20-A — su contador aplica la cuota semanal vigente" />
+                    etiqueta="Diésel elegible para el estímulo" valor={acreditableMedido(acred, 'litrosDiesel')} formato="litros" destacar
+                    nota={notaAcreditable(acred, 'litrosDiesel', 'LIF 2026, Art. 20-A — su contador aplica la cuota semanal vigente')} />
                   <KpiTile icono={<Receipt width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
-                    etiqueta="IVA acreditable" valor={acred.iva} formato="mxn"
-                    nota="LIVA, Art. 5 — CFDI con IVA desglosado" />
+                    etiqueta="IVA acreditable" valor={acreditableMedido(acred, 'iva')} formato="mxn"
+                    nota={notaAcreditable(acred, 'iva', 'LIVA, Art. 5 — CFDI con IVA desglosado')} />
                   <KpiTile icono={<RouteIcon width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
-                    etiqueta="Peaje (50%)" valor={acred.peaje} formato="mxn"
-                    nota="Estímulo de autopistas · LIF 2026, Art. 20-A" />
+                    etiqueta="Peaje (50%)" valor={acreditableMedido(acred, 'peaje')} formato="mxn"
+                    nota={notaAcreditable(acred, 'peaje', 'Estímulo de autopistas · LIF 2026, Art. 20-A')} />
                 </div>
               )}
             </section>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Maximize2, Minimize2, Sparkles } from 'lucide-react';
-import ChatFlota from './chat';
+import ChatFlota, { type MotivoSinDatos } from './chat';
 import type { DashboardKpis, Acreditables } from '@/lib/cuadra/analytics';
 import { mxn } from '@/lib/formato';
 
@@ -15,6 +15,10 @@ const DURACION = '480ms cubic-bezier(0.22, 1, 0.36, 1)';
 interface Datos {
   nombre: string | null;
   tenantNombre: string | null;
+  /** Cómo se llama el periodo del que hablan estas cifras ("los últimos 7 días"). */
+  periodo: string;
+  /** Por qué vienen vacías, cuando vienen vacías (auditoría 11, G-25). */
+  motivo: MotivoSinDatos;
   kpis: DashboardKpis | null;
   acred: Acreditables | null;
   anomalias: Array<{ detalle: string; monto: number }> | null;
@@ -33,6 +37,9 @@ interface Datos {
 export default function RailAsistente() {
   const sp = useSearchParams();
   const tenant = sp.get('tenant');
+  // El rango de la pantalla viaja con la pregunta: el rail tiene que hablar
+  // del MISMO periodo que la tarjeta que está a su izquierda (G-10).
+  const rango = sp.get('rango');
 
   const [expandido, setExpandido] = useState(false);
   const [datos, setDatos] = useState<Datos | null>(null);
@@ -55,17 +62,27 @@ export default function RailAsistente() {
   // tanto se sigue viendo la anterior, que es mejor que un parpadeo a vacío.
   useEffect(() => {
     let vivo = true;
-    fetch(`/api/dashboard/asistente${tenant ? `?tenant=${encodeURIComponent(tenant)}` : ''}`)
-      .then((r) => (r.ok ? r.json() : null))
+    const qs = new URLSearchParams();
+    if (tenant) qs.set('tenant', tenant);
+    if (rango) qs.set('rango', rango);
+    // El cuerpo se lee TAMBIÉN cuando el estado no es 2xx: el handler responde
+    // 503 con el motivo adentro, y descartarlo por `!r.ok` devolvía el rail al
+    // mismo `null` sin explicación que este arreglo retira (G-25).
+    fetch(`/api/dashboard/asistente${qs.toString() ? `?${qs}` : ''}`)
+      .then((r) => r.json().catch(() => null))
       .then((d) => { if (vivo) setDatos(d); })
-      .catch(() => { /* el rail es accesorio: si falla, se queda sin datos, no rompe la página */ })
+      .catch(() => {
+        // Ni siquiera hubo respuesta (red caída): tampoco se puede afirmar nada.
+        if (vivo) setDatos({ nombre: null, tenantNombre: null, periodo: 'el periodo', motivo: 'error', kpis: null, acred: null, anomalias: null });
+      })
       .finally(() => { if (vivo) setCargando(false); });
     return () => { vivo = false; };
-  }, [tenant]);
+  }, [tenant, rango]);
 
   const kpis = datos?.kpis ?? null;
   const acred = datos?.acred ?? null;
   const anomalias = datos?.anomalias ?? null;
+  const motivo: MotivoSinDatos = datos?.motivo ?? 'vacio';
 
 
   return (
@@ -107,9 +124,21 @@ export default function RailAsistente() {
               : `Hola ${datos?.nombre ?? 'de nuevo'}${datos?.tenantNombre ? ` — viendo ${datos.tenantNombre}` : ''}. Pregúntame lo que quieras de tu operación.`}
           </div>
 
+          {/* No se pudo leer: se dice, y no se pinta ningún veredicto. El
+              ternario de abajo caía al recuadro VERDE de "todo bien" cuando el
+              que fallaba era el detector de anomalías — el peor desenlace
+              posible de un fallo del detector de fraude (G-25). */}
+          {motivo === 'error' && (
+            <div className="rounded-lg p-2.5" style={{ background: 'var(--badbg)' }}>
+              <p className="text-[13px] leading-snug" style={{ color: 'var(--bad)' }}>
+                No pude leer las cifras de tu flota. No significa que no haya: significa que no se pudieron leer.
+              </p>
+            </div>
+          )}
+
           {/* Smart Insight — solo con un hallazgo REAL. Un recuadro verde que
               dice "todo bien" cuando no se revisó nada entrena a ignorarlo. */}
-          {anomalias && anomalias.length > 0 ? (
+          {motivo === 'error' ? null : anomalias && anomalias.length > 0 ? (
             <div className="rounded-lg p-2.5" style={{ background: 'color-mix(in srgb, var(--color-ok) 10%, transparent)' }}>
               <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--color-ok)' }}>
                 <Sparkles width={11} height={11} strokeWidth={2} /> Smart Insight
@@ -136,10 +165,10 @@ export default function RailAsistente() {
         style={expandido ? undefined : { borderColor: 'var(--line)' }}>
         {expandido ? (
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-            <ChatFlota kpis={kpis} acred={acred} />
+            <ChatFlota kpis={kpis} acred={acred} periodo={datos?.periodo} motivo={motivo} />
           </div>
         ) : (
-          <ChatFlota kpis={kpis} acred={acred} compacto />
+          <ChatFlota kpis={kpis} acred={acred} periodo={datos?.periodo} motivo={motivo} compacto />
         )}
       </div>
     </aside>

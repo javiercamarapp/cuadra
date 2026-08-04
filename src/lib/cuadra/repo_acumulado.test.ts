@@ -107,3 +107,43 @@ describe('getAcumuladoCombustible contra el max_rows de PostgREST', () => {
     await expect(getAcumuladoCombustible('t1', 2026)).rejects.toThrow(/solo se leyeron 500 de 50000/);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EL NUMERADOR ESTABA CIEGO — auditoría 11, ALTO (G-04).
+//
+// Era `if (g.forma_pago === '01')`. La RFA 2026 regla 2.9 no acota su válvula al
+// efectivo sino a los pagos «con medios distintos» a la lista cerrada de LISR
+// 27-III, y `cuadre/engine.ts` ya lo evaluaba así POR VIAJE desde la ronda 10.
+// El contador del EJERCICIO —el que decide si sale el aviso— seguía contando
+// solo el `01`, así que las dos mitades del producto contestaban distinto sobre
+// el mismo gasto y la ciega era la que hablaba.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('el numerador cuenta lo que la RFA 2.9 cuenta', () => {
+  it('$800,000 por transferencia + $200,000 en PPD («99») son el 20%, no el 0%', async () => {
+    // La flota que carga diésel a crédito en la estación: `MetodoPago = PPD`
+    // obliga a `FormaPago 99`. Salía `efectivo: 0` → `holgado` → aviso `null`.
+    servidor.filas = [
+      { monto: 800_000, forma_pago: '03' },   // transferencia: dentro de la lista
+      { monto: 200_000, forma_pago: '99' },   // por definir: fuera
+    ];
+    const r = await getAcumuladoCombustible('t1', 2026);
+    expect(r.totalCombustible).toBe(1_000_000);
+    expect(r.efectivo, 'el crédito de la estación cuenta contra el tope').toBe(200_000);
+  });
+
+  it('los seis medios de la lista cerrada no suman al numerador', async () => {
+    servidor.filas = ['02', '03', '04', '05', '28', '29'].map((fp) => ({ monto: 1_000, forma_pago: fp }));
+    const r = await getAcumuladoCombustible('t1', 2026);
+    expect(r.efectivo).toBe(0);
+    expect(r.totalCombustible).toBe(6_000);
+  });
+
+  it('sin forma de pago no se supone nada: no cuenta', async () => {
+    // Mismo criterio que el motor: un dato ausente no es un incumplimiento, y
+    // suponerlo inflaría el numerador contra la flota.
+    servidor.filas = [{ monto: 5_000, forma_pago: null }];
+    const r = await getAcumuladoCombustible('t1', 2026);
+    expect(r.efectivo).toBe(0);
+    expect(r.totalCombustible).toBe(5_000);
+  });
+});

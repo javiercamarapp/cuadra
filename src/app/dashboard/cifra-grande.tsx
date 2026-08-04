@@ -23,7 +23,11 @@ import { resolverFormato, type FormatoPreset } from '../admin/ui/formato-preset'
 export default function CifraGrande({
   valor, etiqueta, formato = 'mxn', nota,
 }: {
-  valor: number;
+  /** `null` = no se pudo leer. Se pinta "—", NUNCA un cero: esta cifra vive en
+   *  el encabezado fijo, fuera del condicional de `estadoPanel`, así que con la
+   *  base caída aparecía a 3.25rem diciendo "$0.00" encima del cartel que avisa
+   *  que no se pudo leer nada (auditoría 11, G-11). */
+  valor: number | null;
   etiqueta: string;
   formato?: FormatoPreset;
   /** Segunda línea opcional, aún más discreta (la ventana de tiempo, la base legal). */
@@ -32,8 +36,9 @@ export default function CifraGrande({
   const [ref, enVista] = useInView<HTMLDivElement>();
   const reducido = usePrefersReducedMotion();
   const animar = enVista && !reducido;
-  const mostrado = useCountUp(valor, animar);
+  const mostrado = useCountUp(valor ?? 0, animar);
   const fmt = resolverFormato(formato);
+  const sinDato = valor === null;
 
   return (
     <div ref={ref} className="shrink-0 text-right">
@@ -48,9 +53,12 @@ export default function CifraGrande({
           opacity: enVista || reducido ? 1 : 0,
           transform: enVista || reducido ? 'none' : 'translateY(6px)',
           transition: reducido ? undefined : 'opacity 520ms ease, transform 520ms cubic-bezier(0.22, 1, 0.36, 1)',
+          // Sin dato baja a tinta apagada: una raya en el mismo negro que una
+          // cifra se sigue escaneando como un resultado.
+          color: sinDato ? 'var(--muted)' : undefined,
         }}
       >
-        {fmt(mostrado)}
+        {sinDato ? '—' : fmt(mostrado)}
       </div>
       <div
         className="text-[10px] font-semibold uppercase mt-2 whitespace-nowrap"

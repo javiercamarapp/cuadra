@@ -8,12 +8,14 @@ import { GlobalFilter } from '../../admin/ui/global-filter';
 import { EstadoVacio, ChartCard } from '../../admin/ui/kit';
 import { HBars } from '../../admin/ui/graficas';
 import { BarChartSimple } from '../../admin/charts';
+import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
 
-async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
+/** Una sección caída no tira la pantalla: devuelve `null` y la tarjeta
+ *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
+ *  por eso pasa por `safeLog` y no por un `catch` vacío local (G-32). */
+const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/analitica');
 
 /**
  * Analítica & Reportes (PASO 7) — lo que de verdad se puede graficar y
@@ -38,7 +40,7 @@ export default async function AnaliticaPage({
   // salta solo al hacer clic.
   const rango = sp?.rango === '7' ? '7' : sp?.rango === 'todo' ? 'todo' : '30';
   const ventanaDias = rango === '7' ? 7 : 30;
-  const ventana = rango === 'todo' ? undefined : ventanaDias;
+  const ventana = rango === 'todo' ? null : ventanaDias;
 
   const [kpis, porConcepto, porDia] = await Promise.all([
     safe<DashboardKpis>(() => getKpis(tenantId, ventana)),

@@ -7,14 +7,17 @@ import { etiquetaConcepto } from '@/lib/cuadra/cuadre/engine';
 import { mxn } from '@/lib/utils';
 import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
 import { KpiTile, EstadoVacio, ChartCard } from '../../admin/ui/kit';
+import { acreditableMedido, notaAcreditable } from '../medicion';
 import { HBars } from '../../admin/ui/graficas';
 import { Dona } from '../../admin/charts';
+import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
 
-async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
+/** Una sección caída no tira la pantalla: devuelve `null` y la tarjeta
+ *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
+ *  por eso pasa por `safeLog` y no por un `catch` vacío local (G-32). */
+const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/combustible-casetas');
 
 /**
  * Combustible & Casetas (PASO 11) — el gasto real de `gasto`, agrupado.
@@ -39,7 +42,8 @@ export default async function CombustibleCasetasPage({
 
   const [porConcepto, acred, anomalias, docs] = await Promise.all([
     safe<GastoPorConcepto[]>(() => getGastoPorConcepto(tenantId)),
-    safe<Acreditables>(() => getAcreditables(tenantId)),
+    // El histórico, declarado: esta pantalla no tiene filtro de rango.
+    safe<Acreditables>(() => getAcreditables(tenantId, null)),
     safe<Anomalia[]>(() => detectarAnomalias(tenantId)),
     safe<DocumentoRow[]>(() => getDocumentos(tenantId, 1000)),
   ]);
@@ -80,11 +84,15 @@ export default async function CombustibleCasetasPage({
               <KpiTile icono={<RouteIcon width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
                 etiqueta="Gastado en casetas" valor={caseta?.total ?? 0} formato="mxn"
                 nota={caseta ? `${caseta.n} casetas registradas` : 'Sin casetas registradas todavía'} />
+              {/* `acred` tiene su PROPIA consulta y su propio fallo: el `?? 0`
+                  de antes vivía fuera del guard de `porConcepto`, así que con
+                  `getAcreditables` caído la tarjeta decía "0 L elegibles" al
+                  lado de "31 cargas registradas" que sí se leyeron. */}
               <KpiTile icono={<Fuel width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
-                etiqueta="Litros elegibles para el estímulo" valor={acred?.litrosDiesel ?? 0} formato="litros"
-                nota="LIF 2026, Art. 20-A" />
+                etiqueta="Litros elegibles para el estímulo" valor={acreditableMedido(acred, 'litrosDiesel')} formato="litros"
+                nota={notaAcreditable(acred, 'litrosDiesel', 'LIF 2026, Art. 20-A')} />
               <KpiTile icono={<Receipt width={15} height={15} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />}
-                etiqueta="Sin CFDI (combustible y casetas)" valor={pctSinCfdi ?? 0} formato="porcentaje"
+                etiqueta="Sin CFDI (combustible y casetas)" valor={pctSinCfdi} formato="porcentaje"
                 vacio={pctSinCfdi === null ? 'Sin comprobantes de estos conceptos todavía' : undefined}
                 nota={pctSinCfdi === null ? undefined : `${sinCfdi} de ${combustibleYCasetas.length} sin factura — es deducible que se pierde`} />
             </div>

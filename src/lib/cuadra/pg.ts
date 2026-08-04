@@ -1,3 +1,5 @@
+import { logger } from '@/lib/logger';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // LOS DOS BORDES DE POSTGREST — extraídos de analytics.ts para que el módulo
 // de operación (operacion.ts) no los reimplemente.
@@ -49,4 +51,48 @@ export async function traerTodo<T>(
     if (pag.length < PAGINA) break;
   }
   return filas;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EL TERCER BORDE: el `catch` que la pantalla necesita y el operador no puede
+// pagar.
+//
+// AUDITORÍA 11 · G-32 (CRÍTICO). Quince páginas de /dashboard y el handler del
+// rail definían, byte a byte, la misma función:
+//
+//     async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
+//       try { return await fn(); } catch { return null; }
+//     }
+//
+// De cara al usuario está bien: una sección caída no debe tirar la pantalla
+// entera. De cara a quien opera el sistema es ceguera total — ninguna de esas
+// páginas importaba `@/lib/logger`, así que el fallo desaparecía sin dejar una
+// línea, y en Next.js un `catch` vacío en un Server Component además apaga
+// `onRequestError`. El caso más caro: `cuadre/page.tsx` se comía el `throw`
+// que `getLiquidaciones` hace A PROPÓSITO para no volver a pintar "12 viajes
+// liquidados" con la base caída.
+//
+// Vive aquí y no en un `ui/` porque es el mismo problema que `exigir()` una
+// capa más arriba: un fallo de lectura que se lee como "no hay nada".
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function safeLog<T>(
+  fn: () => Promise<T>,
+  /** Qué se estaba leyendo, para que la línea del log sirva a las 3 a.m.
+   *  ("dashboard/cuadre.liquidaciones"). */
+  contexto: string,
+  /** Aviso opcional al llamador: el handler del rail lo usa para responder
+   *  503 con un motivo en vez de 200 con nulos (G-25). */
+  alFallar?: (e: unknown) => void,
+): Promise<T | null> {
+  try {
+    return await fn();
+  } catch (e) {
+    logger.error('lectura.fallida', {
+      contexto,
+      err: e instanceof Error ? e.message : String(e),
+    });
+    alFallar?.(e);
+    return null;
+  }
 }

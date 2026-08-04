@@ -113,4 +113,42 @@ describe('toda migración está comprobada o exenta a propósito', () => {
     const vacias = Object.entries(EXENTAS).filter(([, razon]) => razon.trim().length < 20);
     expect(vacias.map(([n]) => n), 'estas exenciones no explican por qué').toEqual([]);
   });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // AUDITORÍA 11 · G-51 — DOS ARCHIVOS CON EL MISMO ORDINAL.
+  //
+  // Este archivo identifica una migración por su NÚMERO: `f.slice(0, 4)` y
+  // `new RegExp("\\b" + num + "\\b")`. Mientras los ordinales sean únicos eso
+  // funciona; en cuanto dejan de serlo, todo lo de arriba se vuelve mentira
+  // silenciosa — `\b0046\b` aparece en TITULOS, así que las DOS 0046 cuentan
+  // como comprobadas y la que nadie verificó pasa en verde.
+  //
+  // Y es un riesgo real, no teórico: `master` y el PR #7 numeraron migraciones
+  // DISTINTAS como 0046 y 0047. Los cuatro archivos tienen rutas distintas, así
+  // que git no reporta conflicto y los cuatro aterrizan del merge. Entonces
+  // `supabase db push` aplica por `version` = prefijo numérico: o las de RLS
+  // nunca corren —y el chofer conserva escritura sobre la tabla de identidades
+  // de sus compañeros, con el sistema afirmando que la migración que lo cerraba
+  // ya se aplicó—, o el push se corta a media serie.
+  //
+  // Esta prueba no decide la renumeración (eso es trabajo de merge, humano).
+  // Convierte el riesgo silencioso en un rojo.
+  // ═════════════════════════════════════════════════════════════════════════
+  it('ningún ordinal nombra dos migraciones distintas', () => {
+    const porNumero = new Map<string, string[]>();
+    for (const { num, archivo } of migraciones) {
+      porNumero.set(num, [...(porNumero.get(num) ?? []), archivo]);
+    }
+    const chocados = [...porNumero.entries()]
+      .filter(([, archivos]) => archivos.length > 1)
+      .map(([num, archivos]) => `${num}: ${archivos.join(' + ')}`);
+
+    expect(
+      chocados,
+      'dos migraciones comparten ordinal. `supabase db push` aplica por prefijo numérico, así que una de las dos '
+      + 'no va a correr — y este archivo las daría por comprobadas a las dos, porque busca el número, no el '
+      + `archivo:\n  ${chocados.join('\n  ')}\n\n`
+      + 'Renumera la más nueva a un ordinal libre y actualiza su bloque en supabase/verificaciones.sql.',
+    ).toEqual([]);
+  });
 });

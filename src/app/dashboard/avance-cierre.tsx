@@ -33,10 +33,11 @@ const PERIODOS: Array<{ id: Periodo; label: string; dias: number | null }> = [
  * HTML servido y el primer render del cliente podrían meter un viaje en
  * periodos distintos y React reportaría desajuste de hidratación.
  */
-export default function AvanceCierre({ viajes, ahoraMs }: { viajes: ViajeRow[]; ahoraMs: number }) {
+export default function AvanceCierre({ viajes, ahoraMs }: { viajes: ViajeRow[] | null; ahoraMs: number }) {
   const [periodo, setPeriodo] = useState<Periodo>('mes');
 
   const datos = useMemo(() => {
+    if (viajes === null) return null;
     const cfg = PERIODOS.find((p) => p.id === periodo)!;
     const corte = cfg.dias === null ? null : ahoraMs - cfg.dias * 86_400_000;
 
@@ -64,7 +65,7 @@ export default function AvanceCierre({ viajes, ahoraMs }: { viajes: ViajeRow[]; 
           </span>
           {/* Sin viajes en el periodo NO se pinta 0%: un 0% se lee como "no
               has cerrado nada", que es una acusación. Se dice que no hubo. */}
-          {datos.pct !== null && (
+          {datos !== null && datos.pct !== null && (
             <span className="text-sm font-semibold tabular">{datos.pct}%</span>
           )}
         </div>
@@ -91,18 +92,24 @@ export default function AvanceCierre({ viajes, ahoraMs }: { viajes: ViajeRow[]; 
         <div
           className="h-full rounded-full motion-reduce:transition-none"
           style={{
-            width: `${datos.pct ?? 0}%`,
+            width: `${datos?.pct ?? 0}%`,
             background: 'var(--marca)',
             transition: 'width 620ms cubic-bezier(0.22, 1, 0.36, 1)',
           }}
         />
       </div>
 
+      {/* "No hay viajes iniciados en este periodo" es una AFIRMACIÓN sobre la
+          operación del cliente, y con `viajes ?? []` se hacía también cuando la
+          consulta se cayó: una flota corriendo se leía como una flota parada
+          (auditoría 11, G-11). */}
       <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>
-        {datos.dentro === 0
-          ? 'No hay viajes iniciados en este periodo.'
-          : `${datos.cerrados} de ${datos.dentro} viaje${datos.dentro === 1 ? '' : 's'} iniciado${datos.dentro === 1 ? '' : 's'} ya está${datos.cerrados === 1 ? '' : 'n'} liquidado${datos.cerrados === 1 ? '' : 's'}.`}
-        {datos.sinFecha > 0 && ` ${datos.sinFecha} sin fecha de inicio, fuera del cálculo.`}
+        {datos === null
+          ? 'No se pudo leer el avance de cierre — no significa que no haya viajes.'
+          : datos.dentro === 0
+            ? 'No hay viajes iniciados en este periodo.'
+            : `${datos.cerrados} de ${datos.dentro} viaje${datos.dentro === 1 ? '' : 's'} iniciado${datos.dentro === 1 ? '' : 's'} ya está${datos.cerrados === 1 ? '' : 'n'} liquidado${datos.cerrados === 1 ? '' : 's'}.`}
+        {datos !== null && datos.sinFecha > 0 && ` ${datos.sinFecha} sin fecha de inicio, fuera del cálculo.`}
       </p>
     </div>
   );

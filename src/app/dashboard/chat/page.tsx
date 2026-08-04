@@ -3,12 +3,14 @@ import { getKpis, getAcreditables, type DashboardKpis, type Acreditables } from 
 import { resolverTenantEfectivo } from '@/lib/auth/tenant-efectivo';
 import { EstadoVacio } from '../../admin/ui/kit';
 import ChatFlota from '../chat';
+import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
 
-async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
+/** Una sección caída no tira la pantalla: devuelve `null` y la tarjeta
+ *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
+ *  por eso pasa por `safeLog` y no por un `catch` vacío local (G-32). */
+const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/chat');
 
 /**
  * Chatea con tus datos (PASO 8) — la versión de página completa del mismo
@@ -30,8 +32,10 @@ export default async function ChatPage({
   const { tenantId } = await resolverTenantEfectivo('/dashboard/chat', sp);
 
   const [kpis, acred] = await Promise.all([
-    safe<DashboardKpis>(() => getKpis(tenantId)),
-    safe<Acreditables>(() => getAcreditables(tenantId)),
+    // El histórico, declarado — y `ChatFlota` lo dice en cada respuesta en
+    // vez de hablar de "este periodo" sin saber cuál (auditoría 11, G-10).
+    safe<DashboardKpis>(() => getKpis(tenantId, null)),
+    safe<Acreditables>(() => getAcreditables(tenantId, null)),
   ]);
 
   return (

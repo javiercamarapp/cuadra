@@ -58,12 +58,12 @@ beforeEach(() => {
 describe('la base caída LANZA, no devuelve ceros', () => {
   it('getKpis lanza en vez de devolver 0 viajes liquidados', async () => {
     respuestas.set('liquidacion', { data: null, error: ERROR_RED });
-    await expect(getKpis(TENANT)).rejects.toThrow(/fetch failed/);
+    await expect(getKpis(TENANT, null)).rejects.toThrow(/fetch failed/);
   });
 
   it('getAcreditables lanza en vez de devolver 0 litros', async () => {
     respuestas.set('liquidacion', { data: null, error: ERROR_RED });
-    await expect(getAcreditables(TENANT)).rejects.toThrow(/fetch failed/);
+    await expect(getAcreditables(TENANT, null)).rejects.toThrow(/fetch failed/);
   });
 
   it('detectarAnomalias lanza en vez de devolver "ninguna anomalía"', async () => {
@@ -217,8 +217,8 @@ describe('los renglones del panel son los mismos que los del PDF', () => {
 describe('el cero real sigue siendo cero — no todo error', () => {
   it('un tenant vacío devuelve ceros sin lanzar', async () => {
     respuestas.set('liquidacion', { data: [], error: null });
-    await expect(getKpis(TENANT)).resolves.toMatchObject({ viajesLiquidados: 0, montoComprobado: 0 });
-    await expect(getAcreditables(TENANT)).resolves.toMatchObject({ litrosDiesel: 0, iva: 0, peaje: 0 });
+    await expect(getKpis(TENANT, null)).resolves.toMatchObject({ viajesLiquidados: 0, montoComprobado: 0 });
+    await expect(getAcreditables(TENANT, null)).resolves.toMatchObject({ litrosDiesel: 0, iva: 0, peaje: 0 });
   });
 
   it('una liquidación que NO existe devuelve null (eso sí es notFound)', async () => {

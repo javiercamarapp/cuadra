@@ -13,6 +13,7 @@ import { etiquetaEstatus } from '../estatus';
 import { sufijoTenant } from '../sufijo';
 import { KpiTile, EstadoVacio } from '../../admin/ui/kit';
 import { Gauge } from '../../admin/ui/graficas';
+import { safeLog } from '@/lib/cuadra/pg';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,9 +40,10 @@ async function getLiquidaciones(tenantId: string): Promise<LiqRow[]> {
   }));
 }
 
-async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
+/** Una sección caída no tira la pantalla: devuelve `null` y la tarjeta
+ *  pinta su fallback. Lo que NO puede es desaparecer sin dejar una línea —
+ *  por eso pasa por `safeLog` y no por un `catch` vacío local (G-32). */
+const safe = <T,>(fn: () => Promise<T>) => safeLog(fn, 'dashboard/cuadre');
 
 /**
  * Cuadre / Liquidación — el núcleo real del producto (PASO 18 del
@@ -64,7 +66,11 @@ export default async function CuadrePage({
   const sufijo = sufijoTenant(sp);
 
   const [kpis, liqs, anomalias] = await Promise.all([
-    safe<DashboardKpis>(() => getKpis(tenantId)),
+    // Esta pantalla no tiene filtro de rango: enseña TODO el histórico, y
+    // por eso lo declara con `null` en vez de omitir la ventana. El rótulo
+    // decía "Comprobación del periodo" sobre esta misma consulta sin corte
+    // de fecha (auditoría 11, G-10).
+    safe<DashboardKpis>(() => getKpis(tenantId, null)),
     safe<LiqRow[]>(() => getLiquidaciones(tenantId)),
     safe<Anomalia[]>(() => detectarAnomalias(tenantId)),
   ]);
@@ -84,7 +90,7 @@ export default async function CuadrePage({
       <div className="glass-panel overflow-hidden">
         <section className="p-5">
           <h2 className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>
-            Comprobación del periodo
+            Comprobación — todo el histórico
           </h2>
           {kpis === null ? (
             <div className="card p-4 mt-3 text-sm" style={{ color: 'var(--muted)' }}>No se pudo cargar esta sección.</div>
@@ -114,7 +120,7 @@ export default async function CuadrePage({
                   </h3>
                   <Gauge valor={kpis.tasaCuadre} />
                   <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
-                    Liquidaciones que cerraron sin ninguna diferencia, sobre el total del periodo.
+                    Liquidaciones que cerraron sin ninguna diferencia, sobre el total histórico.
                   </p>
                 </div>
               )}
