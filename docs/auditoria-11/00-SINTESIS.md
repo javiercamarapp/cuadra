@@ -66,7 +66,7 @@ señalando que **#7 está bloqueado esperando una decisión humana**, no otra ro
 
 ---
 
-## Nota global: NOTA_GLOBAL (antes 4.9, ▼DELTA_GLOBAL)
+## Nota global: 3.9 (antes 4.9, ▼1.0)
 
 | Rubro | Aud. 10 | Hoy | | Razón del movimiento |
 |---|:--:|:--:|---|---|
@@ -81,9 +81,9 @@ señalando que **#7 está bloqueado esperando una decisión humana**, no otra ro
 | **Tool calling** | 6 | **5** | ▼1 | **Mirada más profunda** — el código del rubro es byte-idéntico; la regla estructural (`properties: {}`, tres tools, `_args` sin leer) está intacta y verificada. Baja porque 11 de sus 17 hallazgos son reincidentes que nadie cerró aquí. |
 | **Arquitectura** | 6 | **5** | ▼1 | **Deuda que cobró factura** — `permisos.ts` sigue diciendo por escrito que gobierna la API y sigue sin gobernar un solo endpoint; `puedeAdministrar` tiene cero consumidores en todo `src/`. |
 | **Seguridad** | 5 | **5** | = | **Se atacó y subió en un frente, la deuda cobró factura en el otro** — `visibilidad.ts` + `tenant-efectivo.ts` cierran el CRÍTICO nº1 de la ronda 10 (el chofer en `/dashboard`) y la suplantación de tenant del superadmin está bien acotada; el aislamiento **entre flotas** no se rompe por ningún lado. Pero la RLS del chofer sigue cubriendo 3 de 7 tablas. |
-| **Pruebas** | 5 | **PRUEBAS_NOTA** | PRUEBAS_DELTA | PRUEBAS_RAZON |
+| **Pruebas** | 5 | **3** | ▼2 | **Deuda que cobró factura** — 22 mutaciones sobre el código nuevo, **sobrevivieron las 22**; los 5 controles murieron como debían, así que la suite sí corre y sí caza: simplemente no cubre lo nuevo. `tenant-efectivo.ts` —el único chokepoint de autorización de las 20 páginas— está al 0.0% de líneas y sus tres decisiones se borran con la suite verde. |
 
-Suma: SUMA_TOTAL/12 = **NOTA_GLOBAL**.
+Suma: 47/12 = **3.9**.
 
 ### Que baje otra vez no es la misma noticia que la vez pasada
 
@@ -103,8 +103,11 @@ todos ellos siguen vivos.
 
 ## Los hallazgos
 
-**TOTAL_HALLAZGOS verificados** — TOTAL_C CRÍTICOS · TOTAL_A ALTOS ·
-TOTAL_M MEDIOS · TOTAL_B BAJOS. **1 descartado por falso.**
+**164 hallazgos reportados por los doce auditores** — 26 CRÍTICOS · 51 ALTOS ·
+59 MEDIOS · 28 BAJOS. Al deduplicar por causa raíz y archivo quedan **63 grupos
+únicos**: el mismo defecto lo reporta más de un rubro con nombres distintos (el
+rail del asistente lo levantaron backend Y seguridad, y es uno solo).
+**1 descartado por falso.**
 
 ### Cerrado con prueba que lo reproduce
 
