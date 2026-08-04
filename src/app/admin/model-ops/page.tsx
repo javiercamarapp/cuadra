@@ -1,6 +1,6 @@
 import { getResumenNegocio, getCostoPorFaseModelo } from '@/lib/admin/negocio';
 import { usd } from '@/lib/formato';
-import { Settings2, ScanText, Calculator, Smartphone } from 'lucide-react';
+import { Settings2 } from 'lucide-react';
 import { Dona } from '../charts';
 import { ChartCard, EstadoVacio } from '../ui/kit';
 import { HBars } from '../ui/graficas';

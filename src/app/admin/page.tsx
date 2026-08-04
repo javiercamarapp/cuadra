@@ -20,19 +20,6 @@ export const dynamic = 'force-dynamic';
 // —y la que le daba nombre a la dona de esta pantalla—; `FASE_ICONO` ni
 // siquiera se usaba. Auditoría 11 (arquitectura, G-46).
 
-/** Insignia monocromo — badge cuadrado con un ícono lucide adentro, sustituye
- *  todos los emoji que había antes (🚛💵🧮✅ etc.): mismas tonalidades de
- *  marca (blanco/negro/gris), nunca color. */
-function Insignia({ Icono, tamaño = 'md' }: { Icono: typeof Truck; tamaño?: 'sm' | 'md' }) {
-  const box = tamaño === 'sm' ? 'w-8 h-8' : 'w-9 h-9';
-  const icon = tamaño === 'sm' ? 15 : 17;
-  return (
-    <div className={`${box} rounded-lg flex items-center justify-center shrink-0`} style={{ background: 'var(--surface)', border: '1px solid var(--line)' }}>
-      <Icono width={icon} height={icon} strokeWidth={1.75} style={{ color: 'var(--marca)' }} />
-    </div>
-  );
-}
-
 /** Título de sección — SIEMPRE vive DENTRO de un `.glass-panel` (nunca
  *  suelto sobre el fondo oscuro): así el gris de `--muted` se lee bien
  *  porque está sobre la superficie blanca del panel, no sobre la imagen

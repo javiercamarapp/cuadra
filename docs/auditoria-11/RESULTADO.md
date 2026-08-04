@@ -39,7 +39,7 @@ sin agentes corriendo (`503dde9`).
 ```
 $ npx vitest run        → exit 0 · 269 archivos · 2530 pruebas · 1 saltada
 $ npx tsc --noEmit      → exit 0
-$ npm run lint          → exit 0 · 4 warnings
+$ npm run lint          → exit 0 · CERO warnings
 $ npm run test:coverage → exit 0 · líneas 84.19% · funciones 85.03%
 $ git status            → limpio
 ```
