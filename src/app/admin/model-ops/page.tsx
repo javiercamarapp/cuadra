@@ -4,6 +4,7 @@ import { Settings2, ScanText, Calculator, Smartphone } from 'lucide-react';
 import { Dona } from '../charts';
 import { ChartCard, EstadoVacio } from '../ui/kit';
 import { HBars } from '../ui/graficas';
+import { etiquetaFase, FASES } from '../fases';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,17 +27,7 @@ function TituloSeccion({ children }: { children: React.ReactNode }) {
   );
 }
 
-const FASE_LABEL: Record<string, string> = { ocr: 'Agente OCR', cuadre: 'Agente de Cuadre', whatsapp: 'Agente de WhatsApp' };
 
-/** Las TRES fases reales del pipeline — en ese orden, porque es el orden en
- *  el que de verdad corren para cada viaje. No hay una cuarta fase, ni un
- *  "crear agente nuevo": Likida no tiene tool-calling configurable, son
- *  pasos fijos en código. */
-const FASES = [
-  { fase: 'ocr', nombre: 'Agente OCR', Icono: ScanText, queHace: 'Lee la foto de un comprobante (diésel, caseta, factura) y extrae monto, folio y CFDI.' },
-  { fase: 'cuadre', nombre: 'Agente de Cuadre', Icono: Calculator, queHace: 'Compara los gastos ya capturados contra el anticipo y la política de la flota.' },
-  { fase: 'whatsapp', nombre: 'Agente de WhatsApp', Icono: Smartphone, queHace: 'Lleva la conversación con el operador de principio a fin: recibe fotos, confirma y cierra la liquidación.' },
-] as const;
 
 /**
  * Model Ops — registro real de las 3 fases fijas del pipeline de Likida, no
@@ -105,7 +96,7 @@ export default async function ModelOpsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
             <ChartCard titulo="Costo por fase" tamano="L">
               {r.porFase.length > 0 ? (
-                <Dona segmentos={r.porFase.map((f) => ({ etiqueta: FASE_LABEL[f.fase] ?? f.fase, valor: f.costoUsd }))} />
+                <Dona segmentos={r.porFase.map((f) => ({ etiqueta: etiquetaFase(f.fase), valor: f.costoUsd }))} />
               ) : (
                 <div className="flex items-center h-full text-sm" style={{ color: 'var(--muted)' }}>Todavía no hay actividad de IA registrada.</div>
               )}

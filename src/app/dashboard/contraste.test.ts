@@ -14,6 +14,20 @@ import { fileURLToPath } from 'node:url';
 // Esta prueba lee `globals.css` y mide los tres tokens con significado en los
 // dos modos. Un token nuevo con mal contraste, o un cambio de paleta que rompa
 // uno viejo, falla aquí y no en la sala con el proyector encendido.
+//
+// AUDITORÍA 10 (frontend), MEDIO REINCIDENTE Y AGRAVADO — su encabezado decía
+// «los tres tokens con significado» y medía DOS: `--color-ok` y `--color-bad`.
+// El tercero, `--color-warn`, se quedó fuera de la lista y por eso sobrevivió
+// dos rondas en `#ff9f0a`: 2.06:1 sobre blanco y 1.99:1 sobre `--bg`, cuando AA
+// pide 4.5:1 para texto normal y 3:1 hasta para texto grande. Se pinta como
+// TINTA en `text-xs` (`aviso/[tenant]/page.tsx:119`, el renglón que le avisa al
+// operador que su flota no capturó a quién reclamarle sus derechos ARCO) y
+// también como tinta de la fila «Por confirmar» del desglose de deducibilidad.
+//
+// Y empeoró: el 2-ago el defecto «solo existía de día», porque el bloque
+// `@media (prefers-color-scheme: dark)` daba 8.76:1. Ese bloque se eliminó y no
+// hay switch manual, así que el modo claro dejó de ser el peor caso para ser el
+// ÚNICO caso. La lista de tokens medidos es ahora la lista completa.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const CSS = readFileSync(
@@ -71,10 +85,28 @@ describe('modo claro: lo que se proyecta en la sala', () => {
     expect(contraste(bad, SUPERFICIE)).toBeGreaterThanOrEqual(AA_TEXTO);
   });
 
+  it('--color-warn pasa AA como TINTA (era 1.99:1 sobre --bg: el texto menos legible del aviso)', () => {
+    // No es un adorno: es la tinta del renglón que le dice al operador que su
+    // flota no capturó el contacto de derechos ARCO, en `text-xs`, en el
+    // celular, a plena luz. Y la de la fila «Por confirmar» del desglose.
+    // Se mide el valor que HOY se sirve —el del `@theme`, porque nadie pone
+    // `data-theme`— y también el del bloque claro, para que el día que exista
+    // el switch los dos digan lo mismo.
+    for (const bloque of ['@theme', ':root[data-theme="light"]']) {
+      const warn = token(bloque, '--color-warn');
+      expect(contraste(warn, SUPERFICIE), `${bloque} sobre --surface`).toBeGreaterThanOrEqual(AA_TEXTO);
+      expect(contraste(warn, FONDO), `${bloque} sobre --bg`).toBeGreaterThanOrEqual(AA_TEXTO);
+    }
+  });
+
   it('el default del tema (@theme) es el mismo que el del bloque claro', () => {
     // Si divergen, quien no fuerza `data-theme` ve un color distinto del medido.
+    // Y hoy NADIE pone `data-theme`: el default del `@theme` es lo único que se
+    // sirve, así que un override claro correcto con un default roto no arregla
+    // ni un píxel. Por eso los tres tokens se comparan, no solo los dos viejos.
     expect(token('@theme', '--color-ok')).toBe(token(':root[data-theme="light"]', '--color-ok'));
     expect(token('@theme', '--color-bad')).toBe(token(':root[data-theme="light"]', '--color-bad'));
+    expect(token('@theme', '--color-warn')).toBe(token(':root[data-theme="light"]', '--color-warn'));
   });
 });
 
@@ -89,6 +121,11 @@ describe('modo oscuro: el mismo token, el otro color', () => {
   it('--color-bad pasa AA sobre superficie oscura', () => {
     const bad = token(':root[data-theme="dark"]', '--color-bad');
     expect(contraste(bad, SUPERFICIE)).toBeGreaterThanOrEqual(AA_TEXTO);
+  });
+
+  it('--color-warn pasa AA sobre superficie oscura', () => {
+    const warn = token(':root[data-theme="dark"]', '--color-warn');
+    expect(contraste(warn, SUPERFICIE)).toBeGreaterThanOrEqual(AA_TEXTO);
   });
 
   it('cada modo tiene SU verde: sin override, el del otro modo reprueba', () => {

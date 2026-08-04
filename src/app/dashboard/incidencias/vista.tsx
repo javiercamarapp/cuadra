@@ -78,13 +78,13 @@ export function TablaIncidencias({
       <table className="w-full text-sm">
         <thead>
           <tr style={{ color: 'var(--muted)' }} className="text-left">
-            <th className="px-5 py-2.5 font-medium">Tipo</th>
-            <th className="px-5 py-2.5 font-medium">Viaje</th>
-            <th className="px-5 py-2.5 font-medium">Unidad</th>
-            <th className="px-5 py-2.5 font-medium">Descripción</th>
-            <th className="px-5 py-2.5 font-medium">Prioridad</th>
-            <th className="px-5 py-2.5 font-medium">Reloj</th>
-            <th className="px-5 py-2.5 font-medium">Estado</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Tipo</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Viaje</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Unidad</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Descripción</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Prioridad</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Reloj</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Estado</th>
           </tr>
         </thead>
         <tbody>

@@ -52,10 +52,10 @@ export function TablaSinAsignar({
       <table className="w-full text-sm">
         <thead>
           <tr style={{ color: 'var(--muted)' }} className="text-left">
-            <th className="px-5 py-2.5 font-medium">Folio</th>
-            <th className="px-5 py-2.5 font-medium">Ruta</th>
-            <th className="px-5 py-2.5 font-medium">Inicio</th>
-            <th className="px-5 py-2.5 font-medium">Asignar a</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Folio</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Ruta</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Inicio</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Asignar a</th>
           </tr>
         </thead>
         <tbody>
@@ -112,12 +112,12 @@ export function TablaCarga({ carga }: { carga: CargaOperador[] }) {
       <table className="w-full text-sm">
         <thead>
           <tr style={{ color: 'var(--muted)' }} className="text-left">
-            <th className="px-5 py-2.5 font-medium">Operador</th>
-            <th className="px-5 py-2.5 font-medium">Carga</th>
-            <th className="px-5 py-2.5 font-medium text-right">En curso</th>
-            <th className="px-5 py-2.5 font-medium text-right">Sin POD</th>
-            <th className="px-5 py-2.5 font-medium text-right">Incidencias</th>
-            <th className="px-5 py-2.5 font-medium">Estado</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Operador</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Carga</th>
+            <th scope="col" className="px-5 py-2.5 font-medium text-right">En curso</th>
+            <th scope="col" className="px-5 py-2.5 font-medium text-right">Sin POD</th>
+            <th scope="col" className="px-5 py-2.5 font-medium text-right">Incidencias</th>
+            <th scope="col" className="px-5 py-2.5 font-medium">Estado</th>
           </tr>
         </thead>
         <tbody>

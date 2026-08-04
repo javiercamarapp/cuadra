@@ -6,17 +6,31 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
 import { getSessionTenant } from '@/lib/auth/session';
+import { logger } from '@/lib/logger';
+import { destinoSeguro } from '@/lib/auth/destino';
+import { revertirAltaEspontanea } from '@/lib/auth/autoregistro';
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
   const next = req.nextUrl.searchParams.get('next');
-  const destinoExplicito = next && next.startsWith('/dashboard') ? next : null;
+  // `null` cuando no vino un `next` utilizable: el superadmin sin destino
+  // explícito aterriza en SU consola, no en el panel del tenant demo.
+  const destinoExplicito = next && destinoSeguro(next) === next ? next : null;
 
   if (code) {
     try {
       const sb = await supabaseServer();
       const { error } = await sb.auth.exchangeCodeForSession(code);
       if (!error) {
+        // «Nadie se da de alta solo» — la mitad que faltaba. El camino del
+        // correo lo cierra `shouldCreateUser:false` en `login/page.tsx`; el
+        // botón de Google no tiene equivalente porque `signInWithOAuth` no
+        // acepta esa bandera, así que hasta aquí lo único que lo impedía era
+        // una casilla del dashboard de Supabase (auditoría 10, MEDIO de
+        // seguridad). Este es el único punto por el que pasan los DOS caminos.
+        if (await revertirAltaEspontanea()) {
+          return NextResponse.redirect(new URL('/sin-acceso', req.url));
+        }
         // Sin `next` explícito, superadmin aterriza en SU consola (/admin),
         // no en el panel del tenant demo — antes de esto no tenía a dónde
         // ir que fuera suyo. Un `next` explícito (un link a /dashboard/[id]
@@ -28,11 +42,27 @@ export async function GET(req: NextRequest) {
         }
         return NextResponse.redirect(new URL(dest, req.url));
       }
-    } catch {
+      // NUNCA el `code` ni el correo: el primero es una credencial de un solo
+      // uso y el segundo es dato personal. El código y el status de Supabase
+      // bastan para distinguir un link caducado de una config rota.
+      logger.error('auth.callback_intercambio', {
+        code: (error as { code?: string }).code,
+        status: (error as { status?: number }).status,
+        msg: error.message,
+      });
+    } catch (e) {
       // Fallo inesperado del SDK o supabaseServer() — cae al mismo fallback
       // para evitar que un error raro se vuelva un 500 genérico en la pantalla
-      // de login más importante
+      // de login más importante. Pero NO callado: un `catch` vacío además le
+      // impide a `onRequestError` verlo, así que Sentry tampoco se enteraba
+      // (auditoría 10, CRÍTICO de operabilidad).
+      logger.error('auth.callback_excepcion', { err: e instanceof Error ? e.message : String(e) });
     }
+  } else {
+    // Sin `code` no hay nada que intercambiar. Se registra porque es el
+    // síntoma de un link mal formado o de un `emailRedirectTo` equivocado —
+    // exactamente lo que un deploy sin `NEXT_PUBLIC_APP_URL` produce.
+    logger.warn('auth.callback_sin_code', {});
   }
   return NextResponse.redirect(new URL('/login?error=1', req.url));
 }

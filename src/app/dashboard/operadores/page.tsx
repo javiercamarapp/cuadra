@@ -98,13 +98,13 @@ export default async function OperadoresPage({
                 <table className="w-full text-sm">
                   <thead>
                     <tr style={{ color: 'var(--muted)' }} className="text-left">
-                      <th className="px-5 py-2.5 font-medium">Operador</th>
-                      <th className="px-5 py-2.5 font-medium">Teléfono</th>
-                      <th className="px-5 py-2.5 font-medium text-right">Viajes</th>
-                      <th className="px-5 py-2.5 font-medium text-right">Anticipo</th>
-                      <th className="px-5 py-2.5 font-medium text-right">Comprobado</th>
-                      <th className="px-5 py-2.5 font-medium text-right">% comprobado</th>
-                      <th className="px-5 py-2.5 font-medium">Estado</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium">Operador</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium">Teléfono</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium text-right">Viajes</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium text-right">Anticipo</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium text-right">Comprobado</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium text-right">% comprobado</th>
+                      <th scope="col" className="px-5 py-2.5 font-medium">Estado</th>
                     </tr>
                   </thead>
                   <tbody>

@@ -5,13 +5,10 @@ import { AreaChartSimple, Dona, BarChartSimple } from '../charts';
 import ContadorRetro from '../contador-retro';
 import { IconoProveedor } from '../proveedor-icono';
 import { ChartCard, EstadoVacio } from '../ui/kit';
+import { etiquetaFase } from '../fases';
 
 export const dynamic = 'force-dynamic';
 
-const FASE_LABEL: Record<string, string> = {
-  ocr: 'Agente OCR', cuadre: 'Agente de Cuadre', escalacion: 'Agente de Escalación',
-  chat: 'Agente de Chat', router: 'Agente Router', whatsapp: 'Agente de WhatsApp',
-};
 
 /**
  * Analítica & Stats — el explorador de BI de /admin: mismos datos que
@@ -70,7 +67,7 @@ export default async function AnaliticaPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {r.porFase.length > 0 ? (
               <ChartCard titulo="Costo por fase" tamano="S">
-                <Dona segmentos={r.porFase.map((f) => ({ etiqueta: FASE_LABEL[f.fase] ?? f.fase, valor: f.costoUsd }))} />
+                <Dona segmentos={r.porFase.map((f) => ({ etiqueta: etiquetaFase(f.fase), valor: f.costoUsd }))} />
               </ChartCard>
             ) : (
               <ChartCard titulo="Costo por fase" tamano="S">

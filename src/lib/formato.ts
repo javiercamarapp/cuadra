@@ -158,3 +158,25 @@ export function fechaMx(iso?: string | null): string {
     timeZone: soloFecha ? 'UTC' : TZ_MX,
   });
 }
+
+/**
+ * La fecha en prosa del encabezado: «lunes, 3 de agosto de 2026».
+ *
+ * NO es `fechaMx()`: esa imprime la fecha FISCAL («03 ago 2026»), la que el
+ * contralor cruza contra su PDF. Esta lleva día de la semana y mes completo,
+ * y solo sirve para saludar — otro trabajo, otro formato.
+ *
+ * Vivía en `lib/saludo.ts` con el argumento de que `formato.ts` no importa
+ * nada a propósito (lo usan el motor puro y el bundle del webhook). El
+ * argumento no aplicaba: esta función tampoco importa nada, y ya usaba
+ * `TZ_MX` DE AQUÍ. Lo que sí hacía era ser la segunda declaración de
+ * `toLocaleDateString('es-MX')` del repo, que es exactamente lo que la regla
+ * del proyecto prohíbe y lo que `dashboard/formato.test.ts` vigila: una cifra
+ * o una fecha que se lee distinto en dos pantallas se lee como dos cálculos.
+ * Auditoría 11.
+ */
+export function fechaLarga(fecha: Date = new Date()): string {
+  return fecha.toLocaleDateString('es-MX', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: TZ_MX,
+  });
+}
