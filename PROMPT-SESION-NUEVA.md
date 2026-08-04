@@ -247,3 +247,40 @@ que el último panel siempre cierre, pero eso no da el encabezado fijo.
 
 No se puede resolver desde `marco.ts`: cada página decide qué parte suya es
 encabezado. Hay que ir una por una. Empieza por las que Javier usa en el demo.
+
+---
+
+## BUG ABIERTO — el recuadro central no alinea con el sidebar ni el asistente
+
+**Empieza por esto: Javier lo reportó cuatro veces y sigue mal.** Se ve en su
+captura del 3-ago 23:39: el sidebar (izquierda) y el asistente (derecha)
+terminan en una línea, y la columna del centro baja más y se corta en recto.
+
+Los tres declaran la MISMA altura en `src/app/marco.ts`:
+
+```
+MARCO_FILA      min-h-dvh flex items-start gap-4 p-4
+MARCO_SIDEBAR   ... h-[calc(100dvh-2rem)] sticky top-4
+MARCO_COLUMNA   flex-1 min-w-0 h-[calc(100dvh-2rem)] rounded-2xl overflow-hidden
+MARCO_SCROLL    h-full overflow-y-auto pb-3      (hijo de la columna)
+MARCO_ASISTENTE sticky self-start h-[calc(100dvh-2rem)]
+```
+
+Sobre el papel cuadran. Hipótesis a descartar EN ESE ORDEN:
+
+1. **La sombra del `.glass-panel`** (`0 24px 48px -20px`) del último panel de la
+   página: el `overflow-hidden` de la columna la recorta en recto y eso se ve
+   como un corte, aunque la caja sí termine donde debe.
+2. El sidebar y el asistente son `sticky`; la columna NO. Si la fila llega a
+   ser más alta que el viewport por cualquier razón, los dos primeros se
+   quedan y el tercero se va.
+3. `min-h-dvh` + `p-4` con `box-sizing: border-box` contra los hijos en
+   `calc(100dvh-2rem)`: comprobar en el navegador, no sobre el papel.
+
+**No lo arregles a ciegas.** Entra con sesión real a `/admin` y a
+`/dashboard`, mide las tres cajas con las herramientas del navegador y confirma
+CUÁL baja de más. Tres intentos anteriores fallaron por asumir la causa.
+
+Lo que Javier quiere, en sus palabras: que el recuadro blanco no se corte, que
+cierre con los lados curvos, que scrollee adentro, y que esté alineado con los
+otros dos.
