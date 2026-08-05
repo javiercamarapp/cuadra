@@ -1,151 +1,110 @@
-# Mapa del repo — para los auditores (ronda 11, 4-ago-2026)
+# Mapa del repo — para los auditores (ronda 11, **PASE 2**, 5-ago-2026)
 
 Repo: `javiercamarapp/cuadra`. Producto: **Likida**, liquidación de viajes por
 WhatsApp para flotas de autotransporte federal de carga en México.
-Pre-revenue, sin clientes. Demo **6-ago-2026 (en 2 días)** con Transportes
+Pre-revenue, sin clientes. Demo **6-ago-2026 (MAÑANA)** con Transportes
 Innovativos. El comprador es el **contralor** de la flota. Un error que el
 contralor vea en la sala cuesta el trato.
 
 ---
 
-## LEE ESTO PRIMERO: AUDITAS `master`, Y `master` NO TIENE LOS ARREGLOS
+## LEE ESTO PRIMERO: auditas la rama del PR #8, con los arreglos ya dentro
 
-Esta es la circunstancia que define la ronda, y si no la entiendes vas a
-reportar como "ya arreglado" cosas que están abiertas.
+Esta es una **ronda de continuación**. El pase 1 (4-ago) corrió sobre `master`
+y encontró 63 grupos únicos de hallazgos; **49 se cerraron con prueba sobre
+esta misma rama** (`claude/auditoria-11`, PR #8, abierto y sin mergear).
 
-La **auditoría 10** (3-ago) corrió sobre la rama `claude/auditoria-10`, cerró
-**96 de 105 hallazgos con prueba** en 99 commits, y quedó en el **PR #7,
-abierto y sin mergear**. Mientras tanto `master` avanzó **40 commits por su
-cuenta**. Las dos ramas divergieron:
+Auditas **`claude/auditoria-11`**, no `master`. Diferencia contra el pase 1:
+**277 archivos cambiados, +18,531 / −1,846 líneas** entre `50e3047` (cuando se
+escribieron los reportes del pase 1) y el HEAD de hoy. Los reportes del pase 1
+describen un árbol que ya no existe: **tu trabajo es medir el de hoy.**
 
-```
-$ git log --oneline origin/master..claude/auditoria-10 | wc -l
-372          # los arreglos de la auditoría 10 — NINGUNO está en master
-$ git log --oneline claude/auditoria-10..origin/master | wc -l
-40           # trabajo nuevo de producto — NINGUNO fue auditado nunca
-```
+Tu reporte del pase 1 vive en `docs/auditoria-11/<tu-rubro>-pase1.md`. Es tu
+mejor insumo, pero está **caducado por construcción**:
 
-**Estás auditando `master`**, que es lo que Vercel despliega a producción y lo
-que se va a demostrar el 6-ago. Verificado a mano sobre este árbol:
+1. Toma tus hallazgos del pase 1 y **verifícalos uno por uno contra el código
+   de hoy**. Las líneas se movieron mucho.
+2. Los que siguen ahí van como **REINCIDENTE**. Es lo que impide que la nota
+   suba por prosa.
+3. Los que ya no están, dilo con la línea de hoy que lo demuestra. Es lo que
+   justifica subir la nota.
+4. Pasa el resto del tiempo en lo que **nadie ha mirado**: el código de los 11
+   commits de arreglo y los 132 archivos que llegaron del PR #7.
 
-- `src/lib/auth/destino.ts` — **no existe** (lo creó la auditoría 10).
-- `src/app/login/acciones.ts` — **no existe** (idem).
-- `src/lib/auth/session.ts:33` — el `select` trae `operador_id, avatar_url` de
-  un solo golpe y **no tiene** el reintento `esColumnaAusente` que la auditoría
-  10 metió para su CRÍTICO de modelo de datos.
+### La trampa documentada del pase 1 — no vuelvas a caer
 
-**Consecuencia práctica para ti:** casi todo lo que `docs/auditoria-10/<tu
-rubro>.md` reporta sigue **abierto en este árbol**. Ese archivo es tu mejor
-insumo: son 105 hallazgos ya verificados contra el código, con `archivo:línea`.
-Tu trabajo con ellos es **verificar cuáles siguen presentes aquí** (las líneas
-se movieron: `master` reestructuró `/dashboard`) y reportarlos **REINCIDENTE**.
-No los des por cerrados porque el PR #7 diga que los cerró: el PR no está
-mergeado.
+Cerrando el pase 1 se descubrió que **el merge del PR #7 trajo la prosa, no el
+borrado ni el uso**: `login/page.tsx` conservaba copias *inline* de los server
+actions y montaba ESAS en los `<form>`, mientras la suite medía las de
+`acciones.ts`. **La versión que corre no siempre es la que la suite mide.**
 
-No repitas el texto de la auditoría 10 palabra por palabra. Confirma presencia
-con `archivo:línea` de HOY y pasa a lo que nadie ha mirado.
+Consecuencia para ti: que exista un archivo con el arreglo **no prueba que el
+arreglo esté en el camino que corre**. Sigue la cadena de llamada hasta el
+consumidor real antes de dar algo por cerrado. Esto vale doble en `dashboard/`,
+`login/` y `lib/auth/`, donde dos refactors independientes se fusionaron.
 
-### El PR #7 no se puede mergear tal cual (dato verificado, no lo re-audites)
+### Lo que sí quedó intacto y es riesgo vivo
 
-```
-$ git merge origin/master        # sobre claude/auditoria-10
-CONFLICT … 14 archivos, 28 hunks
-```
-
-Y las dos ramas usan **los mismos ordinales de migración para cosas distintas**:
-
-| Ordinal | `master` | rama del PR #7 |
-|---|---|---|
-| 0046 | `0046_perfil_avatar.sql` | `0046_rls_operador_resto.sql` |
-| 0047 | `0047_operacion_encargado.sql` | `0047_rls_operador_tenant.sql` |
-
-La rama llega hasta `0053`. Esto ya está reportado al dueño y **no es materia
-de tu rubro** — salvo que seas *modelo de datos* o *arquitectura*, donde sí
-cuenta como riesgo de esquema que hay que dimensionar.
+`supabase/migrations/` **no se tocó**: sigue en `0047`. Las dos migraciones de
+RLS que el PR #7 traía (`0046_rls_operador_resto.sql`,
+`0047_rls_operador_tenant.sql`) **no están aquí** — sus ordinales chocan con
+`0046_perfil_avatar.sql` y `0047_operacion_encargado.sql` de `master`. Una base
+que ya aplicó las de `master` se saltaría las de RLS en silencio y quedaría
+"totalmente migrada" sin ellas. Dato verificado; **no lo re-audites salvo que
+seas *modelo de datos*, *seguridad* o *arquitectura***, donde sí cuenta.
 
 ---
 
-## LO QUE NADIE HA AUDITADO NUNCA: los 40 commits de `master`
+## Los 11 commits de arreglo de esta rama — lo que hay que ejercer
 
-Aquí está el grueso del riesgo nuevo de esta ronda. Son ~9,700 líneas.
+```
+707c749 chore(admin): cero warnings — se retira código muerto del desduplicado
+503dde9 fix: cierre de los cinco pendientes cruzados entre dominios [A11-G13/G32/G47/G52]
+992045b fix(dashboard): el panel deja de afirmar cifras que nunca midió [A11-D1]
+832220f fix(dashboard): punto de control verde del dominio D1
+c4358fa fix(operacion): las siete escrituras del encargado dejan de tumbar la pantalla [A11-D5]
+e305a08 fix(whatsapp): el «va» de hoy dejaba de adjuntar los comprobantes de ayer [A11-D4]
+489ff54 fix(auth): las rutas de export dejan de autenticar sin autorizar [A11-D3]
+bc7fc86 fix(admin): el teléfono del operador sale de /admin, y la cobertura desbloquea el CI [A11-D6]
+0492635 fix(fiscal): el IVA por WhatsApp deja de afirmar lo que el PDF condiciona [A11-G05/G08]
+2e332ae fix: los guardarraíles del PR #7 cazaron cuatro defectos de master
+989ca62 fix: se traen a master los arreglos de la ronda 10 que no chocan (132 archivos)
+2fb1982 fix(api): el rail no entrega el dinero de la flota a quien no puede verlo [A11-BE-1/SEC-1]
+```
 
-### Bloque A — el panel del encargado y la operación (lo más grande)
-
-- `src/lib/cuadra/operacion.ts` (**567 líneas nuevas**) — lecturas y escrituras
-  del encargado: carga por chofer, unidades, incidencias, POD.
-  `src/lib/cuadra/operacion.test.ts` (329 líneas) es su única red.
-- `supabase/migrations/0047_operacion_encargado.sql` (191 líneas) — tablas
-  `unidad`, `mantenimiento`, `incidencia`, `pod`. **Escrita sin base contra la
-  cual ejercerla** (aquí no hay Supabase).
-- `supabase/migrations/0046_perfil_avatar.sql` — avatar de perfil, y
-  `src/app/admin/mi-perfil/avatar-uploader.tsx` (subida de archivo del usuario).
-- Páginas nuevas del panel: `dashboard/despacho`, `dashboard/incidencias`,
-  `dashboard/pod`, `dashboard/unidades`.
-
-### Bloque B — visibilidad por rol, reescrita
-
-- `src/lib/auth/visibilidad.ts` (139 líneas) + `visibilidad.test.ts` (120) — el
-  `encargado` deja de ver las finanzas de la flota.
-- `src/lib/auth/tenant-efectivo.ts` (76 líneas) — el superadmin entra al panel
-  de una flota ("Ver dashboard"). **Suplantación de tenant: quién puede, cómo
-  se acota, y qué queda en el log.**
-- `src/lib/admin/negocio.ts` tocado — la única función con permiso de cruzar
-  tenants.
-- `src/lib/cuadra/pg.ts` (52 líneas nuevas).
-
-### Bloque C — `/dashboard` reestructurado: 20 páginas, design system v2
-
-- `src/app/dashboard/page.tsx` reescrita (537 líneas de diff), más
-  `rail.tsx`, `sidebar-nav.tsx`, `rutas.ts`, `sufijo.ts`, `estatus.ts`,
-  `pendiente.tsx`, `avance-cierre.tsx`, `cifra-grande.tsx`, `chrome.tsx`.
-- Páginas nuevas: `politicas`, `rentabilidad`, `soporte`, `usuarios`,
-  `valor-ahorro`, `viajes`, `pod`, `unidades`.
-- `src/lib/cuadra/analytics.ts` — **386 líneas de diff** sobre el archivo que
-  alimenta las cifras del panel. Es el archivo del `exigir()` / `traerTodo()`.
-- Marca y marco: `src/app/logo.tsx`, `fondo.tsx`, `marco.ts`,
-  `src/app/globals.css` (paleta a blanco + naranja, se retiró el shader WebGL),
-  `not-found.tsx`, `src/lib/saludo.ts`.
-- `src/app/admin/` — CommandPalette (⌘K), sidebar colapsable, GlobalFilter,
-  `loading.tsx`, `calcular-alertas.ts`, `notificaciones-leidas.ts`,
-  `mi-perfil/`, asistente fijo en todas las páginas.
-
-**Advertencia honesta (sigue vigente de la ronda 10):** buena parte de `/admin`
-y algunas páginas nuevas de `/dashboard` son UI construida muy rápido. Antes de
-reportar que una página "no tiene datos reales", verifica si está **declarada**
-como pendiente (`dashboard/pendiente.tsx`, `EstadoVacio`) o si **presume datos
-que no tiene**. La segunda es hallazgo; la primera, a lo sumo, deuda. La regla
-del producto es "nunca inventar una cifra" — un cero que parezca medición, o un
-rótulo "del periodo" cuya consulta no filtra por fecha, sí es hallazgo.
-
----
+Un arreglo hecho de madrugada por seis agentes en paralelo sobre dominios
+disjuntos es exactamente donde aparece el defecto de costura: **dos arreglos
+correctos que juntos no lo son**. Búscalo ahí.
 
 ## Dónde está todo
 
 ```
 src/app/
   admin/          consola del superadmin (Javier). ~30 páginas. Cruza tenants A PROPÓSITO.
-  dashboard/      panel del CLIENTE (flota_admin y equipo). 20 páginas, filtradas al tenant.
+  dashboard/      panel del CLIENTE (flota_admin y equipo). ~20 páginas, filtradas al tenant.
   mis-viajes/     panel de solo lectura del chofer (RLS propia, mig. 0045)
   api/            webhook/whatsapp · export/liquidaciones · export/pdf/[id] · demo · dashboard/asistente
-  login/ auth/ cuenta/ sin-acceso/ acceso/   sesión de Supabase (magic link + Google)
-  aviso/ privacidad/                          aviso de privacidad por tenant
+  login/ auth/ cuenta/ sin-acceso/   sesión de Supabase (magic link + Google)
+  aviso/ privacidad/                 aviso de privacidad por tenant
 src/lib/
-  auth/           session · guard · permisos · visibilidad · tenant-efectivo · provisionar · passcode
-  cuadra/         processor · conv · repo · analytics · operacion · costos · presupuesto · duplicados
+  auth/           session · guard · permisos · visibilidad · tenant-efectivo · destino · provisionar
+  cuadra/         processor · conv · repo · analytics · operacion (717 líneas) · costos · presupuesto
     cuadre/       engine · guardia · resumen        ← el motor del dinero
     liquidacion/  deducibilidad · pdf
     intake/       cfdi · sat · ocr · sanitizar · hash · fecha
-    facturacion/  laboral/  periodo/
+    facturacion/  laboral/  periodo/  normas/
   llm/            openrouter · models · tool-executor
   agents/         run · registry · prompts
   admin/negocio.ts
-  observability/  logger.ts  ratelimit.ts  env.ts  formato.ts
-src/proxy.ts      el gate de /dashboard
-supabase/migrations/   0001 … 0047
-supabase/verificaciones.sql
+  observability/  logger.ts  ratelimit.ts  env.ts
+supabase/migrations/   0001 … 0047   (INTACTO desde el pase 1)
 normas/           21 fichas YAML — FUENTE DE VERDAD FISCAL Y LEGAL
-docs/auditoria-10/     la ronda anterior, completa, con sus 105 hallazgos
+docs/auditoria-11/*-pase1.md   tu reporte del pase 1
+docs/auditoria-11/arreglos-D*.md  qué hizo cada agente de arreglo, y qué dejó abierto
+docs/auditoria-11/RESULTADO.md    el cierre del pase 1: los 14 que quedaron abiertos
 ```
+
+490 archivos `.ts`/`.tsx` en `src/`, de los cuales **269 son de prueba**.
 
 ## Reglas del producto que un hallazgo puede violar
 
@@ -167,50 +126,59 @@ docs/auditoria-10/     la ronda anterior, completa, con sus 105 hallazgos
 - `wa_mensaje_procesado` NO tiene `tenant_id`.
 - `viaje.estatus` solo admite `abierto | en_cuadre | liquidado`.
   `app_user.rol`: superadmin, flota_admin, contador, operador, encargado.
-- No existen: tabla de clientes, de vehículos, de facturas emitidas, GPS, ni
-  kilómetros por viaje. Por eso no hay margen, OTIF, km/l ni Carta Porte.
+- `cliente`, `unidad`, `tarifa`, `factura_emitida`, `pago_recibido`, `posicion`
+  y `geocerca` **SÍ existen** (migs. 0047-0050 del linaje) pero están **vacías**:
+  nadie las escribe todavía. Antes de usar cualquiera, mira si tiene filas.
 - `requireSessionTenant(destino)` pierde el query string — por eso existe
   `dashboard/sufijo.ts`.
+- El push a `master` **ya no despliega solo**: `vercel.json` construye solo si
+  el **asunto** del commit lleva la bandera de deploy.
 
 ## Qué NO tocar / qué NO correr
 
 - **NO edites ningún archivo del repo.** Escribes UN archivo:
-  `docs/auditoria-11/<tu-rubro>.md`. Nada más. Doce agentes escribiendo sobre
-  el mismo repo se pisan.
+  `docs/auditoria-11/<tu-rubro>.md`. Nada más. Doce agentes escribiendo sobre el
+  mismo repo se pisan.
+- **NO mutes código para medir.** En el pase 1 el auditor de pruebas dejó
+  mutantes vivos mientras los otros once leían, y produjo **un hallazgo falso**.
+  Si tu método exige mutar, hazlo sobre una **copia fuera del repo** o razona
+  sobre la cobertura sin tocar el árbol.
 - **NO corras `pruebas-manuales/*.prueba.ts`** — hacen llamadas reales de pago.
 - **NO corras `npm run build`** — pide Supabase, OpenRouter, Facturapi y
   Upstash, que aquí no existen; su fallo no dice nada del código.
-- Sí puedes: leer, buscar, y correr `npm test`, `npx tsc --noEmit`,
+- Sí puedes: leer, buscar, y correr `npx vitest run`, `npx tsc --noEmit`,
   `npm run lint` en modo lectura.
 
-## Línea base de la compuerta, medida hoy sobre este árbol
+## Línea base de la compuerta, medida hoy sobre esta rama
 
 ```
-$ npx vitest run    → exit 0 · 172 archivos · 1670 pruebas · 1 saltada
+$ npx vitest run    → exit 0 · 269 archivos · 2530 pruebas · 1 saltada
 $ npx tsc --noEmit  → exit 0
-$ npm run lint      → exit 0 · 6 warnings (imports sin usar en admin/page.tsx)
+$ npm run lint      → exit 0 · CERO warnings
+$ git status        → limpio
 ```
 
-Para calibrar: el árbol del PR #7 tiene **239 archivos / 2089 pruebas**. Las
-**+460 pruebas** que la auditoría 10 escribió para anclar sus arreglos tampoco
-están aquí.
+Contra el pase 1 (172 archivos / 1670 pruebas): **+97 archivos, +860 pruebas.**
+Que la suite sea más grande no dice que cubra lo correcto — eso es del rubro de
+pruebas medirlo.
 
-## De dónde vienes — notas vigentes (auditoría 10, global 4.9)
+## De dónde vienes — notas del pase 1 (global 3.9)
 
-| Rubro | Nota | Razón que la dejó ahí |
+| Rubro | Nota pase 1 | Razón que la dejó ahí |
 |---|:--:|---|
-| Sistema agéntico | 3 | mirada más profunda — la sala de espera de comprobantes sin auditar |
-| Rendimiento y costo | 4 | mirada más profunda — 233,000 ms contra `maxDuration = 120,000` |
-| Cumplimiento legal | 4 | deuda que cobró factura — 5,743 líneas con datos personales, `privacidad.ts` intacto |
-| Pruebas | 5 | deuda que cobró factura — 5 de 7 mutaciones sobrevivieron |
-| Backend y API | 5 | deuda — quién ve el dinero se decidió en la capa que pinta botones |
-| Seguridad | 5 | deuda — el aislamiento entre ROLES dentro de una flota se rompió |
-| Modelo de datos | 5 | deuda — la RLS de la 0045 no gobierna los caminos con service-role |
-| Operabilidad y DX | 5 | deuda — el login nuevo falla sin dejar una línea |
-| Cumplimiento fiscal | 5 | mirada más profunda |
-| Tool calling | 6 | deuda — `/admin` pinta atribución modelo↔tokens como hecho en 7 pantallas |
-| Arquitectura | 6 | deuda — la tabla de permisos decía gobernar la API y ningún endpoint la consultaba |
-| Frontend | 6 | se atacó y subió |
+| Sistema agéntico | 3 | mirada más profunda — 5 de 8 puntos de muerte no cierran el ciclo con el humano |
+| Cumplimiento fiscal | 3 | deuda — dos CRÍTICOS del 3-ago vivos línea por línea |
+| Cumplimiento legal | 3 | deuda — bucket `avatares` público, fuera del catálogo del aviso |
+| Rendimiento y costo | 3 | deuda — 233,000 ms de techo contra `maxDuration = 120,000` |
+| Pruebas | 3 | deuda — 22 mutaciones sobre código nuevo, sobrevivieron las 22 |
+| Backend y API | 4 | deuda — la ruta de API reabrió en JSON lo que `visibilidad.ts` cerró en la página |
+| Operabilidad y DX | 4 | deuda — CI rojo desde el 3-ago, 16 `catch` vacíos |
+| Modelo de datos | 4 | deuda — `viaje.operador_id` es NOT NULL y el encargado lo asume nullable |
+| Frontend | 5 | deuda — tres tarjetas fiscales imprimiendo `0` como medición |
+| Tool calling | 5 | mirada más profunda — 11 de 17 hallazgos reincidentes |
+| Seguridad | 5 | se atacó y subió en un frente, la deuda cobró factura en el otro |
+| Arquitectura | 5 | deuda — `permisos.ts` dice gobernar la API y no gobierna un endpoint |
 
-Esas notas se pusieron sobre el árbol del PR #7 **con los arreglos dentro**.
-Este árbol no los tiene. Si tu rubro está peor aquí que allá, dilo y bájalo.
+Esas notas se pusieron **antes** de los 49 cierres. Si tu rubro está mejor hoy,
+dilo y súbelo con la línea que lo prueba. Si sigue igual, la nota no se mueve
+por buena voluntad.

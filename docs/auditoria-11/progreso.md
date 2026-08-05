@@ -79,3 +79,41 @@ _(las líneas siguientes se agregan conforme avanza la ronda)_
   aquí no hay Postgres contra el cual ejercerla — la regla es no arreglar lo que
   no se puede reproducir. Toca la FK compuesta de la 0028 y la RLS del chofer de
   la 0045; a 2 días del demo eso se decide despierto.
+
+---
+
+# PASE 2 — ronda de continuación (5-ago-2026, desatendida, en la nube)
+
+## Fase 0 — anclaje
+
+- **Ronda de continuación, no ronda nueva.** `gh`/MCP: PR **#8** abierto sobre
+  `claude/auditoria-11`. También siguen abiertos #7 (auditoría 10) y #6
+  (auditoría 8). Se continúa sobre #8; no se abre PR nuevo.
+- Árbol limpio al arrancar (`git status --short` vacío) → **autofix habilitado**.
+- Motivo del relanzamiento de los doce: entre `50e3047` (cuando se escribieron
+  los reportes del pase 1) y HEAD hay **277 archivos cambiados, +18,531 /
+  −1,846**. Los doce reportes describen un árbol que ya no existe.
+- Los reportes del pase 1 se conservan como `<rubro>-pase1.md` (`git mv`), y los
+  auditores del pase 2 escriben `<rubro>.md`.
+- `MAPA.md` reescrito para el pase 2: qué se arregló, la trampa del merge
+  (la prosa llegó, el uso no), y la prohibición de mutar el árbol compartido.
+
+### Compuerta, línea base del pase 2, medida sobre esta rama
+
+```
+$ npx vitest run    → exit 0 · 269 archivos · 2530 pruebas (2529 pasan, 1 saltada) · 54.43s
+$ npx tsc --noEmit  → exit 0
+$ npm run lint      → exit 0 · CERO warnings
+$ git status        → limpio
+```
+
+Sin `npm run build`: en la nube pide Supabase, OpenRouter, Facturapi y Upstash.
+
+## Fase 1 — los doce auditores del pase 2
+
+- 12 auditores lanzados en un solo mensaje, contexto fresco, un archivo cada uno,
+  ninguno toca código. Al de pruebas se le prohibió expresamente mutar el árbol
+  compartido (causa del hallazgo falso del pase 1) y se le dio el procedimiento
+  de copia a `/tmp`.
+
+_(las líneas siguientes se agregan conforme avanza la ronda)_
