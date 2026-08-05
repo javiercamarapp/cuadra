@@ -22,7 +22,7 @@ pruebas/operabilidad.
 mis dieciséis hallazgos del pase 1 están cerrados, y cerrados con el mecanismo
 que este rubro premia: **se borró el duplicado en vez de vigilarlo**, y donde
 quedó una copia se le puso un **tipo** que no compila si diverge. `safe()`
-pasó de 16 copias a una función con log (`pg.ts:98`); `FASE_LABEL` de cinco
+pasó de 16 copias a una función con log (`pg.ts:92`); `FASE_LABEL` de cinco
 literales a un `Record<FaseCosto,string>` (`admin/fases.ts:34`); `ROL_LABEL` de
 cinco a un `Record<RolAppUser,string>` (`admin/roles.ts:18`); las ocho copias
 de "¿a qué flota apunta esta página?" a `flotaSuplantada()` +
@@ -307,12 +307,12 @@ Consecuencia: para el equipo, el arreglo dejó dos formas de leer el mismo mapa
 panel del cliente.
 
 ### [MEDIO] `resolverVentana` se extrajo «para que el rail y la página hablen del mismo periodo», y Analítica tiene su propia copia con un comentario falso
-`src/app/dashboard/ventana.ts:20,33-41` · `src/app/dashboard/analitica/page.tsx:48-53` ·
+`src/app/dashboard/ventana.ts:20,33-41` · `src/app/dashboard/analitica/page.tsx:47-52` ·
 `src/app/dashboard/page.tsx:89` · `src/app/api/dashboard/asistente/route.ts:75`
 
 `ventana.ts` resuelve `?rango=` en un sitio; `/dashboard` y el handler del rail
 lo usan. `/dashboard/analitica` lo reimplementa en tres líneas y afirma en su
-comentario (líneas 49-50) «Mismo default de 30 días que Inicio». Inicio usa 7
+comentario (líneas 47-49) «Mismo default de 30 días que Inicio». Inicio usa 7
 (`ventana.ts:20`, `RANGO_POR_DEFECTO: Rango = '7'`).
 
 **Escenario, con valores.** El cambio que lo hace estallar está escrito en el
@@ -394,7 +394,7 @@ apunta del panel del cliente a la consola del superadmin.
   despacho, incidencias, pod y unidades.
 - **`safe()` se borró de los 16 archivos.** `grep -rn "async function safe<T>"`
   solo aparece dentro del comentario de `pg.ts:76`. La función viva es
-  `safeLog` (`pg.ts:98`), que registra `lectura.fallida` con contexto y admite
+  `safeLog` (`pg.ts:92`), que registra `lectura.fallida` con contexto y admite
   un `alFallar` — que el rail usa para responder 503 en vez de 200 con nulos.
 - **`FASE_LABEL` y `ROL_LABEL` se eliminaron como copias.** Uno vive en
   `admin/fases.ts:34` como `Record<FaseCosto,string>`; el otro en
