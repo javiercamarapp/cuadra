@@ -156,6 +156,43 @@ roadmap apuntaba: portales.
 del inventario de código de esta semana contra el inventario del gasto de una
 flota real, con la fuente del segundo verificada de forma independiente.
 
+**Actualización 5-ago-2026 — qué se construyó esta ronda, con honestidad de
+alcance.** Se atendió el hallazgo: `src/lib/cuadra/intake/cfdi_xml.ts` extrae
+ahora `lineas: CfdiLineaXml[]` de un CFDI consolidado, `src/lib/cuadra/intake/
+consolidado.ts` hace el JOIN contra `gasto` del tenant (fecha+monto, tolerancia
+documentada, nunca adivina un match ambiguo) y la migración `0076_cfdi_
+consolidado.sql` guarda el resultado (`cfdi_consolidado_linea`, RLS, índice
+único). El canal es el WhatsApp que YA existía —operador y, nuevo esta ronda,
+la cuenta de oficina/contador (`processor.ts`)—, no un buzón de correo nuevo.
+Probado de punta a punta contra Postgres real, no solo mockeado
+(`pruebas-manuales/consolidado-real.prueba.ts`): un CFDI ECC12 de 3 líneas
+liga 2 contra tickets ya capturados y deja 1 en la cola de conciliación, de
+forma idempotente ante reenvío.
+
+**Lo que esto NO resuelve, dicho sin rodeos:**
+
+- **Verificado contra el XSD oficial del SAT (ecc12.xsd) que el complemento
+  ECC12 del monedero SÍ da fecha, RFC de la estación real e importe por
+  transacción** — ahí el JOIN es preciso. **Para TAG/peaje SIN ese complemento,
+  el estándar CFDI 4.0 no declara una fecha por concepto** (solo hay una
+  `Fecha` de emisión del comprobante entero): esas líneas casi siempre caen en
+  la cola de revisión manual, no porque el código falle sino porque el dato no
+  existe en el documento. No se inventó una fecha leyendo texto libre para
+  disimular esto.
+- **No hay conexión directa a ningún portal de monedero o TAG.** Esto sigue
+  dependiendo de que alguien en la flota reenvíe el XML por WhatsApp — sigue
+  siendo reactivo, no una integración que vaya a buscar el CFDI sola.
+- **Cero entradas de monedero en `facturacion/comercios.ts`.** Ese registro
+  sigue siendo de portales de ticket individual; el consolidado se resuelve
+  por un camino distinto (`intake/consolidado.ts`), a propósito — forzarlo a
+  la tabla de adaptadores lo habría deformado, como ya advertía el hallazgo
+  de arquitectura de esta misma ronda.
+- **La cola de conciliación es de solo lectura desde el panel** (el resumen en
+  `/dashboard/combustible-casetas`). Falta el flujo para que un contador
+  resuelva a mano una línea ambigua o sin candidato desde la UI —hoy solo
+  queda registrada en `cfdi_consolidado_linea` con sus candidatos, visible
+  por SQL o por una vista futura, no por un botón.
+
 ---
 
 ### [ALTO] No existe la cláusula que autoriza al sistema a presentar el RFC y los datos fiscales del cliente ante el portal de un tercero para pedir un CFDI a su nombre
