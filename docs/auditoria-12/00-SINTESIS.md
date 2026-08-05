@@ -120,10 +120,18 @@ eslint 0 errores, build limpio.
 
 ## Lo que queda abierto de VERDAD (ninguno es de código)
 
-1. **[BLOQUEADO — credenciales] Aplicar 0078/0079/0080 + seed + bloques 54/55
-   contra la base real** — necesita el sbp_ token o DATABASE_URL. Es la única
-   puerta para: migraciones en producción, verificaciones SQL, y resolver la
-   base vacía de datos del demo.
+1. **[✅ RESUELTO] Migraciones 0078/0079/0080 APLICADAS en la base real**
+   (proyecto en us-east-2): el chofer ya no ve ni escribe operador,
+   wa_conversacion, cfdi_xml, llm_costo, terminal, politica_gasto,
+   cfdi_consolidado_linea; tenant queda de solo lectura; app_user y bitácora
+   cerrados. **Bloques 26, 28, 44, 53, 54 y 55 corren y PASAN contra la base
+   real** (RLS del chofer, operación, CFDI de lotes, sin_match, y las dos
+   verificaciones de la 0078/0079). **Seed aplicado**: Transportes Innovativos
+   con RFC válido, 5 operadores (el del demo con 529993700779), VJ-2026-0847
+   abierto con anticipo $10,600, 2 gastos precargados y 3 liquidaciones de
+   historial. La base ya NO está vacía — el misterio del ensayo del 3-ago: los
+   datos se perdieron (nunca se sembraron aquí o se limpiaron); se restauraron
+   con el seed del guion.
 2. **[Decisión de Javier] ToS "no timbra facturas" + cláusula de mandato** —
    contrato con abogado, no código.
 3. **[Decisión de Javier] ARCO: pantalla de la flota para publicar aviso +
