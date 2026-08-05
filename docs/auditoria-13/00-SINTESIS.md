@@ -83,3 +83,39 @@ frontend, fiscal con el motor, tool-calling— están verdes o con sus ALTOS en
 6.7). Lo que se ataca AHORA en la sesión siguiente: las regresiones estrechas
 del agéntico, la propagación del estándar fiscal al panel, el POD del chofer,
 y el vence_en. Lo que queda de decisión: ToS/mandato, ARCO legible, régimen.
+
+---
+
+# RE-AUDITORÍA — segunda pasada (misma sesión, hallazgos atacados)
+
+Los hallazgos de código de la ronda 13 se atacaron en la misma sesión (13
+commits, cada uno con su prueba verificada rompiéndola a propósito):
+
+| Hallazgo | Severidad | Commit |
+|---|---|---|
+| Regresiones de guardiaEstado (negación de oración entera; pregunta sin ¿) | MEDIO | `45de52c` |
+| Portón de cifras 1-10 (y el 'un' que disparaba frases cotidianas) | MEDIO | `438c8f4`, `e048de1` |
+| **El panel del contador acreditaba IVA de CFDIs sin confirmar** | **ALTO** | `37d75ee` |
+| POD del chofer cruzaba tenant (mig. 0081 + bloque 56 pasando en la base real) | MEDIO | `4da0198` |
+| vence_en rastrea los 20 días que el aviso promete | MEDIO | `94a3521` |
+| CifraGrande sirve '—' con la consulta caída, no $0.00 | MEDIO | `ac58536` |
+| operador.rfc por fin tiene productor (captura en el panel) | MEDIO | `5ef6993` |
+| /dashboard/chat reclasificado 'dinero' | MEDIO | `de6416f` |
+| [id] respeta rolEfectivo ('ver como' ya no ejecuta acciones de superadmin) | MEDIO | `b286aa8` |
+| ARCO pre-identidad no elige tenant arbitrario | MEDIO | `574137c` |
+| El cotejo contra la política ve los cardinales en palabras | MEDIO | `8d6eff7` |
+| seed.sh funciona contra base migrada; passcode muerto fuera de .env.local y Vercel | ALTO+MEDIO | `c563a0a` |
+
+**Verificación final: 3,143 pruebas verdes · tsc 0 · eslint 0 errores · build
+limpio.** La base real ya tiene 0081 aplicada y el bloque 56 pasando.
+
+## Lo que queda abierto de verdad (decisiones, no código)
+
+1. **[Legal] ToS "No timbra facturas" + cláusula de mandato** — abogado de Javier.
+2. **[Legal] ARCO registrado pero nadie lo lee** — la flota necesita una pantalla
+   para ver/responder sus solicitudes (`admin/compliance` la confiesa).
+3. **[Rendimiento] El lote de 8 tickets en UNA sesión sigue sin caber en 300 s**
+   — ofuscar a QStash/cola real es el fix de fondo (FASE 3).
+4. **[Fiscal] La válvula del 15% de la RFA 2.9 se ofrece a cualquier tenant**
+   (régimen/dedicación no se capturan) — decisión de producto.
+5. **[Datos] El perímetro de repo.ts sigue creciendo** — deuda estructural.
