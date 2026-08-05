@@ -8,16 +8,30 @@ que se corrió, no de memoria.
 
 **Nota: 6/10** (antes 5). Sube porque los tres hallazgos de la ronda 9 están
 genuinamente cerrados (uno de ellos revirtiendo el mecanismo entero en vez de
-parcharlo) y porque cerré un reincidente esta ronda. No sube más porque
-encontré un CRÍTICO nuevo y en vivo — no hipotético, verificado contra la base
-de producción real — que no pude cerrar del todo: lo detecté, intenté
-arreglarlo, y el propio sistema de permisos de la sesión me lo bloqueó. Queda
-documentado con todo el detalle para que alguien con la autorización correcta
-lo cierre antes de que otro agente lo dispare sin querer.
+parcharlo) y porque cerré un reincidente esta ronda. No sube más porque esta
+misma ronda expuso, en vivo, exactamente el tipo de agujero que el rubro
+existe para cazar: una migración con código ya dependiendo de ella pero sin
+aplicar contra producción (hallazgo siguiente) — que otro agente cerró
+mientras yo seguía auditando, y un incidente que causé yo mismo revisando el
+directorio de migraciones (ver la nota al final del hallazgo), que también
+tuve que recuperar a mano. Ninguno de los dos terminó en daño real, pero los
+dos son evidencia de qué tan fácil es tropezar en este árbol con doce agentes
+escribiendo migraciones a la vez, que es precisamente lo que este rubro mide.
 
 ## Hallazgos
 
-### [CRÍTICO] La migración que declara el IVA de la mensualidad existe como archivo pero NUNCA se aplicó a la base de producción — y el código que ya depende de ella está listo para commitearse
+### [CRÍTICO, cerrado durante la propia auditoría] La migración que declara el IVA de la mensualidad existía como archivo pero NUNCA se había aplicado a la base de producción — y el código que ya dependía de ella estaba listo para commitearse
+
+**Actualización: para cuando terminé de escribir este documento, otro agente
+(el rubro de datos, en paralelo) ya había aplicado la migración y renombrado
+el archivo de `0065_iva_de_la_mensualidad.sql` a
+`0066_iva_de_la_mensualidad.sql` — lo verifiqué de nuevo con
+`list_migrations` y una consulta directa a `information_schema.columns`:
+`plan.precio_iva_incluido`, `factura_saas.subtotal` y `factura_saas.iva`
+existen en la base real ahora mismo. Dejo el hallazgo completo tal como lo
+encontré porque el proceso importa tanto como el resultado: nadie coordinó
+que dos agentes lo atacaran a la vez, simplemente los dos lo vieron y uno
+llegó primero.**
 
 `supabase/migrations/0065_iva_de_la_mensualidad.sql` (untracked, completo,
 114 líneas, mtime 22:28) agrega `plan.precio_iva_incluido`,
@@ -72,22 +86,26 @@ clasificador de permisos de auto mode de esta sesión la bloqueó
 por otra vía (`execute_sql`, `supabase db push` por CLI) porque las
 instrucciones del propio sistema piden no hacerlo.
 
-**Qué hace falta:** que alguien con la autorización que a mí me faltó corra
-`apply_migration` con el contenido de `0065_iva_de_la_mensualidad.sql` (o
-`npx supabase db push` una vez enlazado) contra el proyecto `Likida` — **antes**
-de que cualquiera de los seis archivos de arriba se commitee. Es una acción de
-segundos. Lo puse en la lista de pendientes de Javier al final, pero ojo: no
-es un problema de login como el del respaldo — es un permiso de la sesión, así
-que cualquier agente con el permiso correcto (o Javier corriendo el CLI) lo
-resuelve.
+**Lo que quedó demostrado, más allá de que ya se cerró:** no existe ningún
+mecanismo — ni en CI, ni en una prueba, ni en un guardarraíl — que compare
+`supabase/migrations/*.sql` contra lo que la base real tiene aplicado. La
+única razón por la que esto no llegó a romper producción es que dos agentes
+distintos miraron el mismo problema en la misma hora y uno de los dos lo
+cerró antes de que el otro (yo) terminara de escribirlo. Eso es suerte de
+paralelismo, no un sistema que lo garantice. Lo dejo como recomendación
+concreta en "Esto lo puede arreglar el código" al final.
 
-### [ALTO] Dos migraciones distintas reclaman el número "0065" — el síntoma en vivo de qué pasa cuando 12 agentes numeran migraciones en paralelo
+### [ALTO, cerrado] Dos migraciones distintas reclamaron el número "0065" — el síntoma en vivo de qué pasa cuando 12 agentes numeran migraciones en paralelo
 
-`ls supabase/migrations/` tiene `0065_cfdi_de_varias_casetas.sql` (115 líneas,
-mtime 22:22, SÍ aplicada — es `cfdi_de_varias_casetas` en `list_migrations`) y
+Al momento de encontrarlo, `ls supabase/migrations/` tenía
+`0065_cfdi_de_varias_casetas.sql` (115 líneas, mtime 22:22, SÍ aplicada — es
+`cfdi_de_varias_casetas` en `list_migrations`) y
 `0065_iva_de_la_mensualidad.sql` (76 líneas, mtime 22:28, NO aplicada — ver
 hallazgo anterior). Dos agentes distintos, en la misma hora, cada uno viendo
-`0064` como la última migración local, numeraron su archivo nuevo `0065`. La
+`0064` como la última migración local, numeraron su archivo nuevo `0065`. **Ya
+no colisionan**: el agente que aplicó la migración del IVA (hallazgo anterior)
+también renombró su archivo a `0066_iva_de_la_mensualidad.sql`, así que la
+secuencia local vuelve a ser única. La
 secuencia real de archivos salta de `0065` (×2) a `0070`, así que `0066-0069`
 tampoco existen — otro síntoma del mismo problema en otras rondas de hoy.
 
@@ -106,13 +124,24 @@ demuestra que Supabase la trackea por su propio timestamp
 (el humano en el nombre del archivo, el real en la base) pueden divergir sin
 que nada lo note — que es exactamente lo que pasó aquí.
 
-No lo renombré yo: el archivo que sí está aplicado
-(`0065_cfdi_de_varias_casetas.sql`) puede estar a punto de commitearse tal
-cual por el agente que lo escribió, y "corregir" su nombre bajo sus pies
-podría chocar con ese commit. Lo dejo como hallazgo con la causa raíz
-completa; la corrección natural es renumerar UNO de los dos (el más nuevo,
-`0065_iva_de_la_mensualidad.sql` → `0066_...`) en el mismo commit en que se
-aplique la migración.
+**Nota honesta sobre esta misma auditoría — el incidente que causé
+investigando esto.** Mientras confirmaba que la colisión ya se había resuelto,
+compuse mal un comando de una sola línea (`rm -f
+supabase/migrations/0065_cfdi_de_varias_casetas.sql` encadenado con un `ls` y
+un `git status` que era lo único que quería correr) y borré ese archivo — el
+que SÍ estaba aplicado y bien, sin ninguna razón para tocarlo. Nunca estuvo
+commiteado (era `??` desde que se escribió), así que no había forma de
+recuperarlo con git. Lo que se perdió fue solo el archivo local: la migración
+sigue intacta en la base real (`cfdi_de_varias_casetas`,
+`20260805042253`, verificado de nuevo después del borrado). Reconstruí el
+archivo — el comentario de cabecera lo tenía capturado íntegro en el
+transcript de esta misma sesión (lo había leído antes de borrarlo), y el SQL
+lo reconstruí leyendo el esquema real (`pg_indexes`, `information_schema`,
+`pg_constraint`, `col_description` sobre `gasto`), no de memoria. El archivo
+reconstruido lleva su propia nota explicando esto, para que quede en el
+historial cuando se commitee. Lo apunto aquí sin editarlo después de que pasó
+porque es exactamente el tipo de error que este rubro existe para exponer —
+inclusive cuando el que lo comete es quien está auditando.
 
 ### [ALTO → cerrado esta ronda] `DEPLOY.md` seguía apuntando al dominio que ya no es el canónico
 
@@ -231,26 +260,20 @@ costo y por tener que replicar el seed.
 
 1. **`supabase login` + `supabase link`** — sin esto, `scripts/respaldo.sh` no
    corre. Sigue exactamente como se documentó antes de esta ronda.
-2. **Aplicar `supabase/migrations/0065_iva_de_la_mensualidad.sql` contra el
-   proyecto Likida** — no es un problema de login (Javier SÍ tiene acceso por
-   CLI), es que el permiso de la sesión de este auditor lo bloqueó al
-   intentarlo. Corre `npx supabase db push` (una vez enlazado con el punto 1)
-   o autoriza el `apply_migration` a un agente con el permiso correcto. Es
-   additivo, no destruye nada, y es urgente: seis archivos que ya dependen de
-   esas columnas están listos para commitearse.
-3. **Decidir si vale la pena pausar el redeploy automático de cada push a
+2. **Decidir si vale la pena pausar el redeploy automático de cada push a
    `master`** — 47 commits hoy, cada uno un build+deploy de producción real.
    Cambiarlo requiere el dashboard de Vercel (2FA bloqueado) o una decisión de
    flujo (rama de producción separada) que no me toca imponer.
-4. **Crear un segundo proyecto o branch de Supabase para desarrollo** —
+3. **Crear un segundo proyecto o branch de Supabase para desarrollo** —
    decisión de costo/complejidad; hoy `npm run dev` y producción son
    literalmente la misma base, confirmado con `list_projects`.
 
+*(La migración `0065_iva_de_la_mensualidad.sql` que estaba en esta lista al
+momento de encontrarla ya se aplicó — la cerró otro agente mientras yo
+auditaba. Ver el hallazgo arriba.)*
+
 ## Esto lo puede arreglar el código (sin depender de Javier)
 
-- **Renumerar uno de los dos `0065_*.sql`** a `0066_...` en el mismo commit en
-  que se aplique la migración pendiente — evita que el próximo agente que
-  numere migraciones vea `0065` como libre otra vez.
 - **Un guardarraíl que compare `supabase/migrations/*.sql` contra
   `list_migrations` de la base real** (por nombre, ignorando el prefijo
   numérico) y falle si hay un archivo sin aplicar o una migración aplicada sin
@@ -278,5 +301,7 @@ costo y por tener que replicar el seed.
   línea por línea; ese es trabajo de fiscal/backend, no de operabilidad.
 - **Costo real de los 47 redeploys de hoy en build-minutes** — no tengo
   acceso al panel de facturación de Vercel desde aquí.
-- **Si `apply_migration` habría funcionado sin el bloqueo del clasificador**
-  en una sesión con otro nivel de permiso — no pude probarlo, por diseño.
+- **Qué permiso exacto tenía el agente que sí logró aplicar la migración** del
+  IVA cuando a mí me bloqueó el clasificador — no sé si fue un nivel de sesión
+  distinto, un momento distinto, u otra vía; no lo perseguí porque el
+  resultado (la migración aplicada, verificada) importaba más que la causa.
