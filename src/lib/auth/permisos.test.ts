@@ -6,10 +6,21 @@ import { puedeExportar, puedeAsignar, puedeAdministrar } from './permisos';
 // qué le permite hacer la API — un solo lugar, no dos copias que se
 // desincronicen (el mismo error que 0025 cerró para los CHECK de la base).
 describe('puedeExportar', () => {
-  it('superadmin, flota_admin, encargado y contador sí', () => {
-    for (const rol of ['superadmin', 'flota_admin', 'encargado', 'contador']) {
+  it('superadmin, flota_admin y contador sí', () => {
+    for (const rol of ['superadmin', 'flota_admin', 'contador']) {
       expect(puedeExportar(rol), rol).toBe(true);
     }
+  });
+  // AUDITORÍA 11, PASE 2, A11P2-C1 (CRÍTICO). Este caso afirmaba `encargado`
+  // en la lista de arriba, y esa afirmación ERA el defecto: las dos rutas de
+  // export sirven dinero, y `visibilidad.ts` —escrito después que esta
+  // matriz— le niega al jefe de tráfico el área `'dinero'` entera. La
+  // cabecera de este archivo dice «un solo lugar, no dos copias que se
+  // desincronicen»; se desincronizaron a los dos días. `permisos_dinero.ts`
+  // ata las dos tablas con una invariante para que la próxima divergencia
+  // salga en rojo en vez de salir por `curl`.
+  it('encargado no — despacha, no factura: `visibilidad.ts` le niega el dinero', () => {
+    expect(puedeExportar('encargado')).toBe(false);
   });
   it('operador no — su interfaz es WhatsApp, no exporta nada desde la web', () => {
     expect(puedeExportar('operador')).toBe(false);

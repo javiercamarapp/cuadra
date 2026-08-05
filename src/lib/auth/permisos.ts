@@ -18,7 +18,17 @@
 // panel de flota_admin/encargado/contador.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const EXPORTA = new Set(['superadmin', 'flota_admin', 'encargado', 'contador']);
+// AUDITORÍA 11, PASE 2, A11P2-C1 (CRÍTICO). `'encargado'` estaba aquí, y las
+// dos únicas rutas de export que existen gatean con esta tabla: el jefe de
+// tráfico se bajaba por `curl` el CSV con `total_comprobado`, `total_anticipo`
+// y `diferencia` de cada liquidación —el dinero que `visibilidad.ts` acababa
+// de esconderle en pantalla (`encargado: ['operacion']`, sin `'dinero'`)—.
+// Exportar es un permiso SOBRE un área, no un permiso aparte:
+// `permisos_dinero.test.ts` ata las dos tablas con esa invariante para que no
+// vuelvan a divergir. No se le quita nada que hoy vea: las tres pantallas que
+// pintan el botón (`[id]`, `analitica`, `cuadre`) son de área `'dinero'` y ya
+// lo rebotaban.
+const EXPORTA = new Set(['superadmin', 'flota_admin', 'contador']);
 const ASIGNA = new Set(['superadmin', 'flota_admin', 'encargado']);
 const ADMINISTRA = new Set(['superadmin', 'flota_admin']);
 
