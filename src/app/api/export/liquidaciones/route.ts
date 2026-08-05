@@ -4,6 +4,7 @@ import { toCsv, toLiquidacionRows } from '@/lib/cuadra/export';
 import { rateLimit, clientIp } from '@/lib/ratelimit';
 import { getSessionTenant } from '@/lib/auth/session';
 import { puedeExportar } from '@/lib/auth/permisos';
+import { tenantDeSesion } from '@/lib/auth/guard';
 import { traerTodo } from '@/lib/cuadra/pg';
 import { logger } from '@/lib/logger';
 
@@ -17,7 +18,13 @@ export async function GET(req: Request) {
   if (!rateLimit(`export:${clientIp(req)}`, 10, 60_000)) return new NextResponse('Demasiadas peticiones', { status: 429 });
 
   const s = await getSessionTenant();
-  if (!s || !s.tenantId) return new NextResponse('No autorizado', { status: 401 });
+  if (!s) return new NextResponse('No autorizado', { status: 401 });
+  // AUDITORÍA 11, PASE 2, A11P2-C3 (CRÍTICO). Aquí decía `!s || !s.tenantId`,
+  // y el superadmin tiene `tenant_id` nulo por diseño: el botón se pintaba y
+  // el clic devolvía «No autorizado» en texto plano, en la sala del demo.
+  // `tenantDeSesion` solo resuelve el tenant; el gate de rol sigue abajo.
+  const tenantDe = tenantDeSesion(s);
+  if (!tenantDe) return new NextResponse('No autorizado', { status: 401 });
   // AUDITORÍA 11, G-24 (CRÍTICO). Hasta aquí el único `if` preguntaba "¿hay
   // sesión?", y `permisos.ts` —que afirma por escrito decidir «qué endpoint
   // acepta la petición»— no lo importaba NINGUNA ruta de `src/app/api`. Con la
@@ -27,10 +34,10 @@ export async function GET(req: Request) {
   // 403 y no 404: aquí ya hay sesión, así que la existencia de la ruta no es
   // el secreto — el secreto son las filas, y esas no salen.
   if (!puedeExportar(s.rol)) {
-    logger.warn('export.liquidaciones.rol_no_autorizado', { tenant: s.tenantId, rol: s.rol });
+    logger.warn('export.liquidaciones.rol_no_autorizado', { tenant: tenantDe, rol: s.rol });
     return new NextResponse('No autorizado', { status: 403 });
   }
-  const tenantId = s.tenantId;
+  const tenantId = tenantDe;
 
   // AUDITORÍA 11, G-24 (segunda mitad). `.limit(5000)` pierde contra el
   // `max_rows` de PostgREST (1,000 por default): la conciliación del trimestre

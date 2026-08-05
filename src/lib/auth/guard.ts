@@ -24,6 +24,29 @@ import { getSessionTenant, type SessionTenant } from './session';
 
 const TENANT_DEMO = () => process.env.DEMO_TENANT_ID ?? '11111111-1111-1111-1111-111111111111';
 
+/**
+ * El tenant con el que trabaja una sesión, o `null` si no puede trabajar con
+ * ninguno. Es `requireSessionTenant` sin el `redirect`, para las rutas de
+ * `/api`, que no pueden redirigir: devuelven un status.
+ *
+ * AUDITORÍA 11, PASE 2, A11P2-C3 (CRÍTICO). Existe porque las dos rutas de
+ * export cortaban en `if (!s.tenantId) → 401` antes de mirar el rol, y el
+ * superadmin tiene `tenant_id` nulo POR DISEÑO (`0001_init.sql:17`): «Descargar
+ * PDF» y «Exportar CSV» le contestaban «No autorizado» en texto plano a quien
+ * proyecta el demo. La ruta hermana del rail sí compensaba
+ * (`api/dashboard/asistente/route.ts:36-40`) — de tres rutas tocadas por el
+ * mismo arreglo, una recibió el fallback y dos no. Se pone aquí, junto a la
+ * constante que ya existía, en vez de una cuarta copia repartida por `/api`.
+ *
+ * Solo resuelve el tenant. NO decide permisos: quien la llame sigue teniendo
+ * que preguntar por el rol después, o reabre A11P2-C1.
+ */
+export function tenantDeSesion(s: SessionTenant | null): string | null {
+  if (!s) return null;
+  if (s.tenantId) return s.tenantId;
+  return s.rol === 'superadmin' ? TENANT_DEMO() : null;
+}
+
 export async function requireSessionTenant(
   destino: string,
 ): Promise<SessionTenant & { tenantId: string }> {
