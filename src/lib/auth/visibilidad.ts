@@ -69,7 +69,6 @@ const AREA_POR_RUTA: Record<string, Area> = {
   '/dashboard/unidades': 'operacion',
   '/dashboard/operadores': 'operacion',
   '/dashboard/mapa': 'operacion',
-  '/dashboard/chat': 'operacion',
   '/dashboard/soporte': 'operacion',
 
   // Dinero — lo que el encargado no ve
@@ -89,6 +88,16 @@ const AREA_POR_RUTA: Record<string, Area> = {
   '/dashboard/viajes': 'dinero',
   '/dashboard/analitica': 'dinero',
   '/dashboard/documentos': 'dinero',
+  // AUDITORÍA 11, PASE 2, A11P2-C2 (CRÍTICO). Estaba en 'operacion'. Es la
+  // MISMA caja que el rail del Asistente —`chat/page.tsx:43` pide `getKpis` y
+  // `getAcreditables` y se los pasa a `<ChatFlota>`— a pantalla completa: el
+  // arreglo `2fb1982` cerró la ventana y esta puerta se quedó abierta, con su
+  // link en el sidebar del encargado. `visibilidad_dinero.test.ts` no lo cazó
+  // porque busca `mxn(` dentro del `page.tsx` y aquí el formateo vive en
+  // `chat.tsx`; `visibilidad_chat.test.ts` persigue el DATO en vez del render.
+  // Y estaba mal en los dos sentidos: al contador, que vive del dinero, esta
+  // tabla le negaba el chat.
+  '/dashboard/chat': 'dinero',
   '/dashboard/valor-ahorro': 'dinero',
   '/dashboard/rentabilidad': 'dinero',
   '/dashboard/clientes': 'dinero',
