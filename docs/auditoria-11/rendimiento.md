@@ -1,7 +1,19 @@
 # Rendimiento y costo — auditoría 11 (pase 2)
 
-Anclado al HEAD de `claude/auditoria-11` (`707c749`). `npx tsc --noEmit -p .` →
-exit 0 sobre este árbol, verificado hoy.
+Anclado al HEAD de `claude/auditoria-11` (`707c749`).
+
+Compuerta medida hoy, dos corridas completas:
+
+```
+$ npx tsc --noEmit -p .   → exit 0
+$ npx vitest run          → corrida 1: 3 archivos / 4 pruebas EN ROJO
+                          → corrida 2: 1 archivo  / 1 prueba  EN ROJO
+```
+
+El MAPA dice `npx vitest run → exit 0 · 269 archivos · 2530 pruebas`. **No es
+reproducible.** La única prueba que falló en las DOS corridas es
+`src/lib/cuadra/normas/fundamento.test.ts:144`, y es una aserción de tiempo — o
+sea, de mi rubro. Va como hallazgo abajo.
 
 **Nota: 5/10** (antes 3). Razón del movimiento: **se atacó y subió**. Los dos
 agujeros de 300,000 ms que sostenían el 3 están cerrados con código en el camino
@@ -482,6 +494,41 @@ arriba, con la línea de red que faltaba por subir 24 líneas más arriba.
 
 ---
 
+### [MEDIO] La única aserción de tiempo de la suite mide la carga de la máquina, no el algoritmo — y vuelve a fallar, por segunda ronda consecutiva
+`src/lib/cuadra/normas/fundamento.test.ts:137-144` (`medir()` cronometra 100
+`citasEnTexto(t)` con `Date.now()`, toma el mejor de 9 y exige `< 500`).
+
+Escenario, con valores, medido hoy sobre este árbol:
+
+| Corrida | Resultado |
+|---|---|
+| `npx vitest run` completa, #1 | **3 archivos / 4 pruebas en rojo**, incluida ésta |
+| `npx vitest run` completa, #2 | **1 archivo / 1 prueba en rojo**: ésta |
+| `npx vitest run <solo este archivo>` | **37/37 en verde**, 1,986 ms |
+
+Pasa aislada y falla en la suite: lo que mide es la contención de CPU entre los
+269 archivos que corren en paralelo, no el coste de `citasEnTexto`.
+
+Y su propio comentario ya diagnosticó esto y falló al dimensionarlo
+(`:129-136`): *"126 ms el 28-jul con la máquina cargada — un microbenchmark
+dentro de una suite de **103 archivos** en paralelo mide la carga, no el
+algoritmo … Con 500 ms sigue detectándolo por tres órdenes de magnitud y deja de
+romperse por ruido."* La suite pasó de 103 a **269 archivos** (`RESULTADO.md:40`)
+y el umbral se volvió a reventar. El umbral se subió 4× y la carga subió 2.6×;
+la siguiente ronda lo vuelve a romper.
+
+Consecuencia: el mismo comentario la escribe — *"Un umbral que falla al azar no
+protege de nada: enseña a reintentar el CI sin leerlo."* Es exactamente lo que
+está pasando: la compuerta que el MAPA declara verde no lo es, y la única defensa
+del repo contra un ReDoS en `FORMA_DE_CITA` es un número que ya nadie puede
+distinguir de ruido. Antes de un demo, un CI que falla al azar es un CI que se
+ignora.
+
+Causa raíz: es un microbenchmark de pared dentro de un runner en paralelo. El
+umbral es el síntoma; el instrumento es el problema.
+
+---
+
 ### [BAJO] Sin prompt caching en ningún sitio del repo: el prefijo invariante se re-factura en cada ronda · REINCIDENTE
 `src/lib/llm/openrouter.ts:711-714` (`convo` se arma una vez), `:724-742`
 (`body()`, sin `cache_control`), `:766` (`await complete(convo, ultima)`, se
@@ -598,10 +645,14 @@ audita.
 
 ## Lo que NO alcancé a revisar
 
-- **`npx vitest run` no terminó** dentro de mi ventana (lo lancé en segundo plano
-  y seguía sin emitir salida al cerrar). `npx tsc --noEmit -p .` sí: **exit 0**.
+- **Los otros tres fallos de la primera corrida.** La corrida #1 dio 3 archivos /
+  4 pruebas en rojo y solo capturé la cola del reporte, así que tengo el nombre
+  de una (`fundamento.test.ts:144`) y no el de las otras tres. La corrida #2 dio
+  1/1. O sea: hay **al menos dos archivos más intermitentes** que no identifiqué.
+  Es del rubro de pruebas, pero lo dejo escrito porque invalida la línea base con
+  la que los doce auditores estamos midiendo.
   Ningún hallazgo de este reporte depende de la suite: todos salen de leer las
-  líneas. Pero no puedo confirmar la línea base de 2,530 pruebas del MAPA.
+  líneas, y `npx tsc --noEmit -p .` da exit 0.
 - **El `maxDuration` por defecto de Vercel para una página sin declararlo.** No
   hay `vercel.json` legible desde aquí con esa clave, así que comparo contra el
   máximo del plan pro que el propio repo cita (300,000 ms,
