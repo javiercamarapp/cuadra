@@ -117,3 +117,68 @@ Sin `npm run build`: en la nube pide Supabase, OpenRouter, Facturapi y Upstash.
   de copia a `/tmp`.
 
 _(las líneas siguientes se agregan conforme avanza la ronda)_
+
+### Fase 2 — verificación y arreglo (pase 2)
+
+Cada CRÍTICO verificado abriendo el archivo antes de anotarlo.
+
+- **A11P2-C1 · CRÍTICO · CERRADO** — `c02f0c4`. `permisos.ts:21` metía a
+  `encargado` en `EXPORTA` mientras `visibilidad.ts:41` le niega el área
+  `dinero`: las dos rutas de export sirven `total_comprobado`,
+  `total_anticipo` y `diferencia`. Levantado por backend Y arquitectura, misma
+  causa raíz → un grupo. Prueba `permisos_dinero.test.ts`: 2 rojas sin el
+  arreglo, 4 controles que ya pasaban. La prueba vieja (`permisos.test.ts`)
+  afirmaba la matriz defectuosa y se corrigió con la razón escrita.
+- **A11P2-C2 · CRÍTICO · CERRADO** — `ceb1a13`. `/dashboard/chat` clasificada
+  `'operacion'` mientras pide `getKpis` + `getAcreditables`: la misma caja del
+  rail que `2fb1982` acababa de cerrar, a pantalla completa. El guardarraíl no
+  lo vio porque busca `mxn(` en el `page.tsx` y el formateo vive en `chat.tsx`.
+  La prueba nueva persigue el DATO, no el render. Estaba mal en los dos
+  sentidos: al contador la tabla le negaba el chat.
+- **A11P2-C3 · CRÍTICO · CERRADO** — `4504d90`. Las dos rutas de export
+  cortaban en `if (!s.tenantId) → 401` antes de mirar el rol, y el superadmin
+  tiene `tenant_id` nulo por diseño: «Descargar PDF» devolvía «No autorizado»
+  en texto plano a quien proyecta el demo. Verificado que la prueba falla sin
+  el arreglo revirtiendo con `git stash`.
+- **A11P2-C4 · CRÍTICO · CERRADO** — `381af9d`. `startup.ts:263` llamaba
+  `triggers_desactualizados`, función que **no existe en ninguna migración de
+  este repo ni de `master`** — vive solo en `0052_triggers_desactualizados.sql`
+  de la rama del PR #7. La introdujo el merge `989ca62`. Cada boot caía en el
+  error y los triggers del dinero no se sondeaban nunca. Fallback a
+  `triggers_faltantes` (0043) ante `PGRST202`, diciendo que el sondeo quedó
+  degradado.
+
+### El hallazgo que el orquestador encontró y ningún auditor podía ver
+
+El clon de la nube es **superficial** (`.git/shallow`). `git merge-base` decía
+«historias no relacionadas» y estuve a punto de reportar que `master` había
+sido reescrito. `git fetch --unshallow` lo desmiente: `e4326f9` **sí** es
+ancestro común.
+
+Lo que sí es cierto, medido después de profundizar:
+
+```
+$ git log --oneline HEAD..origin/master | wc -l       → 99
+$ git diff --stat HEAD...origin/master | tail -1      → 398 archivos, +77,308 −1,773
+$ git merge origin/master                             → 68 CONFLICTOS (abortado)
+$ git ls-tree origin/master supabase/migrations/      → llega a 0076 (la rama, a 0047)
+```
+
+**La rama del PR #8 audita un árbol que está 99 commits detrás de `master`.**
+`master` ya tiene `/dashboard/contador/*`, `/dashboard/suscripcion`, `/chofer`
+en vez de `/mis-viajes`, y 29 migraciones más. No se mergeó: reconciliar dos
+refactors divergentes de madrugada, un día antes del demo, es exactamente el
+riesgo que esta auditoría existe para bajar.
+
+**Dos de los cuatro CRÍTICOS están vivos también en `master`**, verificado:
+
+```
+$ git show origin/master:src/lib/auth/permisos.ts   | grep EXPORTA
+const EXPORTA = new Set(['superadmin','flota_admin','encargado','contador']);
+$ git show origin/master:src/lib/auth/visibilidad.ts | grep "/dashboard/chat"
+  '/dashboard/chat': 'operacion',
+```
+
+Los otros dos son artefactos de la rama vieja: `master` ya resuelve el 401 del
+superadmin (por `tenant-api.ts`, distinto y mejor que mi arreglo) y nunca tuvo
+la regresión del arranque (llama `triggers_faltantes`, la que sí existe).
