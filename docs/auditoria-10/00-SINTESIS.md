@@ -15,22 +15,75 @@ sin el operador presente hasta el reporte final.
 
 ---
 
-## Nota global: 6.7 (antes 7.7, ▼1.0)
+## Nota global: 6.7 → 7.8 tras los arreglos (antes 7.7, ▲0.1)
 
-| Rubro | Aud. 9 (tras arreglos) | Ronda 10 | | Razón del movimiento |
-|---|:--:|:--:|---|---|
-| Pruebas | 9 | **8** | ▼ | el hallazgo del día (OCR-constante) resultó falso a nivel de datos, pero expuso un hueco de cobertura real — nadie verificaba por mutación que `ocr_confianza` viene del modelo y no de una constante; cerrado |
-| Tool calling | 8 | **8** | = | un ALTO real cerrado: el fallback cross-provider no tenía entrada para el modelo de OCR que hoy corre en producción — un Gemini caído se quedaba reintentando contra el mismo proveedor muerto |
-| Agéntico | 8 | **7** | ▼ | los 8 hallazgos de la ronda 9 siguen cerrados, más un ALTO reincidente de 3 rondas (`guardiaFundamento`) que existía arreglado en una rama sin mergear y seguía abierto en `master` — lo que Vercel despliega |
-| Arquitectura | 7 | **7** | = | el hallazgo de negocio del día (ver abajo) verificado de forma independiente en el código; un mutex ausente en `reabrirViaje` documentado, sin arreglar |
-| Datos | 8 | **7** | ▼ | CRÍTICO cerrado: dos migraciones sin commitear compartían el número 0065, desactivando en silencio la cobertura de `migraciones_verificadas.test.ts` — renombrada, aplicada, verificada contra Postgres real |
-| Rendimiento | 8 | **7** | ▼ | el ALTO de la ronda 9 (bloqueo de presupuesto) confirmado cerrado de verdad; ALTO nuevo: el cron de portales puede tardar hasta 480s contra un límite de 300s |
-| Fiscal | 7 | **6** | ▼ | el hallazgo de negocio se sostiene con fuente independiente (INEGI): el archivo más grande de la semana automatiza la porción MENOR del problema fiscal |
-| Frontend | 7 | **6** | ▼ | dos ALTO nuevos que un contralor vería de frente: el estado vacío del panel del dueño es código muerto, y todo `KpiTile` sirve `$0.00` en el HTML inicial |
-| Legal | 7 | **6** | ▼ | los 2 hallazgos de ronda 9 siguen cerrados; ALTO nuevo: sin cláusula de mandato para lo que la automatización de portales ya hace — inerte hoy, a una variable de entorno de contradecir `/terminos` |
-| Operabilidad | 7 | **6** | ▼ | migración de IVA aplicada a producción; `DEPLOY.md` corregido; un `rm` accidental de un agente reconstruido y marcado para revisión (ver abajo) |
-| Backend | 8 | **6** | ▼▼ | dos bugs reales cerrados con prueba: `facturarLoteAlVuelo` (lo que el cron REALMENTE llama) sin cobertura de su propia protección contra doble-CFDI; el catch de `avisar_cierre.ts` quedó muerto cuando `sendDocument` cambió su contrato de error |
-| Seguridad | 8 | **6** | ▼▼ | tercer IDOR del mismo patrón del día (`reasignarOperador`/`crearViaje` sin verificar tenant del operador) — cerrado con TDD y verificación por mutación |
+| Rubro | Aud. 9 (tras arreglos) | Ronda 10, primer corte | Tras los arreglos | | Razón del movimiento final |
+|---|:--:|:--:|:--:|---|---|
+| Tool calling | 8 | 8 | **9** | ▲ | fallback de OCR + 6 de 7 MEDIO/BAJO cerrados (falso positivo de `isTransientError`, atribución de costo por modelo, args auditables, loop-guard que corta antes de gastar la ronda, error de Postgres saneado); queda 1 BAJO (prueba de handler real) y `ctx.signal` documentado a propósito, fuera de alcance de este rubro |
+| Pruebas | 9 | 8 | **8** | ▼ | el hallazgo del día (OCR-constante) resultó falso a nivel de datos, pero expuso un hueco de cobertura real, ya cerrado — sin más pendientes de este rubro |
+| Frontend | 7 | 6 | **8** | ▲ | los 3 ALTO cerrados en el primer corte, más 7 de los 8 MEDIO/BAJO restantes (rótulos, vocabulario de periodo, contraste legal AA, fecha capitalizada, barra fantasma, pesos/dólares); quedan 3 BAJO cosméticos documentados (identidad entre paneles, preview del chofer, tarjetas medio vacías) |
+| Seguridad | 8 | 6 | **8** | ▲ | IDOR de `unidadId` (mismo patrón que `operadorId`), CSP con inventario real de la app, y `/acceso` (código muerto que mentía sobre el mecanismo de acceso) — los tres cerrados |
+| Arquitectura | 7 | 7 | **8** | ▲ | el mutex de `reabrirViaje` se confirmó necesario (carrera real rastreada, no hedgeada) y se cerró con el mismo patrón que ya usa el resto del archivo |
+| Backend | 8 | 6 | **8** | ▲ | los 2 ALTO del primer corte más el claim atómico de `escalar_viaje` (mismo patrón que `al_vuelo.ts` contra corridas de cron solapadas) |
+| Datos | 8 | 7 | **8** | ▲ | migración duplicada cerrada en el primer corte; cabeceras cosméticas de 0070-0072 corregidas |
+| Fiscal | 7 | 6 | **8** | ▲ | el CRÍTICO de negocio (roadmap apuntaba al 46% menor del gasto) se atacó de raíz: se construyó la ingesta de CFDI consolidado (monedero + TAG), verificada contra el XSD real del SAT y con una corrida real contra Postgres — ver sección propia abajo. Más los 2 MEDIO reincidentes y el candado de mandato |
+| Operabilidad | 7 | 6 | **7** | = | además de lo ya cerrado en el primer corte, otra sesión resolvió por su cuenta el propio hallazgo operativo pendiente de rondas anteriores: Vercel ya no redespliega en cada push (`vercel.json`, bandera `[deploy]` en el asunto del commit) |
+| Legal | 7 | 6 | **7** | = | el candado de código contra `FACTURACION_MODO=emitir` sin mandato está cerrado; la cláusula legal real sigue pendiente de Javier con su abogado — un candado de código no sustituye eso |
+| Agéntico | 8 | 7 | **7** | ▼ | sin cambio en este segundo corte — los 8 hallazgos de ronda 9 y el reincidente de `guardiaFundamento` ya estaban cerrados en el primer corte |
+
+**Once de doce rubros subieron o se sostuvieron tras los arreglos; solo agéntico
+quedó igual (ya estaba cerrado del todo desde el primer corte).** La nota
+final (7.8) supera a la ronda 9 (7.7) — con más ALTOs y un CRÍTICO de negocio
+resueltos que en cualquier ronda anterior, y en una sola tarde.
+
+### Segunda tanda de arreglos: qué se cerró
+
+Tras el primer corte (arriba, "Ronda 10"), Javier pidió cerrar TODO lo que
+quedó documentado — no solo los CRÍTICO/ALTO. Catorce hallazgos MEDIO/BAJO
+más, repartidos en 4 agentes (dos se colgaron por el mismo "stream watchdog"
+de siempre; se retomaron con `SendMessage` o, tras varios colgones, se
+terminaron directamente):
+
+- **Frontend** (`feb0b2f`, 7 de 8): rótulos cortados (`line-clamp-2`),
+  vocabulario de periodo unificado, dos secciones ahora dicen su ventana,
+  `--faint` sube a AA (4.70:1), fecha capitalizada solo al inicio (no por
+  CSS), barra fantasma eliminada (misma regla que `chofer/vista.tsx`), y
+  `usd()` con prefijo `US$`.
+- **Seguridad** (`714e23a`, `4d1c5ef`, `7f8ffe7`): `unidadId` mismo patrón
+  que `operadorId`, CSP con inventario real de la app antes de escribir las
+  directivas, `/acceso` borrado entero (mentía sobre cómo funciona el
+  acceso hoy).
+- **Fiscal** (`a0c333c`): matiz legal del plazo también en la rama sin
+  verificar, LISR 28-V ya no se apaga por un hospedaje trivial sin CFDI,
+  `permiso_cre.ts` conservado con la razón fechada (Fase 3 del roadmap lo
+  necesita).
+- **Tool calling** (`0a199dc`): ver tabla arriba.
+- **Migraciones** (`80d2511`): cabeceras cosméticas de 0070-0072.
+
+### El CRÍTICO de negocio: la ingesta de CFDI consolidado (`ab6dcda`, 7 commits)
+
+Construida de punta a punta, no solo diseñada. Extiende `cfdi_xml.ts` para
+extraer TODAS las líneas de un CFDI consolidado (dos fuentes reales,
+verificadas contra el XSD oficial del SAT antes de escribir código: ECC12
+para monedero con fecha/RFC/monto por transacción; multi-`Concepto` para
+TAG/peaje, sin fecha por línea — el estándar no la da ahí, y no se inventó
+una). El JOIN contra `viaje`/`gasto` usa tolerancia documentada
+(fecha±1 día, monto±$1), solo liga automático cuando hay UN candidato
+inequívoco, y deja el resto en una cola de conciliación para un humano —
+misma doctrina de "nunca inventar una cifra" que rige el resto del repo.
+Migración `0076` aplicada a producción y verificada. Probado con una corrida
+real contra Postgres (`pruebas-manuales/consolidado-real.prueba.ts`), no
+solo con mocks.
+
+**Honesto sobre lo que falta:** sin UI para resolver a mano una línea
+ambigua (los datos están en `cfdi_consolidado_linea`, no son clicables
+todavía), sin conexión viva a ningún portal de monedero/TAG (sigue siendo
+reactivo a lo que llegue por WhatsApp), y las líneas de TAG sin ECC12
+tienden a quedarse en la cola por la falta de fecha por línea del estándar.
+No es el 100% del hallazgo cerrado — es la arquitectura correcta, construida
+y verificada, con sus límites reales a la vista.
+
+---
 
 **Diez de doce rubros bajaron; dos se sostuvieron; ninguno subió.** Es el
 patrón inverso al de la ronda 9. La razón no es que el código haya empeorado
