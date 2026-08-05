@@ -239,7 +239,7 @@ Authorization: Bearer <su access token>
 `logger`, sin fila de auditoría y sin trigger que lo impida (la 0036/0042 cubren
 INSERT y UPDATE de `gasto`, no DELETE de `liquidacion`).
 `DELETE /rest/v1/pod?tenant_id=eq.<A>` borra la evidencia de entrega de toda la
-flota — justo lo que `operacion.ts:392-394` dice que no se debe poder borrar.
+flota — justo lo que `operacion.ts:390-392` dice que no se debe poder borrar.
 
 **Consecuencia.** Una separación de funciones que el producto promete por
 escrito en dos pantallas (`dashboard/usuarios/page.tsx:27`: «Solo lectura de lo
