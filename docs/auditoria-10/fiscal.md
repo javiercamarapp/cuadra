@@ -187,11 +187,71 @@ forma idempotente ante reenvío.
   por un camino distinto (`intake/consolidado.ts`), a propósito — forzarlo a
   la tabla de adaptadores lo habría deformado, como ya advertía el hallazgo
   de arquitectura de esta misma ronda.
-- **La cola de conciliación es de solo lectura desde el panel** (el resumen en
-  `/dashboard/combustible-casetas`). Falta el flujo para que un contador
-  resuelva a mano una línea ambigua o sin candidato desde la UI —hoy solo
-  queda registrada en `cfdi_consolidado_linea` con sus candidatos, visible
-  por SQL o por una vista futura, no por un botón.
+
+**Actualización 5-ago-2026 (tarde) — la cola de conciliación YA se resuelve
+desde el panel; era el gap más citado de la actualización anterior.** Lo que
+decía este documento hace unas horas —"la cola de conciliación es de solo
+lectura desde el panel… falta el flujo para que un contador resuelva a mano
+una línea"— dejó de ser cierto:
+
+- **`resolverLineaAMano`** (`src/lib/cuadra/intake/consolidado.ts`) cierra una
+  línea de dos formas: liga uno de los candidatos que el JOIN automático YA
+  ofreció (mismo mecanismo de escritura que el camino automático,
+  `ligarLineaAGasto`, extraído a una sola función para que las dos rutas no
+  puedan divergir en qué significa "ligar"), o la marca `sin_match` —tercer
+  estatus, migración `0077_cfdi_consolidado_sin_match.sql`— cuando ningún
+  candidato es el correcto. Ninguna de las dos rutas es un buscador libre de
+  gastos: solo se puede elegir un candidato que el propio JOIN ya propuso, así
+  que la superficie de error es la misma que ya existía, no una nueva.
+- **La pantalla** vive en `/dashboard/combustible-casetas`
+  (`vista-consolidado.tsx`), debajo del resumen que ya existía: cada línea
+  pendiente muestra su monto, fecha, folio de operación, estación y el folio
+  fiscal del CFDI, y —el dato que le faltaba al resumen— el folio del VIAJE de
+  cada candidato (`getLineasPorConciliar`, `analytics.ts`, hace el join extra
+  contra `gasto`→`viaje` que la columna `candidatos` no guarda). Un contador
+  ve exactamente la frase que este hallazgo pedía: *"2 candidatos: viaje
+  VJ-104 ($4,200.00, 03 ago 2026) · viaje VJ-108 ($4,180.00, 04 ago 2026)"*.
+  Server Action inline en `page.tsx`, mismo patrón que `incidencias/page.tsx`
+  (`puedeVerRuta` se revalida DENTRO de la action, no solo en el render de la
+  página — una Server Action es un endpoint POST alcanzable por su cuenta).
+- **`getConciliacionConsolidado` distingue `sinMatch` de `porConciliar`.** Sin
+  eso, una línea ya revisada por un humano seguiría contando como "pendiente"
+  para siempre y el número nunca bajaría aunque el contador sí estuviera
+  vaciando la cola — la misma mentira de rótulo que CLAUDE.md prohíbe.
+- **Probado de punta a punta contra Postgres real**, no solo mockeado
+  (`pruebas-manuales/consolidado-real.prueba.ts`, corrida real confirmada):
+  una línea de cero candidatos se marca `sin_match` con `resuelto_por`/
+  `resuelto_en` reales, y una línea AMBIGUA de dos candidatos se liga al
+  elegido —`cfdi_uuid`/`cfdi_orden` reales en `gasto`— dejando al descartado
+  sin tocar; un segundo intento sobre la misma línea rebota con `ya_resuelta`,
+  no la pisa. El check constraint nuevo de la 0077 se corrió contra la base
+  real (`supabase/verificaciones.sql`, bloque 53): `sin_match` entra, un valor
+  cualquiera sigue rebotando. El render del componente se miró en un preview
+  temporal (`zzz-preview-consolidado`, borrado al terminar) con los tres casos
+  reales —ambiguo, sin candidato, un candidato sin folio de viaje.
+- **Lo que esta ronda NO alcanzó, dicho con la misma honestidad que el resto
+  del documento:**
+  - **No hay screenshot de la pantalla autenticada real** (`/dashboard/
+    combustible-casetas` con sesión de `flota_admin`/`contador`). El preview
+    de arriba verificó el componente `LineasPorConciliar` con datos
+    representativos, no el `page.tsx` completo con su Server Action real
+    detrás de login — esa página no tiene una variante `Contenido(tenantId,
+    sp)` como las de `/dashboard/contador`, así que un preview sin sesión no
+    puede montarla tal cual sin refactorizarla primero.
+  - **No hay aviso proactivo.** Un contador se entera de que hay líneas
+    pendientes solo si abre el panel — no hay WhatsApp, correo ni badge que le
+    diga "te llegaron 3 líneas por revisar" cuando el CFDI consolidado entra.
+    Es exactamente el tipo de hueco que esta misma auditoría, en el rubro de
+    frontend/producto, suele señalar en otras pantallas: el dato existe, pero
+    hay que saber ir a buscarlo.
+  - **Elegir el candidato correcto sigue limitado a lo que el JOIN ya
+    ofreció.** Si el gasto correcto quedó fuera de la ventana de fecha
+    (`VENTANA_DIAS_FECHA`, ±1 día) y por eso nunca apareció como candidato, hoy
+    no hay forma de ligarlo desde este panel — ni una búsqueda libre de
+    gastos, ni un botón para ampliar la ventana caso por caso. Se documenta
+    como límite conocido, no se resolvió: un buscador libre es una superficie
+    de error distinta (¿contra qué universo de gastos busca? ¿de qué tenant?)
+    que no se improvisó bajo presión de tiempo.
 
 ---
 
