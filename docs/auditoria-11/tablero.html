@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Likida · Auditoría 11 — 4-ago-2026</title>
+<title>Likida · Auditoría 11 — pase 2 — 5-ago-2026</title>
 <style>
   :root{
     --bg:#faf9f7; --card:#fff; --ink:#1a1a19; --muted:#6b6862; --faint:#9a968e;
@@ -78,30 +78,32 @@
   }
 </style>
 </head>
-<body><div class="wrap">
+<body>
+<div class="wrap">
 
-<h1>Likida · Auditoría 11</h1>
-<div class="sub">4-ago-2026 · desatendida, en la nube · rama <code>claude/auditoria-11</code>, sobre <code>master</code> · demo en 2 días</div>
+<h1>Likida · Auditoría 11 — <b>pase 2</b></h1>
+<div class="sub">5-ago-2026 · desatendida, en la nube · ronda de CONTINUACIÓN sobre <code>claude/auditoria-11</code> (PR #8) · <b>demo mañana</b></div>
 
 <div class="alerta">
-  <b>Esta ronda no audita el mismo árbol que la anterior.</b>
-  Los 96 arreglos de la auditoría 10 siguen en el PR&nbsp;#7, sin mergear.
-  <code>master</code> —lo que Vercel despliega y lo que se demuestra el 6-ago— no
-  los tiene. Por eso casi todo lo que la ronda 10 dio por cerrado aparece aquí
-  como <b>REINCIDENTE</b>, y por eso la global baja: no es que el código
-  empeorara, es que <b>los arreglos nunca llegaron a producción</b>.
-  El PR&nbsp;#7 tampoco se puede mergear solo: 14 archivos en conflicto y los
-  ordinales <code>0046</code>/<code>0047</code> significan migraciones distintas
-  en cada rama.
+  <b>La rama que audita este PR está 99 commits detrás de <code>master</code></b>
+  —398 archivos, +77,308 líneas, 68 conflictos, migraciones 0047 contra 0076—.
+  No se mergeó: reconciliar dos refactors divergentes de madrugada es el riesgo
+  que esta rutina existe para bajar. <b>Pero dos de los cuatro CRÍTICOS están
+  vivos también en <code>master</code></b>, verificado con
+  <code>git show origin/master:…</code>: el jefe de tráfico se baja por
+  <code>curl</code> el CSV con el dinero de la flota, y
+  <code>/dashboard/chat</code> se lo cuenta desde su propio sidebar. Los dos
+  arreglos son de una línea sobre archivos byte-idénticos en <code>master</code>:
+  <code>git cherry-pick c02f0c4 ceb1a13</code>.
 </div>
 
 <div class="fila">
-  <div class="kpi"><div class="n" id="global">3.9</div><div class="l">Nota global (antes 4.9)</div></div>
-  <div class="kpi"><div class="n">12</div><div class="l">Rubros auditados</div></div>
-  <div class="kpi"><div class="n" id="tot">—</div><div class="l">Hallazgos verificados</div></div>
-  <div class="kpi"><div class="n" id="crit">—</div><div class="l">Críticos</div></div>
-  <div class="kpi"><div class="n">63</div><div class="l">Grupos únicos tras deduplicar</div></div>
-  <div class="kpi"><div class="n">49</div><div class="l">Grupos cerrados con prueba</div></div>
+  <div class="kpi"><div class="n">5.7</div><div class="l">Nota global (antes 3.9) ▲1.8</div></div>
+  <div class="kpi"><div class="n">12</div><div class="l">Rubros reauditados</div></div>
+  <div class="kpi"><div class="n">131</div><div class="l">Hallazgos reportados</div></div>
+  <div class="kpi"><div class="n">4</div><div class="l">Críticos únicos · 0 falsos</div></div>
+  <div class="kpi"><div class="n">4</div><div class="l">Cerrados con prueba</div></div>
+  <div class="kpi"><div class="n">2</div><div class="l">Críticos vivos en master</div></div>
 </div>
 
 <div class="caja">
@@ -109,7 +111,7 @@
   <div class="scroll">
   <table id="tabla">
     <thead><tr>
-      <th>Rubro</th><th class="n">Ant.</th><th class="n">Hoy</th><th class="n">Δ</th>
+      <th>Rubro</th><th class="n">Pase 1</th><th class="n">Hoy</th><th class="n">Δ</th>
       <th>Razón del movimiento</th>
       <th class="n">C</th><th class="n">A</th><th class="n">M</th><th class="n">B</th>
     </tr></thead>
@@ -124,47 +126,79 @@
 </div>
 
 <div class="caja">
-  <h2>Compuerta sobre el árbol final</h2>
-  <div class="comp" id="comp"></div>
-  <p style="font-size:12.5px;color:var(--muted);margin:12px 0 0">
-    <b>El CI de <code>master</code> llevaba rojo desde el 3-ago</b> —los runs 264 a 271
-    fallan, incluido el #271 sobre <code>e4326f9</code>, el HEAD— y por eso el paso de
-    <i>Build</i> no había corrido una sola vez sobre el código del demo.
-    <b>Cerrado sin tocar el umbral:</b> la cobertura subió de 64.32% a 84.19% de líneas
-    ejecutando por primera vez las librerías que pintan el dinero de la consola.
-    <code>vitest.config.ts</code> queda byte-idéntico.
+  <h2>Compuerta sobre el árbol final — máquina en reposo</h2>
+  <div class="comp">
+    <div class="chip ok"><b>npx vitest run</b>273 archivos · 2,554 pruebas · exit 0</div>
+    <div class="chip ok"><b>npx tsc --noEmit</b>exit 0</div>
+    <div class="chip ok"><b>npm run lint</b>exit 0 · cero warnings</div>
+    <div class="chip ok"><b>git status</b>limpio</div>
+    <div class="chip"><b>npm run build</b>no se corre en la nube: pide credenciales</div>
+  </div>
+  <p style="margin:12px 0 0;font-size:12.5px;line-height:1.6">
+    Al arrancar el pase 2: 269 archivos / 2,530 pruebas. <b>+4 archivos, +24
+    pruebas</b>, todas anclando los cuatro CRÍTICOS.<br>
+    <b>Sobre la intermitencia:</b> cuatro auditores reportaron entre 2 y 5 rojas
+    (<code>ocr_imagen_cara</code>, <code>ocr_varias_fotos</code>,
+    <code>normas/fundamento</code>, <code>intake/codigos</code>). Todas comparan
+    tiempos de reloj contra umbrales fijos y todas pasan solas: <b>no es
+    regresión, es que doce auditores corrían la suite a la vez</b>. Con la
+    máquina en reposo, exit 0 dos veces seguidas. Que la suite dependa de la
+    carga sí es hallazgo, y está anotado en el rubro de pruebas.
   </p>
 </div>
 
 <div class="caja">
   <h2>Los críticos, y en qué estado quedó cada uno</h2>
-  <ul class="crit" id="criticos"></ul>
+  <ul class="crit">
+    <li><span class="est e-cerrado">CERRADO</span> <b>A11P2-C1</b> · <code>puedeExportar('encargado')</code> es <code>true</code> y <code>puedeVerArea('encargado','dinero')</code> es <code>false</code>: las dos rutas de export gatean con la primera y sirven comprobado, anticipo y diferencia.
+      <div class="r">backend + arquitectura, misma causa raíz · <code>c02f0c4</code> · <b>vivo también en master</b></div></li>
+    <li><span class="est e-cerrado">CERRADO</span> <b>A11P2-C2</b> · <code>/dashboard/chat</code> clasificada <code>'operacion'</code> mientras pide <code>getKpis</code> + <code>getAcreditables</code> — la misma caja del rail, a pantalla completa.
+      <div class="r">seguridad · <code>ceb1a13</code> · el guardarraíl no lo vio: busca <code>mxn(</code> en el page.tsx y el formateo vive en chat.tsx · <b>vivo también en master</b></div></li>
+    <li><span class="est e-cerrado">CERRADO</span> <b>A11P2-C3</b> · «Descargar PDF» y «Exportar CSV» devolvían 401 en texto plano al superadmin, que es quien proyecta el demo.
+      <div class="r">frontend · <code>4504d90</code> · master ya lo resuelve por otra vía (tenant-api.ts)</div></li>
+    <li><span class="est e-cerrado">CERRADO</span> <b>A11P2-C4</b> · el arranque llamaba <code>triggers_desactualizados</code>, función que no existe en ninguna migración de este repo ni de master: los triggers del dinero no se sondeaban en ningún boot.
+      <div class="r">modelo de datos · <code>381af9d</code> · regresión que introdujo el merge 989ca62</div></li>
+    <li><span class="est e-prop">PROPUESTO</span> La RLS del chofer cubre 3 de 7 tablas — <code>operador</code>, <code>terminal</code>, <code>politica_gasto</code> y <code>wa_conversacion</code> le dan lectura y escritura.
+      <div class="r">seguridad · REINCIDENTE de las rondas 10 y 11-pase1 · es migración y aquí no hay Postgres</div></li>
+    <li><span class="est e-prop">PROPUESTO</span> <code>tenant_self</code> es <code>for all</code> para cualquier app_user del tenant: el chofer reescribe el <code>rfc</code> de la flota y apaga la validación de receptor de CFDI.
+      <div class="r">modelo de datos · el auditado reescribe el reglamento que lo juzga · migración</div></li>
+    <li><span class="est e-prop">PROPUESTO</span> Un «listo» sobre un viaje sin comprobantes cierra la liquidación en $0.00, y el cierre es irreversible.
+      <div class="r">agéntico · exige decidir el comportamiento del producto ante un cierre vacío, no es cambio quirúrgico</div></li>
+    <li><span class="est e-prop">PROPUESTO</span> El cierre corre sin reloj en sus cinco pasos obligatorios: 58,000 ms sobre un transcurrido que el presupuesto acepta en 82,900, contra maxDuration 120,000.
+      <div class="r">rendimiento · REINCIDENTE · arreglarlo a ciegas deja liquidaciones a medias</div></li>
+    <li><span class="est e-prop">PROPUESTO</span> De 37 mutantes, 21 sobreviven; 12 en <code>analytics.ts</code>. Se duplicó el comprobado de la flota ($47,300 → $94,600) y la suite no parpadeó.
+      <div class="r">pruebas · medido en una copia fuera del repo, árbol devuelto limpio · es una sesión entera de trabajo</div></li>
+  </ul>
 </div>
 
 <footer>
-  Verificado abriendo el archivo, uno por uno. Un hallazgo sin <code>archivo:línea</code>
-  y sin escenario con valores no entró.<br>
-  <b>A11-ARQ-1 se descartó por falso:</b> reportaba el gate de rol desactivado
-  (<code>if (false &amp;&amp; …)</code>) — era un mutante que el auditor de pruebas tenía
-  vivo en el árbol de trabajo mientras medía, no el código commiteado.
-  Que el mutante sobreviviera sí es real y se anota como hueco de pruebas.
+  Verificado abriendo el archivo, uno por uno: los doce CRÍTICOS reportados se
+  revisaron contra el código y <b>los cuatro únicos sobrevivieron — cero falsos</b>,
+  contra uno en el pase 1. Lo que lo cambió fue prohibirle al auditor de pruebas
+  mutar el árbol compartido: aplicó sus 37 mutantes en una copia fuera del repo
+  y devolvió el árbol limpio.<br>
+  <b>Un error que estuve a punto de publicar:</b> <code>git merge-base</code>
+  decía «historias no relacionadas» y la lectura obvia era que alguien había
+  reescrito <code>master</code>. Es falso — el clon de la nube es superficial.
+  Queda escrito porque un hallazgo así, sin comprobar, manda al dueño a buscar
+  un incidente que no ocurrió.
 </footer>
 
 </div>
 <script>
 const RUBROS = [
-  ['Frontend',            6, 5, 'deuda que cobró factura', 1,4,8,1],
-  ['Backend y API',       5, 4, 'deuda que cobró factura', 3,4,3,2],
-  ['Sistema agéntico',    3, 3, 'mirada más profunda',     2,7,4,1],
-  ['Tool calling',        6, 5, 'mirada más profunda',     0,2,8,7],
-  ['Seguridad',           5, 5, 'se atacó y subió / deuda', 2,3,4,4],
-  ['Cumplimiento fiscal', 5, 3, 'deuda que cobró factura', 2,4,6,3],
-  ['Cumplimiento legal',  4, 3, 'deuda que cobró factura', 2,4,3,2],
-  ['Arquitectura',        6, 5, 'deuda que cobró factura', 2,4,6,4],
-  ['Pruebas',             5, 3, 'deuda que cobró factura', 3,2,4,0],
-  ['Operabilidad y DX',   5, 4, 'deuda que cobró factura', 4,5,4,1],
-  ['Rendimiento y costo', 4, 3, 'deuda que cobró factura', 2,6,5,1],
-  ['Modelo de datos',     5, 4, 'deuda que cobró factura', 3,6,4,2],
+  ['Tool calling',        5, 8, 'se atacó y subió',            0,2,2,4],
+  ['Frontend',            5, 7, 'se atacó y subió',            1,4,5,2],
+  ['Backend y API',       4, 6, 'se atacó y subió',            1,4,5,1],
+  ['Cumplimiento fiscal', 3, 6, 'se atacó y subió',            0,3,4,2],
+  ['Seguridad',           5, 6, 'se atacó y subió',            2,3,3,2],
+  ['Arquitectura',        5, 6, 'se atacó y subió',            1,2,4,2],
+  ['Operabilidad y DX',   4, 5, 'subió 1; el orquestador le quita 1 por mirada más profunda', 1,6,5,3],
+  ['Cumplimiento legal',  3, 5, 'se atacó y subió',            0,3,3,3],
+  ['Sistema agéntico',    3, 5, 'se atacó y subió',            1,3,3,1],
+  ['Pruebas',             3, 5, 'se atacó y subió',            2,3,5,1],
+  ['Rendimiento y costo', 3, 5, 'se atacó y subió',            1,5,5,2],
+  ['Modelo de datos',     4, 4, 'subió en la app, la deuda cobró factura en el esquema', 2,7,4,3],
 ];
 const tb = document.querySelector('#tabla tbody');
 let C=0,A=0,M=0,B=0,suma=0;
@@ -183,44 +217,15 @@ for (const [n,ant,hoy,razon,c,a,m,b] of RUBROS) {
      <td class="n"><span class="sev s-b">${b}</span></td></tr>`);
 }
 const global = (suma/RUBROS.length).toFixed(1);
-document.getElementById('global').textContent = global;
-document.getElementById('tot').textContent = C+A+M+B;
-document.getElementById('crit').textContent = C;
+document.querySelector('.kpi .n').textContent = global;
 
-
-const SERIE = [['2',6.2],['3',6.2],['4',5.9],['5',5.2],['6',5.3],['7',5.5],['8',6.5],['9',7.7],['10',4.9],['11',+global]];
-const maxv = 8;
+const SERIE = [['2',6.2],['3',6.2],['4',5.9],['5',5.2],['6',5.3],['7',5.5],
+               ['8',6.5],['9',7.7],['10',4.9],['11·p1',3.9],['11·p2',+global]];
+const max = Math.max(...SERIE.map(s=>s[1]));
 document.getElementById('serie').innerHTML = SERIE.map(([e,v],i)=>
   `<div class="c"><div class="v">${v.toFixed(1)}</div>
-   <div class="b ${i===SERIE.length-1?'hoy':''}" style="height:${(v/maxv)*88}px"></div>
+   <div class="b${i===SERIE.length-1?' hoy':''}" style="height:${(v/max)*88}px"></div>
    <div class="e">${e}</div></div>`).join('');
-
-const COMP = [
-  ['npx vitest run','269 archivos · 2530 pruebas · exit 0',1],
-  ['npx tsc --noEmit','exit 0',1],
-  ['npm run lint','exit 0 · cero warnings',1],
-  ['npm run test:coverage','exit 0 · líneas 84.19% (umbral 78)',1],
-  ['Umbral de cobertura','byte-idéntico: no se movió',1],
-  ['npm run build','no se corre en la nube: pide credenciales',-1],
-];
-document.getElementById('comp').innerHTML = COMP.map(([k,v,ok])=>
-  `<div class="chip ${ok===1?'ok':ok===0?'mal':''}"><b>${k}</b>${v}</div>`).join('');
-
-const CRITICOS = [
-  ['e-cerrado','CERRADO','El rail servía el dinero de la flota al encargado y al chofer por <code>/api/dashboard/asistente</code>','backend + seguridad · commit 2fb1982, prueba con 4 casos y 3 controles'],
-  ['e-cerrado','CERRADO','23 grupos que ya tenían arreglo probado en el PR #7 y llevaban desde el 3-ago sin llegar a producción','commit 989ca62 · 132 archivos traídos sin un solo conflicto: el motor del dinero completo y sus arneses'],
-  ['e-cerrado','CERRADO','Cuatro guardarraíles del PR #7 cazaron defectos que <code>master</code> volvió a cometer: token de aviso sin declarar, formato mexicano duplicado, mapa de fases en su QUINTA copia y ya divergido, 64 <code>&lt;th&gt;</code> sin <code>scope</code>','commit 2e332ae'],
-  ['e-prop','PROPUESTO','<code>viaje.operador_id</code> es NOT NULL y todo el módulo del encargado lo asume nullable: «Viajes sin asignar» no puede devolver una fila jamás','modelo de datos · el arreglo es una migración y aquí no hay Postgres para reproducirlo'],
-  ['e-prop','PROPUESTO','<code>KpiTile</code> siempre imprime el número: tres tarjetas fiscales afirman una medición que nunca ocurrió','frontend · el arreglo correcto ya existe en el PR #7 (<code>acred.tsx</code>, 5365ca0) — una tercera variante sería una tercera copia'],
-  ['e-prop','PROPUESTO','El CI de <code>master</code> lleva rojo desde el 3-ago y el paso de Build no ha corrido sobre el código del demo','operabilidad · reproducido: cobertura 64.32% contra umbral 78%'],
-  ['e-prop','PROPUESTO','Un CFDI de emisor en EFOS imprime «Deducible para ISR» en verde','fiscal · REINCIDENTE'],
-  ['e-prop','PROPUESTO','La foto de la cara de un usuario se publica en un bucket legible sin sesión, fuera de todo aviso y sin camino de borrado','legal · migración 0046, nueva en master'],
-  ['e-prop','PROPUESTO','«listo» con la sala de espera llena cierra la liquidación en $0.00','agéntico · REINCIDENTE'],
-  ['e-prop','PROPUESTO','El cierre corre sin reloj: 233,000 ms contra <code>maxDuration</code> de 120,000','rendimiento · REINCIDENTE, misma aritmética'],
-  ['e-falso','DESCARTADO','El gate de rol de las 20 páginas estaría desactivado en el árbol','arquitectura · FALSO: era un mutante vivo de otro agente, no el código commiteado'],
-];
-document.getElementById('criticos').innerHTML = CRITICOS.map(([c,e,t,r])=>
-  `<li><span class="est ${c}">${e}</span> ${t}<div class="r">${r}</div></li>`).join('');
 </script>
 </body>
 </html>
