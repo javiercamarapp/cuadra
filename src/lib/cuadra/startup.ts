@@ -260,13 +260,34 @@ export async function verificarMigracionesCriticas(): Promise<void> {
         porque: 'migraciones 0037/0042: un gasto puede REESCRIBIRSE después de emitida la liquidación. Si el trigger EXISTE pero sin `new.fecha` en su `when`, es el de la 0037 y le falta la 0042: `corregirFechaGasto` reescribe la fecha del gasto tras liquidar sin CU001, y la fecha decide ejercicio, plazo de facturación y el tope diario de LISR 28-V',
       },
     } as const;
-    const { data: trigFaltantes, error: eTrig } = await admin.rpc('triggers_desactualizados', {
+    // AUDITORÍA 11, PASE 2, A11P2-C4 (CRÍTICO). `triggers_desactualizados` es
+    // de la migración 0052, y `supabase/migrations/` de este repo llega a la
+    // 0047: la 0052 vive en la rama del PR #7, sin mergear. El merge `989ca62`
+    // trajo esta llamada sin traer su SQL, así que TODO arranque caía en el
+    // error de abajo, escribía «falta la 0052» —impushable, no existe aquí— y
+    // los triggers de "nada entra tras liquidar" dejaban de sondearse en cada
+    // boot: el aviso que protege el dinero convertido en ruido.
+    //
+    // Ante `PGRST202` se cae a `triggers_faltantes` (0043, que SÍ está aquí),
+    // que sondea por NOMBRE. Es estrictamente menos —no distingue el trigger
+    // de la 0037 del de la 0042, que es justo por lo que se escribió la 0052—
+    // y por eso se dice en voz alta que el sondeo quedó degradado. Cuando la
+    // 0052 llegue, la primera llamada funciona y este camino no se usa.
+    let { data: trigFaltantes, error: eTrig } = await admin.rpc('triggers_desactualizados', {
       p_esperados: Object.fromEntries(
         Object.entries(TRIGGERS).map(([nombre, t]) => [nombre, t.fragmento]),
       ),
     });
+    if (eTrig?.code === 'PGRST202') {
+      logger.warn('startup.migraciones_degradado', {
+        msg: 'Falta la migración 0052 (`triggers_desactualizados`): los triggers de "nada entra tras liquidar" se verifican solo por NOMBRE, con `triggers_faltantes` (0043). Un trigger de la 0037 sin la 0042 encima es indetectable así — `corregirFechaGasto` podría reescribir la fecha de un gasto ya liquidado sin CU001.',
+      });
+      ({ data: trigFaltantes, error: eTrig } = await admin.rpc('triggers_faltantes', {
+        p_esperados: Object.keys(TRIGGERS),
+      }));
+    }
     if (eTrig) {
-      reportarProbe(eTrig, 'No se pudieron verificar los triggers de "nada entra tras liquidar" (falta la migración 0052, `triggers_desactualizados`). Corre `supabase db push`.');
+      reportarProbe(eTrig, 'No se pudieron verificar los triggers de "nada entra tras liquidar" (ni `triggers_desactualizados` de la 0052 ni `triggers_faltantes` de la 0043). Corre `supabase db push`.');
       faltan = true;
     } else if (Array.isArray(trigFaltantes) && trigFaltantes.length) {
       for (const trig of trigFaltantes as string[]) {

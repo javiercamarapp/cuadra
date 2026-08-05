@@ -67,7 +67,10 @@ describe('diagnóstico de migraciones', () => {
     rpc.mockResolvedValue({ error: { code: 'PGRST202', message: 'Could not find the function public.try_lock_viaje' } });
     await verificarMigracionesCriticas();
 
-    expect(warn).not.toHaveBeenCalled();
+    // La intención de esta línea es "no se traga el error como fallo de red",
+    // no "no se emite ningún warn": desde A11P2-C4 el sondeo de triggers avisa
+    // aparte cuando cae al fallback de la 0043. Se acota a lo que mide.
+    expect(warn).not.toHaveBeenCalledWith('startup.migraciones_sin_verificar', expect.anything());
     expect(error).toHaveBeenCalledWith('startup.migraciones', expect.objectContaining({ code: 'PGRST202' }));
     const [, meta] = error.mock.calls[0] as [string, { msg: string }];
     expect(meta.msg).toContain('FALTA la migración 0005');
