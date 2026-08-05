@@ -145,7 +145,7 @@ tres tools registradas siguen con `properties: {}` (confirmado, sin
 cambio en `tools.ts:31,87,146`) así que `args` es siempre `{}` para las
 tres. El día que una tool reciba parámetros reales, este campo miente.
 
-### [BAJO] `cuadrar_viaje` y `consultar_politica` siguen sin una prueba que invoque su handler real vía `executeTool`
+### [BAJO] `cuadrar_viaje` y `consultar_politica` siguen sin una prueba que invoque su handler real vía `executeTool` — CERRADO
 
 `command grep -rn "executeTool('cuadrar_viaje'\|executeTool('consultar_politica'"
 src --include="*.test.ts"` sigue sin devolver nada. Sin cambio desde la
@@ -153,6 +153,19 @@ ronda 9: la condición que decide si el modelo puede citar `rfa-2026-2.9`
 (`tools.ts:117`) y la que decide si una norma tiene permiso de citarse
 (`tools.ts:71`) siguen sin arnés propio — solo probadas por reconstrucción a
 mano en `permiso_politica.test.ts`, no por el camino real.
+
+**Arreglado** (`459db00`, `src/lib/cuadra/tools_camino_real.test.ts`): mismo
+patrón que `tools_cableado.test.ts` ya usa para `guardar_liquidacion` — se
+mockea la capa de datos (`cuadre/desde_db`, `config`, `repo`), nunca el
+handler; `executeTool('cuadrar_viaje', …)` y `executeTool('consultar_politica',
+…)` corren el handler REGISTRADO de verdad. Cubre: los totales del cuadre
+real, que el permiso de citar (`fundamentos`/`norma_id`) viaja con las
+diferencias del cuadre Y con la política, y que "sin viaje activo" se
+captura por `executeTool` sin reventar el turno.
+```
+$ npx vitest run src/lib/cuadra/tools_camino_real.test.ts
+ ✓ src/lib/cuadra/tools_camino_real.test.ts (5 tests)
+```
 
 ### [BAJO] `ctx.signal` sigue sin consumirse en ningún handler de tool
 

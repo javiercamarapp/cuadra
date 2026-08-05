@@ -120,24 +120,56 @@ escrita, y el panel del dueño la incumple.
 Idénticos. En `/admin` "Gastado en IA" y la columna "Costo de IA" son USD;
 todo lo demás del producto es MXN. Nada en pantalla los distingue.
 
-### [BAJO] Inconsistencias de identidad entre los cuatro paneles
+### [BAJO] Inconsistencias de identidad entre los cuatro paneles — CERRADO (logo y fecha)
 - Logo: `/admin` y `/dashboard` usan el lockup `<Logo/>` (marca + LIKIDA).
-  `/chofer` (`marco.tsx:36`) es texto plano "Likida".
+  `/chofer` (`marco.tsx:36`) era texto plano "Likida". **Arreglado**:
+  `MarcoChofer` ahora importa el mismo `<Logo/>` (`0cf4457`).
 - Fechas: dueño "Martes, 4 De Agosto De 2026"; contador `2026-01-01 –
   2026-12-31` (ISO); chofer `fechaMx` → "31 jul 2026". Tres formatos.
+  **Arreglado en parte**: el rango del panel fiscal (`EncabezadoFiscal`,
+  `dashboard/contador/periodo.tsx`) era el único que no pasaba por
+  `fechaMx()` — ahora sí, e imprime "01 ene 2026 – 31 dic 2026" como el resto
+  de /dashboard (`0cf4457`). Sin tocar: `fechaLarga()` (saludo del dueño) y
+  `fechaMx()` (chofer, y ahora también el contador) siguen siendo DOS
+  formatos por diseño — uno es prosa de encabezado, el otro es la fecha
+  fiscal única del producto — no un tercer duplicado por arreglar.
+  ```
+  $ npx vitest run src/app/chofer/marco.test.tsx src/app/dashboard/contador/periodo.test.tsx
+   ✓ src/app/chofer/marco.test.tsx (2 tests)
+   ✓ src/app/dashboard/contador/periodo.test.tsx (3 tests)
+  ```
 - Vacíos: el contador escribe párrafos honestos; el dueño y el encargado
-  ponen ceros.
+  ponen ceros. **Sin tocar** — es un rediseño de contenido por panel, fuera
+  del alcance de "unificar sin rediseñar cada panel".
 
-### [BAJO] El preview del chofer en `/admin` ya se desincronizó del real
-`admin/vista-chofer/page.tsx:52-95` espeja los cuatro textos de vacío en vez
-de importarlos, y su propio comentario lo admite. Ya divergió: el
-`/chofer/liquidacion` real remata con `<EnlaceViajes/>`
+### [BAJO] El preview del chofer en `/admin` ya se desincronizó del real — CERRADO
+`admin/vista-chofer/page.tsx:52-95` espejeaba los cuatro textos de vacío en
+vez de importarlos, y su propio comentario lo admitía. Ya había divergido: el
+`/chofer/liquidacion` real remataba con `<EnlaceViajes/>`
 (`liquidacion/page.tsx:46`), un botón de 56 px "Ver mis viajes"; el espejo no
-lo tiene. CLAUDE.md: *"nunca una copia — una copia verifica la copia."*
+lo tenía. **Arreglado** (`4498501`): las cuatro pantallas de vacío
+(`SinViaje`, `SinViajeParaSaldo`, `SinViajeParaComprobantes`,
+`SinViajesRegistrados`) se exportan desde `chofer/vista.tsx` — el archivo
+pensado justo para esto — y las tres páginas reales (`liquidacion/`,
+`comprobantes/`, `viajes/`) las usan también, así que no hay dos copias del
+mismo texto en ningún lado. El preview ya no tiene nada que mirrorear.
+```
+$ npx vitest run src/app/admin/vista-chofer/page.test.tsx src/app/chofer
+ ✓ src/app/chofer/marco.test.tsx (2 tests)
+ ✓ src/app/admin/vista-chofer/page.test.tsx (3 tests)
+ Test Files  4 passed (4) · Tests  202 passed (202)
+```
 
-### [BAJO] Tarjetas medio vacías en el panel fiscal
-"EL GASTO DEL PERIODO" queda con ~450 px de blanco bajo su mensaje, porque el
-grid la estira a la altura de "ESTADO DEL PAPEL". Se lee como sección rota.
+### [BAJO] Tarjetas medio vacías en el panel fiscal — CERRADO
+"EL GASTO DEL PERIODO" quedaba con ~450 px de blanco bajo su mensaje, porque
+el grid la estiraba a la altura de "ESTADO DEL PAPEL". Se leía como sección
+rota. **Arreglado** (`03f5c80`): el grid pasa a `items-start` — cada
+`ChartCard` ya trae su propio piso (`minHeight` por `tamano`) y ahora mide lo
+que su propio contenido necesita, no lo que necesita el vecino.
+```
+$ npx vitest run src/app/dashboard/contador/page.test.tsx
+ ✓ src/app/dashboard/contador/page.test.tsx (2 tests)
+```
 
 ## Lo que ya está bien
 
