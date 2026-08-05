@@ -90,3 +90,45 @@ datos — que depende del token).
    (RFC ya en el guion; teléfonos y topes siguen INVENTADOS en el seed).
 3. **Trabajo de pruebas** → analytics.ts con datos (pruebas ALTO 2/3/4), para
    devolver el trinquete de cobertura a 78.
+
+---
+
+# RE-AUDITORÍA — segunda pasada (misma sesión, todos los hallazgos atacados)
+
+Después de la primera síntesis, se atacaron TODOS los hallazgos de código de la
+ronda 12. **Cada fix con su prueba, y cada prueba verificada rompiéndola a
+propósito** (regla 5 del repo). Estado por rubro:
+
+| Rubro | Antes | Después | Qué se cerró |
+|---|:--:|:--:|---|
+| Seguridad | 8 | **9** | 0078 + 0079 (RLS completa), bloques 54/55 listos |
+| Datos | 5 | **8** | 0065 completada, seed alineado, RFC válido, RLS cerrada |
+| Fiscal | 5 | **8** | RFC del seed, litros XML 1:1, SAT caído sin verde, RLISR 57, peaje con reserva |
+| Frontend | 7 | **9** | recuadro central, ContadorRetro, pills AA, gráficas SSR reales |
+| Legal | 6 | **8** | ARCO registrado, canal ARCO para dados de baja |
+| Backend | 6 | **8** | sendDocument, export paginado, ids verificados, ?tenant=, asistente errorCarga |
+| Agéntico | 7 | **9** | memoria multi-oración, suavizar, guardiaEstado estrecho, cardinales |
+| Tool calling | 8 | **8** | sin hallazgos abiertos nuevos |
+| Rendimiento | 7 | **8** | cron por sesión con margen real, comentarios |
+| Pruebas | 6 | **8** | CI verde, zona horaria, analytics con datos (12 pruebas) |
+| Operabilidad | 6 | **7** | deploy-vercel.sh canónico, passcode muerto, comentarios |
+| Arquitectura | 7 | **8** | round2 unificado |
+
+**22 commits de arreglo en esta sesión** (además de los 11 de la primera
+pasada). Verificación final: **3,132 pruebas verdes** (52 nuevas), tsc 0,
+eslint 0 errores, build limpio.
+
+## Lo que queda abierto de VERDAD (ninguno es de código)
+
+1. **[BLOQUEADO — credenciales] Aplicar 0078/0079/0080 + seed + bloques 54/55
+   contra la base real** — necesita el sbp_ token o DATABASE_URL. Es la única
+   puerta para: migraciones en producción, verificaciones SQL, y resolver la
+   base vacía de datos del demo.
+2. **[Decisión de Javier] ToS "no timbra facturas" + cláusula de mandato** —
+   contrato con abogado, no código.
+3. **[Decisión de Javier] ARCO: pantalla de la flota para publicar aviso +
+   borrado de cuenta** — feature de producto.
+4. **[Trabajo de pruebas] devolver el trinquete de cobertura a 78** — el
+   umbral está en 64 con medición; subirlo es trabajo de pruebas continuo.
+5. **[Rendimiento] pool del webhook sin reloj de pared del lote + pantalla
+   "por facturar" sin índice** — MEDIOs documentados con su dirección.
