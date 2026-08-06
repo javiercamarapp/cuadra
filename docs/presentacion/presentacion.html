@@ -219,6 +219,26 @@
     .slide { padding: 30px; overflow-y: auto; }
     body { overflow: auto; }
   }
+
+  /* ── Impresión / PDF: una diapositiva por página ── */
+  @media print {
+    html, body { overflow: visible; height: auto; }
+    body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .rejilla, .nav-dots, .flechas, .tecla, .progreso { display: none !important; }
+    main { height: auto; }
+    .slide {
+      position: static;
+      opacity: 1; visibility: visible; transform: none;
+      height: 100vh; min-height: 100vh;
+      page-break-after: always;
+      break-after: page;
+      overflow: hidden;
+    }
+    .slide:last-child { page-break-after: auto; break-after: auto; }
+    .slide .ap { opacity: 1 !important; transform: none !important; transition: none !important; }
+    .tarjeta, .col-hoy, .col-likida, .shot { box-shadow: none; }
+    .cuerpo { max-width: 100%; }
+  }
 </style>
 </head>
 <body>
