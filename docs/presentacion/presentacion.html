@@ -437,13 +437,13 @@
       <div class="tarjeta" style="padding: 26px 24px;">
         <div class="campo">
           <label>Viajes al mes <span id="v-viajes">300</span></label>
-          <input type="range" id="i-viajes" min="30" max="1500" step="10" value="300">
-          <div class="rango"><span>30</span><span>1500</span></div>
+          <input type="range" id="i-viajes" min="30" max="20000" step="50" value="300">
+          <div class="rango"><span>30</span><span>20,000</span></div>
         </div>
         <div class="campo">
           <label>Capturistas que llenan liquidaciones <span id="v-capt">3</span></label>
-          <input type="range" id="i-capt" min="0" max="15" step="1" value="3">
-          <div class="rango"><span>0</span><span>15</span></div>
+          <input type="range" id="i-capt" min="0" max="40" step="1" value="3">
+          <div class="rango"><span>0</span><span>40</span></div>
         </div>
         <div class="campo">
           <label>Costo mensual por capturista (MXN) <span id="v-sal">$12,000</span></label>
@@ -642,7 +642,7 @@
     const horasManual = viajes * min / 60;                 // horas/mes de captura manual
     const costoCapturistaHora = sal / 160;                 // jornada mensual típica (160 h)
     const horasAhorradas = horasManual * 0.9;              // 90% de la captura se automatiza
-    const fteLiberado = Math.max(0, Math.floor(horasAhorradas / 160)); // jornadas completas liberadas
+    const fteLiberado = Math.max(0, Math.min(capt, Math.floor(horasAhorradas / 160))); // nunca más capturistas de los que hay
     const ahorroNomina = Math.min(horasAhorradas * costoCapturistaHora, capt * sal); // nunca más que la nómina total
     const jefeHoras = Math.max(1, Math.round(viajes * 0.05));       // revisión de excepciones, ~5% del tiempo
     const deduccionPotencial = comb * 0.15 * 12;            // regla 2.9: hasta 15% del combustible en efectivo al año
