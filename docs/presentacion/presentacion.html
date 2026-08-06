@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Likida — Liquidación de viajes que se escribe sola</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fbfbfd;
+    --surface: #ffffff;
+    --ink: #17100d;
+    --muted: #6b7280;
+    --line: #ececef;
+    --marca: #c2410c;
+    --marca-osc: #9a3412;
+    --marca-bg: #fdf1ea;
+    --ok: #14602c;
+    --ok-bg: #e7f5ec;
+    --warn: #9a5c00;
+    --warn-bg: #fbf3e0;
+    --bad: #b91c1c;
+    --bad-bg: #fbeaea;
+    --display: 'Fraunces', Georgia, serif;
+    --body: 'Schibsted Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: var(--body);
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Fondo con rejilla sutil ── */
+  .rejilla {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(1200px 700px at 85% -10%, rgba(194,65,12,.07), transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, rgba(194,65,12,.05), transparent 55%),
+      linear-gradient(var(--bg), var(--bg));
+  }
+  .rejilla::after {
+    content: ''; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(23,16,13,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(23,16,13,.035) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(900px 600px at 50% 40%, black, transparent 85%);
+    -webkit-mask-image: radial-gradient(900px 600px at 50% 40%, black, transparent 85%);
+  }
+
+  /* ── Slide ── */
+  main { position: relative; z-index: 1; height: 100%; }
+  .slide {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: clamp(40px, 6.5vw, 110px);
+    opacity: 0; visibility: hidden; transform: translateY(18px);
+    transition: opacity .55s ease, transform .55s ease, visibility 0s .55s;
+  }
+  .slide.activa { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; z-index: 2; }
+
+  /* entrada escalonada de hijos */
+  .slide .ap { opacity: 0; transform: translateY(22px); transition: opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1); }
+  .slide.activa .ap { opacity: 1; transform: none; }
+  .slide.activa .ap:nth-child(1) { transition-delay: .08s; }
+  .slide.activa .ap:nth-child(2) { transition-delay: .16s; }
+  .slide.activa .ap:nth-child(3) { transition-delay: .24s; }
+  .slide.activa .ap:nth-child(4) { transition-delay: .32s; }
+  .slide.activa .ap:nth-child(5) { transition-delay: .40s; }
+  .slide.activa .ap:nth-child(6) { transition-delay: .48s; }
+  .slide.activa .ap:nth-child(7) { transition-delay: .56s; }
+  .slide.activa .ap:nth-child(8) { transition-delay: .64s; }
+
+  /* ── Tipografía ── */
+  h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.02em; }
+  .eyebrow {
+    font-family: var(--body); font-size: 12px; font-weight: 600;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--marca);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .eyebrow::before { content: ''; width: 28px; height: 2px; background: var(--marca); border-radius: 2px; }
+  .grande { font-size: clamp(34px, 5.4vw, 76px); line-height: 1.02; }
+  .grande .naranja { color: var(--marca); }
+  .mediana { font-size: clamp(24px, 3.2vw, 44px); line-height: 1.12; }
+  .cuerpo { font-size: clamp(15px, 1.35vw, 19px); line-height: 1.55; color: var(--muted); max-width: 64ch; }
+  .cuerpo strong { color: var(--ink); font-weight: 600; }
+  .chica { font-size: 13px; color: var(--muted); }
+
+  .tarjeta {
+    background: rgba(255,255,255,.82);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px -16px rgba(23,16,13,.16);
+  }
+  .fila { display: flex; gap: 22px; align-items: stretch; }
+  .crece { flex: 1; }
+
+  /* ── Logo ── */
+  .logo { display: inline-flex; align-items: center; gap: 12px; }
+  .logo img { height: 30px; }
+  .logo .ic { height: 34px; }
+
+  /* ── Barra de progreso ── */
+  .progreso { position: fixed; top: 0; left: 0; height: 3px; background: var(--marca); z-index: 50; transition: width .45s ease; width: 0; }
+
+  /* ── Navegación ── */
+  .nav-dots {
+    position: fixed; right: 26px; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 10px; z-index: 40;
+  }
+  .nav-dots button {
+    width: 9px; height: 9px; border-radius: 50%; border: 1px solid rgba(23,16,13,.28);
+    background: transparent; cursor: pointer; padding: 0; transition: all .25s ease;
+  }
+  .nav-dots button.activo { background: var(--marca); border-color: var(--marca); transform: scale(1.35); }
+  .tecla { position: fixed; bottom: 22px; right: 26px; z-index: 40; color: var(--muted); font-size: 12px; letter-spacing: .06em; }
+  .flechas { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 40; display: flex; gap: 10px; }
+  .flechas button {
+    width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface);
+    font-size: 18px; color: var(--ink); cursor: pointer; box-shadow: 0 2px 10px -4px rgba(23,16,13,.18);
+    transition: transform .15s ease;
+  }
+  .flechas button:hover { transform: translateY(-2px); }
+
+  /* ── Números grandes ── */
+  .cifra { font-family: var(--display); font-weight: 600; font-size: clamp(40px, 4.6vw, 64px); letter-spacing: -.02em; line-height: 1; }
+  .cifra.naranja { color: var(--marca); }
+  .cifra.ok { color: var(--ok); }
+  .chip { display: inline-block; padding: 5px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
+  .chip.marca { background: var(--marca-bg); color: var(--marca-osc); }
+  .chip.ok { background: var(--ok-bg); color: var(--ok); }
+  .chip.warn { background: var(--warn-bg); color: var(--warn); }
+
+  /* ── Tarjetas de dolor ── */
+  .dolores { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .dolor { padding: 22px 20px; }
+  .dolor h3 { font-size: 18px; margin-bottom: 8px; }
+  .dolor p { font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+
+  /* ── Captura de pantalla ── */
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+  .shot { border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); box-shadow: 0 18px 40px -22px rgba(23,16,13,.28); }
+  .shot img { width: 100%; display: block; }
+  .shot figcaption { padding: 12px 16px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .shot figcaption strong { color: var(--ink); }
+
+  /* ── Cotizador ── */
+  .cotizador { display: grid; grid-template-columns: 1.05fr 1fr; gap: 26px; align-items: start; }
+  .campo { margin-bottom: 16px; }
+  .campo label { display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 600; margin-bottom: 7px; }
+  .campo label span { color: var(--marca); font-family: var(--display); font-size: 17px; font-weight: 600; }
+  .campo input[type=range] {
+    width: 100%; appearance: none; -webkit-appearance: none; height: 5px; border-radius: 4px;
+    background: linear-gradient(90deg, var(--marca) var(--relleno, 40%), var(--line) var(--relleno, 40%));
+    outline: none;
+  }
+  .campo input[type=range]::-webkit-slider-thumb {
+    appearance: none; -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; border: 3px solid var(--marca); cursor: pointer; box-shadow: 0 2px 6px rgba(194,65,12,.35);
+  }
+  .rango { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+  .resultados { padding: 26px 24px; }
+  .resultado { display: flex; justify-content: space-between; align-items: baseline; padding: 13px 0; border-bottom: 1px dashed var(--line); }
+  .resultado:last-child { border-bottom: none; }
+  .resultado .etq { font-size: 13.5px; color: var(--muted); }
+  .resultado .val { font-family: var(--display); font-weight: 600; font-size: 22px; }
+  .resultado .val.ok { color: var(--ok); }
+  .resultado .val.naranja { color: var(--marca); }
+  .nota-cotizador { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+
+  /* ── Pasos del flujo ── */
+  .flujo { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .paso { padding: 20px 18px; position: relative; }
+  .paso .num {
+    width: 30px; height: 30px; border-radius: 9px; background: var(--marca-bg); color: var(--marca-osc);
+    font-family: var(--display); font-weight: 600; font-size: 15px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;
+  }
+  .paso h3 { font-size: 15.5px; margin-bottom: 6px; }
+  .paso p { font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+  .flecha-paso { position: absolute; right: -12px; top: 50%; color: var(--marca); font-size: 18px; transform: translateY(-50%); z-index: 2; }
+
+  /* ── Antes/Después (estilo Handle) ── */
+  .comparacion { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .col-hoy { border: 1px solid var(--line); border-radius: 16px; padding: 26px; background: rgba(251,234,234,.45); }
+  .col-likida { border: 1px solid rgba(20,96,44,.25); border-radius: 16px; padding: 26px; background: var(--ok-bg); }
+  .col-titulo { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .col-lista { list-style: none; }
+  .col-lista li { padding: 7px 0; font-size: 14.5px; line-height: 1.45; display: flex; gap: 10px; align-items: flex-start; }
+  .col-lista .x { color: var(--bad); font-weight: 700; }
+  .col-lista .v { color: var(--ok); font-weight: 700; }
+  .col-hoy .col-titulo { color: var(--bad); }
+  .col-likida .col-titulo { color: var(--ok); }
+
+  .pilares { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 14px; }
+  .pilar { padding: 22px 20px; }
+  .pilar h3 { font-size: 17px; margin-bottom: 6px; }
+  .pilar p { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+  .cta-final { text-align: center; }
+  .boton {
+    display: inline-block; background: var(--marca); color: #fff; border: none; cursor: pointer;
+    padding: 15px 30px; border-radius: 999px; font-family: var(--body); font-size: 16px; font-weight: 600;
+    box-shadow: 0 10px 28px -10px rgba(194,65,12,.55); transition: transform .18s ease, box-shadow .18s ease;
+  }
+  .boton:hover { transform: translateY(-2px); box-shadow: 0 16px 34px -12px rgba(194,65,12,.6); }
+  .boton.borde { background: transparent; color: var(--ink); border: 1.5px solid var(--ink); box-shadow: none; }
+
+  .logos-linea { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .logos-linea .item { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--muted); padding: 8px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  .logos-linea .item b { color: var(--ink); font-weight: 600; }
+
+  @media (max-width: 900px) {
+    .cotizador, .comparacion, .flujo { grid-template-columns: 1fr; }
+    .slide { padding: 30px; overflow-y: auto; }
+    body { overflow: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="rejilla"></div>
+<div class="progreso" id="progreso"></div>
+
+<main id="deck">
+
+  <!-- ═══ 1 · PORTADA ═══ -->
+  <section class="slide activa">
+    <div class="ap logo" style="margin-bottom: auto;"></div>
+    <div style="flex:1; display:flex; flex-direction:column; justify-content:center; max-width: 900px;">
+      <div class="ap eyebrow" style="margin-bottom: 22px;">Liquidación de viajes para autotransporte</div>
+      <h1 class="ap grande" style="margin-bottom: 26px;">El viaje se liquida<br><span class="naranja">solo.</span> La captura, el cuadre y el comprobante — <span class="naranja">escriben el ERP por ti.</span></h1>
+      <p class="ap cuerpo" style="margin-bottom: 34px; max-width: 60ch;">Likida recibe las fotos de tus comprobantes por WhatsApp, las cuadra contra el anticipo y la política de la empresa, y entrega la liquidación lista — con el respaldo fiscal de cada peso.</p>
+      <div class="ap fila" style="gap: 12px; align-items: center;">
+        <span class="chip marca">Propuesta de valor</span>
+        <span class="chip ok">Complemento a tu ERP — no un reemplazo</span>
+      </div>
+    </div>
+    <div class="ap fila" style="margin-top: auto; justify-content: space-between; align-items: flex-end; border-top: 1px solid var(--line); padding-top: 22px;">
+      <div>
+        <div class="chica" style="font-weight: 600; color: var(--ink);">Presenta</div>
+        <div style="font-family: var(--display); font-size: 19px; font-weight: 600;">Javier Cámara Porte Petit</div>
+        <div class="chica">CEO · Likida.ai</div>
+      </div>
+      <div style="text-align: right;">
+        <div class="chica" style="font-weight: 600; color: var(--ink);">Para</div>
+        <div style="font-size: 15px; font-weight: 600;">Transportes Innovativos</div>
+        <div class="chica">6 de agosto de 2026 · Tlaquepaque, Jal.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 2 · EL ORIGEN ═══ -->
+  <section class="slide">
+    <div class="ap eyebrow" style="margin-bottom: 26px;">De dónde venimos</div>
+    <h2 class="ap mediana" style="max-width: 22ch; margin-bottom: 40px;">Llevamos <span class="naranja">más de dos años</span> haciendo consultoría de IA. El dolor no lo inventamos: lo encontramos <span class="naranja">en un cliente transportista.</span></h2>
+    <div class="ap fila" style="gap: 18px; flex-wrap: wrap;">
+      <div class="tarjeta crece" style="padding: 26px;">
+        <h3 style="font-size: 18px; margin-bottom: 10px;">La consultoría</h3>
+        <p class="cuerpo" style="font-size: 14.5px;">Dos años automatizando procesos para empresas. Vimos de cerca cómo se opera de verdad una compañía: los papeles, las capturas, los cuellos de botella.</p>
+      </div>
+      <div class="tarjeta crece" style="padding: 26px;">
+        <h3 style="font-size: 18px; margin-bottom: 10px;">El hallazgo</h3>
+        <p class="cuerpo" style="font-size: 14.5px;">Al trabajar con un transportista apareció un problema que no era de una empresa: <strong>es de toda la industria.</strong> Cada viaje genera comprobantes, y cuadrarlos es una operación manual, lenta y cara.</p>
+      </div>
+      <div class="tarjeta crece" style="padding: 26px; border-color: rgba(194,65,12,.35); background: var(--marca-bg);">
+        <h3 style="font-size: 18px; margin-bottom: 10px; color: var(--marca-osc);">La decisión</h3>
+        <p class="cuerpo" style="font-size: 14.5px;">Crear Likida: la solución que ese cliente nos pidió, hecha para <strong>todos los transportistas</strong>. No como proyecto interno — como producto.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 3 · LA REALIDAD DE LA INDUSTRIA ═══ -->
+  <section class="slide">
+    <div class="ap eyebrow" style="margin-bottom: 26px;">La realidad hoy</div>
+    <h2 class="ap mediana" style="max-width: 24ch; margin-bottom: 36px;">El back-office de una flota <span class="naranja">sigue corriendo en papel, WhatsApp, Excel y portales.</span></h2>
+    <div class="ap dolores" style="margin-bottom: 30px;">
+      <div class="tarjeta dolor">
+        <h3>El combustible es el gasto #1</h3>
+        <p>Entre el 30% y el 50% del costo operativo según la fuente. Cada litro debe tener comprobante — y el SAT lo exige.</p>
+      </div>
+      <div class="tarjeta dolor">
+        <h3>La liquidación es manual</h3>
+        <p>Un viaje genera fotos, tickets, casetas, peajes. Cuadrarlos a mano toma horas por viaje y días al cierre.</p>
+      </div>
+      <div class="tarjeta dolor">
+        <h3>Se captura dos veces</h3>
+        <p>Primero en el papel, luego en el ERP. Cada captura manual es un error posible — y un comprobante que se pierde.</p>
+      </div>
+      <div class="tarjeta dolor">
+        <h3>Lo que no se comprueba, no se deduce</h3>
+        <p>El comprobante que no llega, no cuadra o se paga mal, es dinero que <strong>ya no se recupera</strong> ante el SAT.</p>
+      </div>
+    </div>
+    <p class="ap chica" style="max-width: 90ch;">Fuentes: CANACAR y aseguradoras del sector citadas en la investigación de Likida (combustible = 30–50% del costo). Los contadores fiscales que la ley manda llevar — 15% en efectivo, viáticos, estímulos — hoy se administran a mano, o no se administran.</p>
+  </section>
+
+  <!-- ═══ 4 · ¿QUÉ USAN HOY? — LA PREGUNTA ═══ -->
+  <section class="slide">
+    <div class="ap eyebrow" style="margin-bottom: 26px;">Antes de seguir — una pregunta</div>
+    <h2 class="ap mediana" style="max-width: 26ch; margin-bottom: 20px;">¿Qué herramientas usan hoy para liquidar y cuadrar?</h2>
+    <p class="ap cuerpo" style="margin-bottom: 34px;">ERP, hojas de cálculo, portales de casetas y gasolineras, WhatsApp, papel. Cuéntenos — <strong>no venimos a reemplazar nada de eso.</strong></p>
+    <div class="ap logos-linea" style="margin-bottom: 40px;">
+      <span class="item">🟠 <b>WhatsApp</b></span>
+      <span class="item">🗂 <b>ERP</b> — el suyo, el que sea</span>
+      <span class="item">📊 <b>Excel / Sheets</b></span>
+      <span class="item">🛣 <b>Portales de casetas</b></span>
+      <span class="item">⛽ <b>Portales de gasolineras</b></span>
+      <span class="item">📄 <b>Papel y captura manual</b></span>
+    </div>
+    <div class="ap tarjeta" style="padding: 30px 32px; border-color: rgba(20,96,44,.3); background: var(--ok-bg);">
+      <h3 style="font-size: 21px; margin-bottom: 10px; color: var(--ok);">Somos un complemento, no un sustituto.</h3>
+      <p class="cuerpo" style="font-size: 15.5px; max-width: 78ch;">Likida se sienta <strong>al lado de lo que ya funciona</strong>: recibe los comprobantes por el canal que su gente ya usa, los cuadra, los valida y <strong>entrega la liquidación lista para su ERP — y si su ERP se llena a mano hoy, nuestro agente lo llena por usted.</strong> No cambiamos sus procesos: automatizamos el trabajo de captura que hoy es manual.</p>
+    </div>
+  </section>
+
+  <!-- ═══ 5 · CÓMO FUNCIONA ═══ -->
+  <section class="slide">
+    <div class="ap eyebrow" style="margin-bottom: 26px;">Cómo funciona</div>
+    <h2 class="ap mediana" style="max-width: 26ch; margin-bottom: 40px;">El agente hace el trabajo de captura, <span class="naranja">paso a paso.</span></h2>
+    <div class="ap flujo">
+      <div class="tarjeta paso">
+        <div class="num">1</div>
+        <h3>El operador manda la foto</h3>
+        <p>Por WhatsApp, desde su celular. Sin app, sin capacitación: la herramienta que ya usa todos los días.</p>
+      </div>
+      <div class="flecha-paso">→</div>
+      <div class="tarjeta paso">
+        <div class="num">2</div>
+        <h3>El agente lee y clasifica</h3>
+        <p>OCR con IA de visión: gasolina, casetas, viáticos. Extrae importe, fecha, proveedor y verifica el comprobante.</p>
+      </div>
+      <div class="flecha-paso">→</div>
+      <div class="tarjeta paso">
+        <div class="num">3</div>
+        <h3>Cuadra contra el anticipo y la política</h3>
+        <p>Compara contra el anticipo y las reglas de la empresa. Marca diferencias y faltantes en el momento — no al cierre.</p>
+      </div>
+      <div class="flecha-paso">→</div>
+      <div class="tarjeta paso" style="border-color: rgba(194,65,12,.4);">
+        <div class="num" style="background: var(--marca); color: #fff;">4</div>
+        <h3>Liquidación lista — y el ERP escrito</h3>
+        <p>El PDF de liquidación sale solo, y el registro queda listo para su ERP. Su gente revisa excepciones, no captura.</p>
+      </div>
+    </div>
+    <div class="ap fila" style="margin-top: 30px; gap: 14px; flex-wrap: wrap;">
+      <span class="chip ok">Cifras respaldadas: nadie las escribe de memoria</span>
+      <span class="chip marca">El humano decide lo que el agente marca</span>
+      <span class="chip warn">Nada se inventa: lo que no se puede verificar, se señala</span>
+    </div>
+  </section>
+
+  <!-- ═══ 6 · ANTES / DESPUÉS (estilo Handle) ═══ -->
+  <section class="slide">
+    <div class="ap eyebrow" style="margin-bottom: 26px;">Lo que cambia</div>
+    <h2 class="ap mediana" style="max-width: 26ch; margin-bottom: 36px;">Del cierre manual <span class="naranja">al cierre que se escribe solo.</span></h2>
+    <div class="ap comparacion">
+      <div class="col-hoy">
+        <div class="col-titulo">✕ Proceso de hoy</div>
+        <ul class="col-lista">
+          <li><span class="x">✕</span> El operador junta tickets y papeles durante días.</li>
+          <li><span class="x">✕</span> Un capturista transcribe cada comprobante al ERP a mano.</li>
+          <li><span class="x">✕</span> Los faltantes se descubren al cierre, cuando ya es tarde.</li>
+          <li><span class="x">✕</span> El comprobante que no cuadra se archiva… y se pierde su deducción.</li>
+          <li><span class="x">✕</span> La liquidación tarda días y depende de que nadie se enferme.</li>
+        </ul>
+      </div>
+      <div class="col-likida">
+        <div class="col-titulo">✓ Con Likida</div>
+        <ul class="col-lista">
+          <li><span class="v">✓</span> El operador fotografía el comprobante en el momento.</li>
+          <li><span class="v">✓</span> El agente lee, clasifica y escribe el ERP por el capturista.</li>
+          <li><span class="v">✓</span> Las diferencias y faltantes se marcan al instante, no al cierre.</li>
+          <li><span class="v">✓</span> Cada peso queda amarrado a su comprobante — deducible o señalado.</li>
+          <li><span class="v">✓</span> La liquidación sale el mismo día. Su gente revisa excepciones.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 7 · SCREENSHOTS — EL PANEL DEL JEFE DE FLOTA ═══ -->
+  <section class="slide">
+    <div class="ap eyebrow" style="margin-bottom: 26px;">El panel del jefe de flota</div>
+    <h2 class="ap mediana" style="max-width: 26ch; margin-bottom: 34px;">Lo que se ve al abrir Likida.</h2>
+    <div class="ap shots">
+      <figure class="shot">
+        <img src="dashboard-flota.jpg" alt="Resumen del panel de Likida: indicadores de viajes y liquidaciones">
+        <figcaption><strong>Resumen</strong> — viajes, anticipos y liquidaciones de un vistazo</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="fiscal-flota.jpg" alt="Panel fiscal: deducciones, combustibles y casetas">
+        <figcaption><strong>Panel fiscal</strong> — deducciones, contadores y lo que se puede recuperar</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="despacho-flota.jpg" alt="Despacho: la operación del día">
+        <figcaption><strong>Despacho</strong> — la operación del día por unidad y operador</figcaption>
+      </figure>
+    </div>
+    <p class="ap chica" style="margin-top: 18px;">* Pantallas del producto con datos de demostración. Los nombres y cifras mostrados son de prueba.</p>
+  </section>
+
+  <!-- ═══ 8 · EL PODER FISCAL ═══ -->
+  <section class="slide">
+    <div class="ap eyebrow" style="margin-bottom: 26px;">El poder fiscal de la herramienta</div>
+    <h2 class="ap mediana" style="max-width: 28ch; margin-bottom: 20px;">No solo liquida más rápido: <span class="naranja">recupera lo que la ley permite y hoy se pierde.</span></h2>
+    <p class="ap cuerpo" style="margin-bottom: 30px;">La ley mexicana da beneficios fiscales que dependen de llevar contadores y respaldos que hoy se administran a mano — o no se administran. Likida los lleva <strong>por usted, con el fundamento citado.</strong></p>
+    <div class="ap dolores" style="grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));">
+      <div class="tarjeta dolor">
+        <h3>Hasta 15% del combustible en efectivo</h3>
+        <p>Regla 2.9 RFA 2026. Sigue siendo deducible si se lleva el contador correcto. Rebasar el tope tira el excedente completo — junto con su IVA.</p>
+      </div>
+      <div class="tarjeta dolor">
+        <h3>Viáticos y faja de 50 km</h3>
+        <p>RLISR 57 y 152: lo que se eroga dentro de la faja del operador o sin respaldo no es deducible. El sistema lo marca con su fundamento.</p>
+      </div>
+      <div class="tarjeta dolor">
+        <h3>Estímulo de casetas (50%)</h3>
+        <p>Regla 9.1.8 RMF 2026: bitácora conciliada con el TAG. Sin la bitácora, el estímulo es indefendible en revisión — con ella, es acreditable.</p>
+      </div>
+      <div class="tarjeta dolor">
+        <h3>Reembolsos y monedero</h3>
+        <p>El reembolso al operador debe ir por transferencia a nombre del RFC de la flota. El sistema lo valida antes, no después.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 9 · COTIZADOR DINÁMICO ═══ -->
+  <section class="slide">
+    <div class="ap eyebrow" style="margin-bottom: 22px;">Cuánto significa para ustedes</div>
+    <h2 class="ap mediana" style="max-width: 24ch; margin-bottom: 28px;">El cotizador del ahorro.</h2>
+    <div class="ap cotizador">
+      <div class="tarjeta" style="padding: 26px 24px;">
+        <div class="campo">
+          <label>Viajes al mes <span id="v-viajes">300</span></label>
+          <input type="range" id="i-viajes" min="30" max="1500" step="10" value="300">
+          <div class="rango"><span>30</span><span>1500</span></div>
+        </div>
+        <div class="campo">
+          <label>Capturistas que llenan liquidaciones <span id="v-capt">3</span></label>
+          <input type="range" id="i-capt" min="0" max="15" step="1" value="3">
+          <div class="rango"><span>0</span><span>15</span></div>
+        </div>
+        <div class="campo">
+          <label>Costo mensual por capturista (MXN) <span id="v-sal">$12,000</span></label>
+          <input type="range" id="i-sal" min="6000" max="25000" step="500" value="12000">
+          <div class="rango"><span>$6,000</span><span>$25,000</span></div>
+        </div>
+        <div class="campo">
+          <label>Minutos de captura por liquidación hoy <span id="v-min">45</span></label>
+          <input type="range" id="i-min" min="10" max="180" step="5" value="45">
+          <div class="rango"><span>10 min</span><span>3 horas</span></div>
+        </div>
+        <div class="campo">
+          <label>Gasto mensual de combustible (MXN) <span id="v-comb">$1,500,000</span></label>
+          <input type="range" id="i-comb" min="200000" max="10000000" step="50000" value="1500000">
+          <div class="rango"><span>$200 mil</span><span>$10 millones</span></div>
+        </div>
+      </div>
+      <div class="tarjeta resultados" id="resultados">
+        <div class="resultado"><span class="etq">Horas/mes de captura manual</span><span class="val" id="r-horas">225</span></div>
+        <div class="resultado"><span class="etq">Capturista(s) que el agente libera</span><span class="val naranja" id="r-lib">2</span></div>
+        <div class="resultado"><span class="etq">Ahorro mensual en nómina de captura</span><span class="val naranja" id="r-nom">$24,000</span></div>
+        <div class="resultado"><span class="etq">Horas del jefe de flota devueltas/mes</span><span class="val" id="r-jefe">14</span></div>
+        <div class="resultado"><span class="etq">Deducción potencial al año (RFA 2.9, 15% efectivo)</span><span class="val ok" id="r-fiscal">$2.7M</span></div>
+        <p class="nota-cotizador">Estimación con supuestos editables — la cifra real se confirma con la <strong>revisión fiscal</strong> de sus comprobantes. Los cálculos de tiempo asumen 90% de automatización de la captura; el ahorro fiscal es la facilidad que la regla 2.9 permite si se lleva el contador — sin contador, ese dinero no existe en la declaración.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 10 · PROGRAMA PILOTO ═══ -->
+  <section class="slide">
+    <div class="ap eyebrow" style="margin-bottom: 26px;">Cómo trabajamos</div>
+    <h2 class="ap mediana" style="max-width: 26ch; margin-bottom: 24px;">Buscamos <span class="naranja">dos empresas piloto</span> para construir con ellas, no para ellas.</h2>
+    <p class="ap cuerpo" style="margin-bottom: 36px;">Queremos entender sus procesos reales — los que hoy se hacen a mano — para automatizarlos en el orden correcto, <strong>a la medida de su operación.</strong> El piloto es de ida y vuelta: aprendemos de ustedes, ustedes ven resultados desde el primer mes.</p>
+    <div class="ap pilares" style="margin-bottom: 34px;">
+      <div class="tarjeta pilar">
+        <h3>Entendemos su proceso</h3>
+        <p>Documentamos cómo liquidan hoy: quién captura, qué se tarda, qué se pierde. Sin ese mapa no automatizamos nada.</p>
+      </div>
+      <div class="tarjeta pilar">
+        <h3>Construimos a su medida</h3>
+        <p>La solución se adapta a su política de gastos, sus unidades, sus operadores y su ERP — no al revés.</p>
+      </div>
+      <div class="tarjeta pilar">
+        <h3>Mejoramos continuamente</h3>
+        <p>Nuestro compromiso no termina en la entrega: cada mes buscamos qué otro paso de su operación puede automatizarse.</p>
+      </div>
+    </div>
+    <div class="ap tarjeta" style="padding: 24px 28px; border-color: rgba(194,65,12,.35); background: var(--marca-bg);">
+      <p style="font-size: 15.5px; line-height: 1.6; color: var(--marca-osc);"><strong>Lo que pedimos del piloto:</strong> acceso a su operación real — comprobantes, política y un canal de comunicación abierto. <strong>Lo que damos:</strong> la herramienta funcionando en sus viajes, con soporte directo y sin costo de implementación durante el piloto.</p>
+    </div>
+  </section>
+
+  <!-- ═══ 11 · LA OFERTA ═══ -->
+  <section class="slide">
+    <div class="ap eyebrow" style="margin-bottom: 26px;">Nuestra propuesta para hoy</div>
+    <h2 class="ap mediana" style="max-width: 24ch; margin-bottom: 26px;">Déjennos revisar <span class="naranja">sus comprobantes del mes pasado.</span></h2>
+    <p class="ap cuerpo" style="margin-bottom: 34px; max-width: 66ch;">Les ofrecemos una <strong>revisión fiscal sin costo</strong> de sus tickets del último mes: analizamos cómo están liquidando hoy y dónde hay dinero que la ley permite recuperar y hoy se pierde — combustible en efectivo fuera del contador, viáticos mal respaldados, casetas sin estímulo.</p>
+    <div class="ap comparacion" style="margin-bottom: 36px;">
+      <div class="col-hoy" style="background: var(--surface);">
+        <div class="col-titulo" style="color: var(--muted);">Lo que la revisión muestra</div>
+        <ul class="col-lista">
+          <li><span class="x">→</span> Comprobantes que se liquidaron tarde o nunca.</li>
+          <li><span class="x">→</span> Pagos en efectivo que rebasaron (o no usaron) la facilidad del 15%.</li>
+          <li><span class="x">→</span> Viáticos y casetas sin el respaldo que el SAT exige.</li>
+          <li><span class="x">→</span> Estimación, en pesos, del dinero recuperable.</li>
+        </ul>
+      </div>
+      <div class="col-likida">
+        <div class="col-titulo">✓ Lo que ustedes se llevan</div>
+        <ul class="col-lista">
+          <li><span class="v">✓</span> Un mapa claro de su gasto de viaje del mes.</li>
+          <li><span class="v">✓</span> Los puntos exactos donde se escapa la deducción.</li>
+          <li><span class="v">✓</span> La proyección de lo que Likida recupera.</li>
+          <li><span class="v">✓</span> Sin compromiso: el análisis es suyo, con o sin nosotros.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="ap cuerpo" style="font-size: 15.5px; max-width: 72ch;">No solo hacemos su proceso más rápido: <strong>le devolvemos el dinero que hoy la ley ya le permite deducir y nadie está cobrando.</strong></p>
+  </section>
+
+  <!-- ═══ 12 · CIERRE ═══ -->
+  <section class="slide">
+    <div style="flex:1; display:flex; flex-direction:column; justify-content:center; text-align:center; max-width: 900px; margin: 0 auto;">
+      <div class="ap logo" style="justify-content: center; margin-bottom: 34px;"></div>
+      <h2 class="ap mediana" style="margin-bottom: 20px;">Su operación ya tiene los datos.<br>Nosotros hacemos que <span class="naranja">trabajen.</span></h2>
+      <p class="ap cuerpo" style="margin: 0 auto 38px; max-width: 56ch;">Liquidaciones que se escriben solas, comprobantes que respaldan cada peso y una revisión fiscal que le muestra cuánto hay por recuperar.</p>
+      <div class="ap fila" style="justify-content: center; gap: 14px; flex-wrap: wrap; margin-bottom: 40px;">
+        <a class="boton" href="mailto:javier@likida.ai">Agendar la revisión fiscal</a>
+        <a class="boton borde" href="https://app.likida.ai" target="_blank" rel="noopener">Ver la plataforma</a>
+      </div>
+      <div class="ap fila" style="justify-content: center; gap: 34px; flex-wrap: wrap; color: var(--muted); font-size: 14px;">
+        <span><strong style="color: var(--ink);">Javier Cámara Porte Petit</strong> · CEO, Likida.ai</span>
+        <span>javier@likida.ai</span>
+        <span>app.likida.ai</span>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- navegación -->
+<div class="nav-dots" id="dots"></div>
+<div class="flechas">
+  <button id="atras" aria-label="Anterior">←</button>
+  <button id="adelante" aria-label="Siguiente">→</button>
+</div>
+<div class="tecla">← → para navegar · F para pantalla completa</div>
+
+<script>
+(function () {
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const dots = document.getElementById('dots');
+  const progreso = document.getElementById('progreso');
+  let actual = 0;
+
+  // logo en cada cabecera (icono + wordmark por piezas, como la app)
+  function pintarLogo() {
+    document.querySelectorAll('.logo').forEach((c) => {
+      c.innerHTML = '<img class="ic" src="logo-icono.png" alt="" aria-hidden="true" style="filter: none;">' +
+                    '<img src="logo-texto.png" alt="Likida" style="height: 26px; opacity: .92;">';
+    });
+  }
+  pintarLogo();
+
+  slides.forEach((_, i) => {
+    const b = document.createElement('button');
+    b.setAttribute('aria-label', 'Diapositiva ' + (i + 1));
+    if (i === 0) b.classList.add('activo');
+    b.addEventListener('click', () => ir(i));
+    dots.appendChild(b);
+  });
+  const dotBtns = Array.from(dots.children);
+
+  function ir(n) {
+    actual = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, i) => s.classList.toggle('activa', i === actual));
+    dotBtns.forEach((d, i) => d.classList.toggle('activo', i === actual));
+    progreso.style.width = ((actual + 1) / slides.length * 100) + '%';
+  }
+
+  document.getElementById('adelante').addEventListener('click', () => ir(actual + 1));
+  document.getElementById('atras').addEventListener('click', () => ir(actual - 1));
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); ir(actual + 1); }
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); ir(actual - 1); }
+    if (e.key === 'Home') ir(0);
+    if (e.key === 'End') ir(slides.length - 1);
+    if ((e.key === 'f' || e.key === 'F') && !e.metaKey) {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+      else document.exitFullscreen();
+    }
+  });
+
+  let inicioX = 0;
+  document.addEventListener('touchstart', (e) => { inicioX = e.touches[0].clientX; }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].clientX - inicioX;
+    if (Math.abs(dx) > 60) ir(actual + (dx < 0 ? 1 : -1));
+  }, { passive: true });
+
+  /* ═════════ COTIZADOR ═════════ */
+  const fmt = (n) => new Intl.NumberFormat('es-MX').format(Math.round(n));
+  const campos = {
+    viajes:  document.getElementById('i-viajes'),
+    capt:    document.getElementById('i-capt'),
+    sal:     document.getElementById('i-sal'),
+    min:     document.getElementById('i-min'),
+    comb:    document.getElementById('i-comb'),
+  };
+  const etq = {
+    viajes: document.getElementById('v-viajes'),
+    capt:   document.getElementById('v-capt'),
+    sal:    document.getElementById('v-sal'),
+    min:    document.getElementById('v-min'),
+    comb:   document.getElementById('v-comb'),
+  };
+
+  function recalc() {
+    const viajes = +campos.viajes.value;
+    const capt = +campos.capt.value;
+    const sal = +campos.sal.value;
+    const min = +campos.min.value;
+    const comb = +campos.comb.value;
+
+    etq.viajes.textContent = fmt(viajes);
+    etq.capt.textContent = capt;
+    etq.sal.textContent = '$' + fmt(sal);
+    etq.min.textContent = min;
+    etq.comb.textContent = '$' + fmt(comb);
+    Object.values(campos).forEach((r) => {
+      const p = (r.value - r.min) / (r.max - r.min) * 100;
+      r.style.setProperty('--relleno', p + '%');
+    });
+
+    const horasManual = viajes * min / 60;                 // horas/mes de captura manual
+    const costoCapturistaHora = sal / 160;                 // jornada mensual típica (160 h)
+    const horasAhorradas = horasManual * 0.9;              // 90% de la captura se automatiza
+    const fteLiberado = Math.max(0, Math.floor(horasAhorradas / 160)); // jornadas completas liberadas
+    const ahorroNomina = Math.min(horasAhorradas * costoCapturistaHora, capt * sal); // nunca más que la nómina total
+    const jefeHoras = Math.max(1, Math.round(viajes * 0.05));       // revisión de excepciones, ~5% del tiempo
+    const deduccionPotencial = comb * 0.15 * 12;            // regla 2.9: hasta 15% del combustible en efectivo al año
+
+    const r = document.getElementById('resultados');
+    const vals = {
+      'r-horas':  fmt(horasManual) + ' h',
+      'r-lib':    Math.max(0, fteLiberado),
+      'r-nom':    '$' + fmt(ahorroNomina),
+      'r-jefe':   fmt(jefeHoras) + ' h',
+      'r-fiscal': '$' + (deduccionPotencial >= 1000000 ? (deduccionPotencial / 1000000).toFixed(1) + 'M' : fmt(deduccionPotencial)),
+    };
+    Object.keys(vals).forEach((id) => { document.getElementById(id).textContent = vals[id]; });
+  }
+  Object.values(campos).forEach((r) => r.addEventListener('input', recalc));
+  recalc();
+})();
+</script>
+</body>
+</html>
