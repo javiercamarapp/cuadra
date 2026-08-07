@@ -23,7 +23,7 @@ video pendiente.
    antes de dar algo por bueno.
 3. **Fallar cerrado.** supabase-js devuelve errores POR VALOR: sin comprobar
    `error`, una base caída se lee como "no hay nada". Usa `exigir()` y
-   `traerTodo()` de `lib/cuadra/pg.ts`.
+   `traerTodo()` de `lib/likida/pg.ts`.
 4. **El formato de cifras vive sólo en `lib/formato.ts`.** Hay una prueba que
    falla si aparece `toLocaleString('es-MX')` en otro archivo.
 5. **Una prueba escrita después del arreglo no vale** hasta que la rompes a
@@ -130,7 +130,7 @@ haya una cuenta real. Dilo así, no des por funcionando lo que no probaste.
 ## FASE 3 — Alta de clientes sin SQL
 
 Desde el 3 de agosto ya se pueden crear viajes, unidades e incidencias desde el
-panel (`lib/cuadra/operacion.ts`, las primeras escrituras administrativas de la
+panel (`lib/likida/operacion.ts`, las primeras escrituras administrativas de la
 app). Lo que **sigue siendo SQL a mano**:
 
 - dar de alta una flota (tenant),
