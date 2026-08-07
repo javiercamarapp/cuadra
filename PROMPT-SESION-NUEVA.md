@@ -1,12 +1,11 @@
 # Likida — continuar el trabajo, en fases
 
-Repo: `~/javiercamarapp/cuadra`, rama `master`, GitHub `javiercamarapp/likida.ai`.
+Repo: `~/javiercamarapp/likida`, rama `master`, GitHub `javiercamarapp/likida.ai`.
 **Lee `CLAUDE.md` antes de tocar nada.** Está escrito para esto y es corto.
 
 Likida liquida viajes de flotas de carga en México por WhatsApp: el operador
 manda fotos de tickets, un motor determinístico las cuadra contra el anticipo y
-entrega un PDF con fundamento fiscal. **Demo el 6 de agosto de 2026** con
-Transportes Innovativos. El guion está en `GUION_DEMO.md`.
+entrega un PDF con fundamento fiscal. **Demo el 6 de agosto de 2026.** El guion de presentación está en `docs/presentacion/` (PDF + HTML).
 
 El diseño ya está resuelto: paleta blanco + naranja, fondo listo, logo de dos
 tonos, marco unificado. **No toques el fondo ni la paleta.** No hay nada de
@@ -57,10 +56,10 @@ media interfaz: paleta, marco, roles nuevos, cinco pantallas nuevas.
 - Reporta qué se rompió o se ve distinto. Arregla lo que rompa el guion; lo
   demás anótalo y sigue.
 
-Datos del demo: `VJ-2026-0848` en el tenant `11111111-1111-1111-1111-111111111111`
-("Transportes Innovativos"), operador `529993700779` (el teléfono de Javier).
+Datos del demo: folio demo en el tenant `11111111-1111-1111-1111-111111111111`
+("FLOTA DEMO SA DE CV"), operador `529993700779` (el teléfono de Javier).
 Para reabrir un viaje liquidado NO basta cambiar `viaje.estatus` — hay que
-borrar la fila de `liquidacion` primero; el SQL exacto está en `TRASPASO.md`.
+borrar la fila de `liquidacion` primero.
 
 ---
 
