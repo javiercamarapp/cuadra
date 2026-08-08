@@ -2159,7 +2159,35 @@ export async function processInbound(msg: InboundMessage): Promise<void> {
         // reproduce. El try/catch es lo que impide que este await cueste el
         // cierre; son dos lecturas y un envío, no un presupuesto.
         try {
-          const rj = await avisarCierreAlJefe({ tenantId: op.tenantId, viajeId, urlPdf: data.signedUrl });
+          // AUDITORÍA 17, CRÍTICO (agéntico): aquí se reusaba `data.signedUrl`,
+          // que es la liga del ejemplar del OPERADOR — el que `pdf.ts` filtra con
+          // `SOLO_CONTRALOR` justamente para esconderle al chofer los veredictos
+          // fiscales (`cfdi_efos`, `cfdi_cancelado`, `rfc_receptor`…). Al jefe le
+          // llegaba ese documento incompleto adjunto a un texto que SÍ los
+          // menciona: dos papeles del mismo cierre contradiciéndose, en manos de
+          // quien decide la compra. Se firma el ejemplar COMPLETO, que es el
+          // mismo que queda en `liquidacion.pdf_path` y el que baja del panel.
+          //
+          // Si el ejemplar del contralor no se generó (`pdf_contralor_generado`
+          // ya se registró arriba como error), el aviso sale IGUAL pero sin
+          // adjunto: enterarse tarde del cierre es malo, pero mandarle el
+          // ejemplar censurado es peor — es la falla que este bloque corrige.
+          let urlContralor: string | undefined;
+          if (pdfContralorGenerado) {
+            const firmaContralor = await acotada(
+              supabaseAdmin().storage.from('liquidaciones').createSignedUrl(`${op.tenantId}/${viajeId}.pdf`, 60),
+              'createSignedUrlContralor',
+            );
+            if (firmaContralor.error || !firmaContralor.data?.signedUrl) {
+              logger.error('pdf.contralor_no_firmado', {
+                tenant: op.tenantId, viaje: viajeId,
+                err: firmaContralor.error?.message ?? 'storage no devolvió URL firmada',
+              });
+            } else {
+              urlContralor = firmaContralor.data.signedUrl;
+            }
+          }
+          const rj = await avisarCierreAlJefe({ tenantId: op.tenantId, viajeId, urlPdf: urlContralor });
           if (!rj.enviado) logger.warn('cierre.jefe_no_avisado', { viaje: viajeId, motivo: rj.motivo });
         } catch (e) {
           logger.error('cierre.aviso_jefe_falló', { viaje: viajeId, err: e instanceof Error ? e.message : String(e) });

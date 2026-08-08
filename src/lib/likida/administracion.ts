@@ -72,7 +72,7 @@ export interface NuevaFlota {
   /** RFA 2026 regla 2.9: ¿tributa en Título II Cap. VII (coordinados) o Título
    *  IV Cap. II Secc. I (PF con actividad empresarial)? — se captura como el
    *  código SAT real (c_RegimenFiscal) en `tenant.regimen_fiscal`, y la
-   *  elegibilidad se DERIVA de él (los códigos 601/612 son los que califican). */
+   *  elegibilidad se DERIVA de él (los códigos 624/612 son los que califican). */
   regimenFiscal?: string;
 }
 
@@ -108,11 +108,24 @@ export async function crearFlota(
   const admin = supabaseAdmin();
   // RFA 2026 regla 2.9: el régimen se captura como el código SAT REAL
   // (tenant.regimen_fiscal — la columna que la facturación ya lee) y la
-  // elegibilidad se DERIVA de él: los códigos 601 (General de Ley PM —
-  // coordinados) y 612 (PF con actividades empresariales) son los dos títulos
-  // que la regla admite. El booleano `dedicacionExclusivaCarga` se guarda en
-  // la config (el otro requisito, que el alta ya pregunta).
-  const REGIMENES_ELEGIBLES = ['601', '612'];
+  // elegibilidad se DERIVA de él.
+  //
+  // AUDITORÍA 17, CRÍTICO (fiscal): aquí decía `['601', '612']`, con el
+  // comentario «601 (General de Ley PM — coordinados)». Son dos claves
+  // distintas del catálogo c_RegimenFiscal, no una con dos nombres. La regla
+  // 2.9 dice, literal (ficha `normas/rfa-2026-2.9.yaml`, verificada contra
+  // DOF/SIDOF 5780249): «que tributen conforme al Título II, Capítulo VII o
+  // Título IV, Capítulo II, Sección I de la Ley del ISR».
+  //
+  //   Título II, Capítulo VII   = Coordinados                    → 624
+  //   Título IV, Cap. II, Sec. I = PF con act. empresariales      → 612
+  //
+  // `601` es el Título II GENERAL, no su Capítulo VII: una PM de carga que
+  // tributa en 601 sin ser coordinado NO tiene esta facilidad. Con el mapeo
+  // viejo la válvula abría para quien no califica —y el PDF imprimía
+  // "deducible" citando la regla— y cerraba para el coordinado real, al que
+  // además no se le podía ni registrar el régimen (no estaba en el catálogo).
+  const REGIMENES_ELEGIBLES = ['624', '612'];
   const regimenElegible = f.regimenFiscal ? REGIMENES_ELEGIBLES.includes(f.regimenFiscal) : undefined;
   const facilidad15 = (typeof f.dedicacionExclusivaCarga === 'boolean' && regimenElegible !== undefined)
     ? {

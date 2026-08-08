@@ -60,12 +60,26 @@ describe('la ruta del PDF del operador es la MISMA donde se sube y donde se lee'
     }
   });
 
-  it('y es el ejemplar del OPERADOR, no el completo del contralor', () => {
-    // Si `processor.ts` pasara a leer `{}/{}.pdf`, el chofer recibiría por
-    // WhatsApp el ejemplar con los veredictos que `resumen.ts` le oculta — el
-    // hallazgo ALTO de la ronda 4 por otra puerta.
+  it('`processor.ts` sigue leyendo el ejemplar del OPERADOR — el que va al chofer', () => {
     expect(rutasDePdf(PROCESSOR)).toContain('{}/{}-operador.pdf');
-    expect(rutasDePdf(PROCESSOR)).not.toContain('{}/{}.pdf');
+  });
+
+  // AUDITORÍA 17, CRÍTICO (agéntico) — hasta esta ronda, aquí se exigía además
+  // que `processor.ts` NO nombrara `{}/{}.pdf`. La intención era buena («que el
+  // chofer no reciba el ejemplar con los veredictos que `resumen.ts` le oculta»),
+  // pero el proxy era el archivo entero: servía mientras el processor firmaba UN
+  // solo PDF, y al hacerlo lo dejó firmando el del operador **también para el
+  // jefe**. Es decir, esta misma línea es la que fijó el bug: el contralor
+  // recibía por WhatsApp el documento censurado.
+  //
+  // El processor necesita las DOS rutas, una por destinatario. Lo que no se
+  // puede aflojar es a quién va cada una, y eso no lo puede ver un `grep`: vive
+  // en `cierre_pdf_del_jefe.test.ts`, que corre el cierre de verdad y afirma que
+  // el `link` del documento del chofer trae `-operador.pdf` y que el `urlPdf`
+  // del jefe trae el completo. Aquí solo se cuida que ninguna de las dos rutas
+  // se despegue de `tools.ts` (la prueba de arriba).
+  it('y ahora también el COMPLETO, porque el jefe recibe ese', () => {
+    expect(rutasDePdf(PROCESSOR)).toContain('{}/{}.pdf');
   });
 
   it('`tools.ts` sube los DOS ejemplares en rutas distintas', () => {

@@ -108,11 +108,11 @@ describe('la contabilidad del cierre', () => {
     expect(MARGEN_CIERRE_MS).toBeGreaterThanOrEqual(COSTO_CIERRE_MS);
   });
 
-  it('la tabla trae los trece pasos, con dónde vive cada uno', () => {
+  it('la tabla trae los catorce pasos, con dónde vive cada uno', () => {
     // El `donde` no es adorno: sin él, revisar si la lista sigue completa exige
     // releer `processor.ts` entero, que es exactamente lo que nadie hizo en tres
     // rondas. Si añades un paso de red al cierre, añádelo aquí o sube el margen.
-    expect(PASOS_CIERRE).toHaveLength(13);
+    expect(PASOS_CIERRE).toHaveLength(14);
     for (const p of PASOS_CIERRE) {
       expect(p.ms, `${p.paso} sin costo`).toBeGreaterThan(0);
       expect(p.donde, `${p.paso} sin ubicación`).toMatch(/\.ts/);
