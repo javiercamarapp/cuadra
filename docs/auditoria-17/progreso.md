@@ -36,3 +36,29 @@ para la línea de trabajo viva **no hay PR abierto**, y sí hubo commits en `src
 **Pendiente para el dueño:** los PRs #6, #7 y #8 están muertos y conviene cerrarlos.
 Mientras sigan abiertos, la regla de continuación del PASO 1 va a apuntar a ellos en
 cada corrida.
+
+## Fase de arreglo (tope: 3 vueltas — agotado)
+
+| # | Acción | Resultado | sha |
+|---|---|---|---|
+| 10 | Los 12 auditores entregaron | 113 hallazgos, 7 CRÍTICO | — |
+| 11 | Verificación adversarial de los 7 CRÍTICOS abriendo el código | los 7 son reales, 0 descartados | — |
+| 12 | Vuelta 1 — prueba que reproduce el CRÍTICO agéntico | 2 de 3 casos en rojo | — |
+| 13 | Vuelta 1 — arreglo: el jefe recibe el PDF del contralor | verde; suite 3,152 | `0d6bea7` |
+| 14 | Vuelta 2 — prueba que reproduce el CRÍTICO de operabilidad | 1 de 3 casos en rojo | — |
+| 15 | Vuelta 2 — arreglo: solo se suelta el lock propio | verde; suite 3,155 | `61cf600` |
+| 16 | Vuelta 3 — prueba que reproduce el CRÍTICO fiscal | 2 de 4 casos en rojo | — |
+| 17 | Vuelta 3 — arreglo: 624 Coordinados + mig. 0086 + bloque 62 | verde; suite 3,159 | `37612f1` |
+| 18 | Contabilidad: anotar el paso de red que agregó el arreglo #13 | 8.9s → 9.4s contra 12s | `a30f7b0` |
+| 19 | Tablero + captura, mirada | 12 rubros, notas cuadran | — |
+
+Ningún arreglo se revirtió: los tres pasaron la suite completa y los tres fallan
+sin su cambio (verificado corriendo la prueba antes del arreglo).
+
+Dos pruebas existentes se ajustaron porque el arreglo cambió lo que afirmaban, y
+en ambos casos se dejó escrito por qué:
+- `ruta_pdf_sincronizada.test.ts` — su proxy de archivo entero era lo que fijaba
+  el bug del PDF.
+- `startup_diagnostico.test.ts` — encadenaba mocks por POSICIÓN y daba por hecho
+  un `unlock` que ahora, correctamente, no ocurre.
+- `presupuesto.test.ts` — el conteo de pasos del cierre pasa de 13 a 14.
