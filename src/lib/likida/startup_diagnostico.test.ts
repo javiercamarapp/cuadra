@@ -148,10 +148,17 @@ describe('la sobrecarga ambigua de guardar_liquidacion_tx', () => {
 // cuenta doble en el comprobado y su IVA se acredita por duplicado.
 describe('el arranque dice TODO lo que falta, no lo primero', () => {
   it('con dos migraciones ausentes, reporta las dos', async () => {
-    rpc.mockResolvedValueOnce({ error: { code: 'PGRST202', message: 'no try_lock_viaje' } })  // 0005
-       .mockResolvedValueOnce({ error: null })                                                // unlock
-       .mockResolvedValueOnce({ error: { code: 'PGRST202', message: 'no intake_delta' } })     // 0011
-       .mockResolvedValue({ error: null });
+    // AUDITORÍA 17: esto encadenaba `mockResolvedValueOnce` por POSICIÓN, dando
+    // por hecho que entre el sondeo de la 0005 y el de la 0011 siempre cae una
+    // llamada a `unlock_viaje`. Desde el CRÍTICO de operabilidad de esta ronda,
+    // el unlock solo ocurre si el lock se adquirió —con la 0005 ausente no se
+    // adquiere—, así que la posición 2 pasó a ser la 0011 y la prueba medía otra
+    // cosa. Se indexa por NOMBRE de RPC, que es lo que de verdad quiere afirmar.
+    rpc.mockImplementation(async (fn: string) => {
+      if (fn === 'try_lock_viaje') return { error: { code: 'PGRST202', message: 'no try_lock_viaje' } }; // 0005
+      if (fn === 'intake_delta') return { error: { code: 'PGRST202', message: 'no intake_delta' } };     // 0011
+      return { error: null };
+    });
     await verificarMigracionesCriticas();
 
     const mensajes = error.mock.calls.map((c) => (c[1] as { msg: string }).msg).join(' | ');

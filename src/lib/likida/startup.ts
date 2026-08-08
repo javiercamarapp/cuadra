@@ -62,12 +62,27 @@ export async function verificarMigracionesCriticas(): Promise<void> {
     // caro que este archivo existe para evitar).
     const { data: viajeReal } = await admin.from('viaje').select('id').limit(1);
     if (viajeReal?.[0]?.id) {
-      const { error } = await admin.rpc('try_lock_viaje', { p_viaje: viajeReal[0].id, p_ttl_ms: 1 });
+      const { data: tomado, error } = await admin.rpc('try_lock_viaje', { p_viaje: viajeReal[0].id, p_ttl_ms: 1 });
       if (error) {
         reportarProbe(error, 'FALTA la migración 0005 (try_lock_viaje / unique(viaje_id)): la protección de doble liquidación NO está activa. Corre `supabase db push`.');
         faltan = true;
       }
-      await admin.rpc('unlock_viaje', { p_viaje: viajeReal[0].id }); // liberar el lock de prueba
+      // AUDITORÍA 17, CRÍTICO (operabilidad): esto era incondicional, y
+      // `unlock_viaje` es un `delete ... where viaje_id = $1` SIN token de
+      // dueño (mig. 0005): libera el lease sea de quien sea.
+      //
+      // El viaje que sondeamos es uno REAL, el primero que devuelve la tabla.
+      // Si en ese instante otra invocación lo está liquidando, `try_lock_viaje`
+      // devuelve `false` —no un error, así que el `if` de arriba ni se entera— y
+      // el `unlock` de aquí abajo le borraba el lock ajeno: el siguiente mensaje
+      // del lote entraba a liquidar en paralelo. Es justo la doble liquidación
+      // que la 0005 existe para impedir, causada por el probe que la verifica.
+      //
+      // Solo se suelta lo que este probe consiguió. Si no lo consiguió, el lease
+      // ajeno sigue vigente y expira por su propio TTL.
+      if (tomado === true) {
+        await admin.rpc('unlock_viaje', { p_viaje: viajeReal[0].id }); // liberar SOLO el lock de prueba
+      }
     } else {
       // Base vacía: sin viajes no hay doble liquidación que proteger; el unique
       // `viaje_lock_pkey` sí se verifica en el bloque de índices de abajo.
