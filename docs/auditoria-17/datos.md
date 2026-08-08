@@ -53,7 +53,7 @@ descolorido; `repo.ts` lo mapea a `undefined`).
 - `totalesEjercicio.efectivo` = 180,000 (el de $18,000 no está: no tiene fecha).
 - `efectivoDeEsteViaje` = 18,000 (**sí se resta**: el `??` lo dio por del año).
 - `efectivoPrevEjercicio` = 180,000 − 18,000 = **162,000**.
-- `engine.ts:339` → `cupoRestante = max(0, 180,000 − 162,000)` = **18,000**;
+- `engine.ts:338-341` → `cupoRestante = max(0, 180,000 − 162,000)` = **18,000**;
   `excedenteDeEste` = 0 → diferencia **`combustible_efectivo_dentro15`**.
 
 Sale: *"deducible por la facilidad del 15% (RFA 2026 regla 2.9)"* sobre $18,000
@@ -101,7 +101,7 @@ update tenant set config = '{"politica": []}'::jsonb where id = '1111…';
 
 pasa el CHECK: cada `jsonb_exists(p_config, …)` del validador resuelve contra la
 función temporal, ninguna rama se evalúa y la función devuelve `true`. Queda una
-flota con `politica = []`, que es justo lo que la `0085:97-100` describe como
+flota con `politica = []`, que es justo lo que la `0085:93-95` describe como
 "quita el tope de TODOS los conceptos sin dejar rastro": la liquidación sale sin
 una sola diferencia `sobre_politica` y parece que la flota cumple.
 
@@ -145,9 +145,9 @@ gastos de diésel de ese viaje se van por `gasto_viaje_id_fkey … on delete cas
 
 - El índice parcial `cfdi_consolidado_linea_por_conciliar_idx` (0076:78-80) filtra
   `where estatus = 'por_conciliar'` → esas 3 líneas **no reaparecen en la cola**.
-- El resumen de `guardarYConciliarConsolidado` (`consolidado.ts:250`) cuenta
+- El resumen de `guardarYConciliarConsolidado` (`consolidado.ts:294`) cuenta
   `estatus === 'conciliada'` → sigue diciendo **24 de 24**.
-- `resolverLineaAMano` (`consolidado.ts:359`) rechaza cualquier línea cuyo estatus
+- `resolverLineaAMano` (`consolidado.ts:360`) rechaza cualquier línea cuyo estatus
   no sea `por_conciliar` → tampoco hay forma de reabrirlas desde el panel.
 
 **Consecuencia:** $22,500 de un CFDI que la flota va a acreditar dejan de estar
@@ -387,7 +387,7 @@ Es exactamente la forma cuadrática que la `0071` documenta haber cerrado.
   cfdi_uuid, cfdi_orden) where cfdi_uuid is not null`. Intenté refutarlo y no pude:
   `cfdi_orden` es `not null default 1` (`0065:58`) con `check (cfdi_orden >= 1)`, así
   que dos inserciones del mismo XML siguen chocando en `orden = 1`; y
-  `ligarLineaAGasto` (`consolidado.ts:170-174`) lleva el guardia
+  `ligarLineaAGasto` (`consolidado.ts:171-174`) lleva el guardia
   `.is('cfdi_uuid', null)`, que impide re-apuntar un gasto ya timbrado.
 - **RLS habilitada en las 42 tablas vivas** (barrido de `enable row level security`
   contra la lista de `create table`, incluidas las de los `do $$ … array[…]`).
