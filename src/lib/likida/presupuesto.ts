@@ -44,6 +44,13 @@ export const PASOS_CIERRE: ReadonlyArray<{ paso: string; donde: string; ms: numb
   { paso: 'sendText del aviso de barrera',         donde: 'processor.ts:735',  ms: 1_500 },
   { paso: 'registrarCostoWhatsApp de ese aviso',   donde: 'costos.ts',         ms: 300 },
   { paso: 'createSignedUrl del PDF',               donde: 'processor.ts:755',  ms: 500 },
+  // AUDITORÍA 17: el arreglo del CRÍTICO agéntico firma un SEGUNDO ejemplar —el
+  // completo, que es el que va al contralor— y este archivo dice, arriba, que
+  // meter un paso al cierre sin anotarlo aquí es justo cómo la reserva deja de
+  // ser cierta. Se anota. (El aviso al jefe en sí —2 lecturas y un envío— sigue
+  // SIN presupuestar: es el CRÍTICO de rendimiento de esta ronda, y arreglarlo
+  // es cambiar el margen, no esta línea.)
+  { paso: 'createSignedUrl del PDF del contralor', donde: 'processor.ts:2161', ms: 500 },
   { paso: 'sendDocument del PDF',                  donde: 'processor.ts:757',  ms: 2_500 },
   { paso: 'registrarCostoWhatsApp del PDF',        donde: 'processor.ts:758',  ms: 300 },
   { paso: 'saveConversation',                      donde: 'processor.ts:774',  ms: 500 },
