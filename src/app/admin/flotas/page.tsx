@@ -217,7 +217,11 @@ export default async function FlotasPage() {
               <span className="mt-1">Régimen fiscal (c_RegimenFiscal SAT):</span>
               <select name="regimenFiscal" className="text-xs" defaultValue="">
                 <option value="">Sin declarar</option>
-                <option value="601">601 — General de Ley PM (coordinados)</option>
+                {/* AUDITORÍA 17, CRÍTICO (fiscal): `601` venía rotulado
+                    "(coordinados)" y `624` no existía. Son dos claves distintas
+                    del c_RegimenFiscal, y la que la RFA 2.9 nombra es la 624. */}
+                <option value="624">624 — Coordinados (Título II Cap. VII)</option>
+                <option value="601">601 — General de Ley PM</option>
                 <option value="612">612 — PF con actividades empresariales</option>
                 <option value="605">605 — Sueldos y Salarios</option>
                 <option value="606">606 — Arrendamiento</option>
@@ -229,8 +233,9 @@ export default async function FlotasPage() {
                 <option value="616">616 — Otros regímenes</option>
               </select>
               <span>
-                — la facilidad del 15% (RFA 2.9) exige 601 o 612; cualquier otro
-                no califica y el efectivo en combustible no se deduce.
+                — la facilidad del 15% (RFA 2.9) exige 624 (Coordinados, Título II
+                Cap. VII) o 612 (PF con actividad empresarial); cualquier otro,
+                601 incluido, no califica y el efectivo en combustible no se deduce.
               </span>
             </label>
           </FormaConAviso>

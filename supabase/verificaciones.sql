@@ -3166,3 +3166,32 @@ begin
   select nombre into v_n from tenant where id = v_t;
   raise exception E'FACILIDAD_UPDATE  actualiza-con-facilidad=%  (esperado actualiza-con-facilidad=actualiza)', v_n;
 end $$;
+
+-- ── 62. tenant.regimen_fiscal ADMITE 624, Coordinados (mig. 0086) ─────────
+-- y sigue rechazando una clave inventada.
+-- AUDITORÍA 17, CRÍTICO fiscal: la 0056 dejó 624 fuera del CHECK, y 624 es el
+-- ÚNICO régimen de persona moral al que la RFA 2026 regla 2.9 le da la
+-- facilidad del 15% ("Título II, Capítulo VII" = Coordinados). Sin la 0086, al
+-- coordinado real no se le puede capturar su régimen y la facilidad que sí le
+-- toca queda cerrada.
+do $$
+declare v_t uuid; v_ok boolean; v_rechaza boolean;
+begin
+  begin
+    insert into tenant (nombre, regimen_fiscal) values ('ZZZ VERIF 0086', '624')
+    returning id into v_t;
+    v_ok := true;
+  exception when check_violation then v_ok := false;
+  end;
+
+  -- Control: el dominio sigue siendo un dominio, no un campo libre.
+  begin
+    insert into tenant (nombre, regimen_fiscal) values ('ZZZ VERIF 0086 MALA', '699');
+    v_rechaza := false;
+  exception when check_violation then v_rechaza := true;
+  end;
+
+  delete from tenant where nombre like 'ZZZ VERIF 0086%';
+  raise exception E'REGIMEN_624  admite-624=%  rechaza-699=%   (esperado true / true)',
+    v_ok, v_rechaza;
+end $$;
